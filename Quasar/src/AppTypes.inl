@@ -9,6 +9,4 @@ namespace Quasar
         u32 height;
     } app_create_info ;
 
-    
-
 } // namespace Quasar
