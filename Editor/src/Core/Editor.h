@@ -6,7 +6,7 @@
 class Editor : public Quasar::Application
 {
 	public:
-	Editor(Quasar::engine_state state);
+	Editor(Quasar::app_create_info state);
 	~Editor();
 
 	private:

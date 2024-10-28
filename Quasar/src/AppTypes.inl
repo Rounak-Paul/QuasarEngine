@@ -3,11 +3,11 @@
 namespace Quasar
 {
 
-    typedef struct QS_API engine_state {
+    typedef struct QS_API app_create_info {
         std::string app_name;
         u32 width;
         u32 height;
-    } engine_state ;
+    } app_create_info ;
 
     
 

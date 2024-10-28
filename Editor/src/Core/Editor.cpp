@@ -4,16 +4,16 @@ using namespace Quasar;
 
 Quasar::Application* Quasar::CreateApplication()
 {
-    Quasar::engine_state state;
-    state.width = 800;
-    state.height = 600;
-    state.app_name = "Editor - Quasar Engine";
+    Quasar::app_create_info info;
+    info.width = 800;
+    info.height = 600;
+    info.app_name = "Editor - Quasar Engine";
 
-	return new Editor(state);
+	return new Editor(info);
 };
 
-Editor::Editor(Quasar::engine_state state) : Application(state) {
-    
+Editor::Editor(Quasar::app_create_info info) : Application(info) {
+
 }
 
 Editor::~Editor() {
