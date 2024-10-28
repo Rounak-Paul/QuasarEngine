@@ -1,0 +1,8 @@
+.vscode
+build
+bin
+.DS_Store
+*.spv
+*.qsm
+*.qsbf
+Reports

@@ -1,0 +1,9 @@
+[submodule "Quasar/Vendor/GLFW"]
+	path = Quasar/Vendor/GLFW
+	url = https://github.com/Rounak-Paul/glfw.git
+[submodule "Quasar/Vendor/GLM"]
+	path = Quasar/Vendor/GLM
+	url = https://github.com/Rounak-Paul/glm.git
+[submodule "Quasar/Vendor/IMGUI/imgui"]
+	path = Quasar/Vendor/IMGUI/imgui
+	url = https://github.com/Rounak-Paul/imgui.git
