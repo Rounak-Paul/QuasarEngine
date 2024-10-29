@@ -6,7 +6,11 @@ namespace Quasar {
     Application::Application(app_create_info info) : engine_name{info.app_name}, window{info.width, info.height, info.app_name.c_str()} {
         assert(!instance);
         instance = this;
-        std::cout << "Starting Quasar Engine..." << std::endl;
+
+        Log::init();
+        LOG_INFO("Booting Quasar Engine...");
+        VkExtent2D extent = window.get_extent();
+        LOG_INFO("Created main windoW [%u, %u]", extent.width, extent.height)
     }
 
     Application::~Application() {
@@ -14,7 +18,7 @@ namespace Quasar {
     }
 
     void Application::run() {
-        std::cout << "running..." << std::endl;
+        LOG_INFO("Running...");
         while (!window.should_close() && running)
         {
             if (suspended) { 
@@ -23,6 +27,8 @@ namespace Quasar {
             }
 
             window.poll_events(); 
+            // VkExtent2D extent = window.get_extent();
+            // LOG_INFO("Created main windoW [%u, %u]", extent.width, extent.height)
         }
         
     }
