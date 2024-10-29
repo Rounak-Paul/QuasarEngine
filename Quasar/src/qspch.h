@@ -27,6 +27,10 @@
 
 #include <Defines.h>
 #include <Core/Log.h>
-// Customs
 
+// Customs
+#include <Memory/Memory.h>
+#include <Platform/Thread.h>
+#include <Platform/Platform.h>
+#include <Core/SystemManager.h>
 

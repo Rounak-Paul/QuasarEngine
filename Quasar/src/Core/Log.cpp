@@ -7,7 +7,7 @@ namespace Quasar
 {
     Log Log::instance;
     b8 Log::is_runtime = false;
-    std::chrono::high_resolution_clock::time_point Log::engine_start_time;
+    std::chrono::high_resolution_clock::time_point Log::engine_start_time = std::chrono::high_resolution_clock::now();
     std::chrono::high_resolution_clock::time_point Log::current_time;
     File f;
 
@@ -15,7 +15,6 @@ namespace Quasar
     const  char* level_strings[6] = {"[FATAL]: ", "[ERROR]: ", "[WARN] : ", "[INFO] : ", "[DEBUG]: ", "[TRACE]: "};
 
     b8 Log::init() {
-        engine_start_time = std::chrono::high_resolution_clock::now();
         f.open("run.log", File::Mode::WRITE);
         return TRUE;
     }
