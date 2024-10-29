@@ -36,17 +36,33 @@ namespace Quasar
     class QS_API Application
     {
     public:
+
+        /**
+         * @brief Construct a new Application object
+         * 
+         * @param info create new application with Width, Height and App name
+         */
         Application(app_create_info info);
         ~Application();
 
         Application(const Application&) = delete;
 		Application& operator=(const Application&) = delete;
 
+        /**
+         * @brief Main application loop for Quasar Engine
+         * 
+         */
         void run();
     
     private:
         static Application* instance;
+
+        /**
+         * @brief Main window used for Input, Events and Rendering
+         * 
+         */
         Window window;
+        
         std::string engine_name;
         b8 running = true;
         b8 suspended = false;
