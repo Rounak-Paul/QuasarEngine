@@ -65,55 +65,18 @@ namespace Quasar
         // Shuts the application down on the next frame.
         EVENT_CODE_APPLICATION_QUIT = 0x01,
 
-        // Keyboard key pressed.
-        /* Context usage:
-        * u16 key_code = data.data.u16[0];
-        */
-        EVENT_CODE_KEY_PRESSED = 0x02,
-
-        // Keyboard key released.
-        /* Context usage:
-        * u16 key_code = data.data.u16[0];
-        */
-        EVENT_CODE_KEY_RELEASED = 0x03,
-
-        // Mouse button pressed.
-        /* Context usage:
-        * u16 button = data.data.u16[0];
-        */
-        EVENT_CODE_BUTTON_PRESSED = 0x04,
-
-        // Mouse button released.
-        /* Context usage:
-        * u16 button = data.data.u16[0];
-        */
-        EVENT_CODE_BUTTON_RELEASED = 0x05,
-
-        // Mouse moved.
-        /* Context usage:
-        * u16 x = data.data.i16[0];
-        * u16 y = data.data.i16[1];
-        */
-        EVENT_CODE_MOUSE_MOVED = 0x06,
-
-        // Mouse moved.
-        /* Context usage:
-        * u8 z_delta = data.data.u8[0];
-        */
-        EVENT_CODE_MOUSE_WHEEL = 0x07,
-
         // Resized/resolution changed from the OS.
         /* Context usage:
         * u16 width = data.data.u16[0];
         * u16 height = data.data.u16[1];
         */
-        EVENT_CODE_RESIZED = 0x08,
+        EVENT_CODE_RESIZED = 0x02,
 
         // Change the render mode for debugging purposes.
         /* Context usage:
         * i32 mode = context.data.i32[0];
         */
-        EVENT_CODE_SET_RENDER_MODE = 0x0A,
+        EVENT_CODE_SET_RENDER_MODE = 0x0F,
 
         EVENT_CODE_DEBUG0 = 0x10,
         EVENT_CODE_DEBUG1 = 0x11,

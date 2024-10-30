@@ -58,14 +58,16 @@ namespace Quasar
         static Application* instance;
 
         /**
-         * @brief Main window used for Input, Events and Rendering
+         * @brief Main window used for Input, Events and Rendering on to the surface of
          * 
          */
         Window window;
         
-        std::string engine_name;
+        String engine_name;
         b8 running = true;
         b8 suspended = false;
+
+        static b8 application_on_resized(u16 code, void* sender, void* listener_inst, event_context context);
     };
 
     Application* CreateApplication();

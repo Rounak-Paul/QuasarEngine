@@ -43,17 +43,6 @@ namespace Quasar
 		if ((mouse_state.x_prev == mouse_state.x) && (mouse_state.y_prev == mouse_state.y)) return;
 		mouse_state.x_prev = mouse_state.x;
 		mouse_state.y_prev = mouse_state.y;
-
-		event_context context;
-		#ifdef QS_PLATFORM_APPLE
-		context.data.i16[0] = static_cast<i16>(mouse_state.x*2);
-        context.data.i16[1] = static_cast<i16>(mouse_state.y*2);
-		#else
-		context.data.i16[0] = static_cast<i16>(mouse_state.x);
-        context.data.i16[1] = static_cast<i16>(mouse_state.y);
-		#endif
-
-        QS_EVENT.Execute(EVENT_CODE_MOUSE_MOVED, 0, context);
 	}
 
 	f64 Input::get_mouseX()

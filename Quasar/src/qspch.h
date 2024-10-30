@@ -29,6 +29,7 @@
 #include <Core/Log.h>
 
 // Customs
+#include <Containers/String.h>
 #include <Memory/Memory.h>
 #include <Platform/Thread.h>
 #include <Platform/Platform.h>
