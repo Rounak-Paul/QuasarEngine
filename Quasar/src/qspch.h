@@ -28,8 +28,11 @@
 #include <Defines.h>
 #include <Core/Log.h>
 
-// Customs
+// Customs Containers
 #include <Containers/String.h>
+#include <Containers/RingQueue.h>
+
+// Custom 
 #include <Memory/Memory.h>
 #include <Platform/Thread.h>
 #include <Platform/Platform.h>

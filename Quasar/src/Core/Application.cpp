@@ -43,6 +43,31 @@ namespace Quasar {
             abort();
         }
 
+        b8 renderer_multithreaded = false; //TODO: get info from renderer
+
+        // Initialize the job system.
+        // Requires knowledge of renderer multithread support, so should be initialized here.
+        LOG_DEBUG("Initializing Job System...")
+        job_system_config job_sys_config{};
+        job_sys_config.max_job_thread_count = thread_count;
+        for (u32 i = 0; i < 15; ++i) {
+            job_sys_config.type_masks[i] = JOB_TYPE_GENERAL;
+        }
+        if (max_thread_count == 1 || !renderer_multithreaded) {
+            // Everything on one job thread.
+            job_sys_config.type_masks[0] |= (JOB_TYPE_GPU_RESOURCE | JOB_TYPE_RESOURCE_LOAD);
+        } else if (max_thread_count == 2) {
+            // Split things between the 2 threads
+            job_sys_config.type_masks[0] |= JOB_TYPE_GPU_RESOURCE;
+            job_sys_config.type_masks[1] |= JOB_TYPE_RESOURCE_LOAD;
+        } else {
+            // Dedicate the first 2 threads to these things, pass off general tasks to other threads.
+            job_sys_config.type_masks[0] = JOB_TYPE_GPU_RESOURCE;
+            job_sys_config.type_masks[1] = JOB_TYPE_RESOURCE_LOAD;
+        }
+        JobSystem* job_system = new (QSMEM.allocate(sizeof(JobSystem))) JobSystem;
+        QS_SYSTEM_MANAGER.Register(SYSTEM_JOB, job_system, &job_sys_config);
+
         LOG_DEBUG("Initializing Event System...")
         Event* event_system = new (QSMEM.allocate(sizeof(Event))) Event;
         QS_SYSTEM_MANAGER.Register(SYSTEM_EVENT, event_system, nullptr);
@@ -82,8 +107,12 @@ namespace Quasar {
             event_context context{};
             QS_EVENT.Execute(EVENT_CODE_APPLICATION_QUIT, this, context);
         }
-        
         QS_EVENT.Unregister(EVENT_CODE_RESIZED, this, application_on_resized);
+        
+        QS_SYSTEM_MANAGER.Unregister(SYSTEM_INPUT);
+        QS_SYSTEM_MANAGER.Unregister(SYSTEM_EVENT);
+        QS_SYSTEM_MANAGER.Unregister(SYSTEM_JOB);
+
         LOG_DEBUG("Shutdown Quasar Engine successful")
     }
 
