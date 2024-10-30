@@ -1,11 +1,16 @@
 #pragma once
 #include <qspch.h>
-#include <AppTypes.inl>
 
 #include "Window.h"
 
 namespace Quasar
 {
+    typedef struct QS_API app_create_info {
+        String app_name;
+        u32 width;
+        u32 height;
+    } app_create_info ;
+
     /**
      * @brief Singleton Quasar Application class to be created by the main() function in EntryPoint.h.
      * 
