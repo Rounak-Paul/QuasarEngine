@@ -6,6 +6,7 @@
 #include <Core/Event.h>
 #include <Core/Input.h>
 #include <Systems/JobSystem.h>
+#include <Renderer/Renderer.h>
 
 namespace Quasar
 {
@@ -17,6 +18,7 @@ namespace Quasar
         SYSTEM_EVENT,
         SYSTEM_INPUT,
         SYSTEM_JOB,
+        SYSTEM_RENDERER,
         SYSTEM_MAX = 0xFF
     } qs_system;
 
@@ -61,4 +63,5 @@ namespace Quasar
     #define QS_EVENT (*(Event*)QS_SYSTEM_MANAGER.get_system(SYSTEM_EVENT))
     #define QS_INPUT (*(Input*)QS_SYSTEM_MANAGER.get_system(SYSTEM_INPUT))
     #define QS_JOB_SYSTEM (*(JobSystem*)QS_SYSTEM_MANAGER.get_system(SYSTEM_JOB))
+    #define QS_RENDERER (*(Renderer*)QS_SYSTEM_MANAGER.get_system(SYSTEM_RENDERER))
 } // namespace Quasar

@@ -37,7 +37,7 @@ u32 JobSystem::job_thread_run(void* params) {
     u32 index = *(u32*)params;
     job_thread* thread = &QS_JOB_SYSTEM.state.job_threads[index];
     u64 thread_id = thread->thread.get_thread_id();
-    LOG_TRACE("Starting job thread #%i (id=%#x, type=%#x).", thread->index, thread_id, thread->type_mask);
+    LOG_DEBUG("Starting job thread #%i (id=%#x, type=%#x).", thread->index, thread_id, thread->type_mask);
 
     // A mutex to lock info for this thread.
     if (!thread->info_mutex.create()) {
@@ -204,7 +204,7 @@ void JobSystem::process_queue(RingQueue* queue, Mutex* queue_mutex) {
                     LOG_ERROR("Failed to release lock on queue mutex!");
                 }
                 thread->info = info;
-                LOG_TRACE("Assigning job to thread: %u", thread->index);
+                LOG_DEBUG("Assigning job to thread: %u", thread->index);
                 thread_found = TRUE;
             }
             if (!thread->info_mutex.unlock()) {
@@ -285,7 +285,7 @@ void JobSystem::submit(job_info info) {
                     LOG_ERROR("Failed to obtain lock on job thread mutex!");
                 }
                 if (!state.job_threads[i].info.entry_point) {
-                    LOG_TRACE("Job immediately submitted on thread %i", state.job_threads[i].index);
+                    LOG_DEBUG("Job immediately submitted on thread %i", state.job_threads[i].index);
                     state.job_threads[i].info = info;
                     found = TRUE;
                 }
@@ -314,7 +314,7 @@ void JobSystem::submit(job_info info) {
     if (!queue_mutex->unlock()) {
         LOG_ERROR("Failed to release lock on queue mutex!");
     }
-    LOG_TRACE("Job queued.");
+    LOG_DEBUG("Job queued.");
 }
 
 job_info JobSystem::job_create(pfn_job_start entry_point, pfn_job_on_complete on_success, pfn_job_on_complete on_fail, void* param_data, u32 param_data_size, u32 result_data_size) {

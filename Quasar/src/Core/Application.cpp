@@ -43,7 +43,27 @@ namespace Quasar {
             abort();
         }
 
-        b8 renderer_multithreaded = false; //TODO: get info from renderer
+        LOG_DEBUG("Initializing Event System...")
+        Event* event_system = new (QSMEM.allocate(sizeof(Event))) Event;
+        QS_SYSTEM_MANAGER.Register(SYSTEM_EVENT, event_system, nullptr);
+
+        LOG_DEBUG("Initializing Input System...")
+        input_system_config input_config;
+        input_config.main_window = &window;
+        Input* input_system = new (QSMEM.allocate(sizeof(Input))) Input;
+        QS_SYSTEM_MANAGER.Register(SYSTEM_INPUT, input_system, &input_config);
+
+        // Event registration for window size change
+        QS_EVENT.Register(EVENT_CODE_RESIZED, this, application_on_resized);
+
+        LOG_DEBUG("Initializing Renderer...")
+        renderer_system_config renderer_sys_config;
+        renderer_sys_config.application_name = info.app_name;
+        renderer_sys_config.window = &window;
+        Renderer* renderer_system = new (QSMEM.allocate(sizeof(Renderer))) Renderer;
+        QS_SYSTEM_MANAGER.Register(SYSTEM_RENDERER, renderer_system, &renderer_sys_config);
+
+        b8 renderer_multithreaded = QS_RENDERER.is_multithreaded();
 
         // Initialize the job system.
         // Requires knowledge of renderer multithread support, so should be initialized here.
@@ -68,18 +88,6 @@ namespace Quasar {
         JobSystem* job_system = new (QSMEM.allocate(sizeof(JobSystem))) JobSystem;
         QS_SYSTEM_MANAGER.Register(SYSTEM_JOB, job_system, &job_sys_config);
 
-        LOG_DEBUG("Initializing Event System...")
-        Event* event_system = new (QSMEM.allocate(sizeof(Event))) Event;
-        QS_SYSTEM_MANAGER.Register(SYSTEM_EVENT, event_system, nullptr);
-
-        LOG_DEBUG("Initializing Input System...")
-        input_system_config input_config;
-        input_config.main_window = &window;
-        Input* input_system = new (QSMEM.allocate(sizeof(Input))) Input;
-        QS_SYSTEM_MANAGER.Register(SYSTEM_INPUT, input_system, &input_config);
-
-        // Event registration for window size change
-        QS_EVENT.Register(EVENT_CODE_RESIZED, this, application_on_resized);
     }
 
     Application::~Application() {
@@ -109,9 +117,11 @@ namespace Quasar {
         }
         QS_EVENT.Unregister(EVENT_CODE_RESIZED, this, application_on_resized);
         
+        QS_SYSTEM_MANAGER.Unregister(SYSTEM_JOB);
+        QS_SYSTEM_MANAGER.Unregister(SYSTEM_RENDERER);
         QS_SYSTEM_MANAGER.Unregister(SYSTEM_INPUT);
         QS_SYSTEM_MANAGER.Unregister(SYSTEM_EVENT);
-        QS_SYSTEM_MANAGER.Unregister(SYSTEM_JOB);
+        
 
         LOG_DEBUG("Shutdown Quasar Engine successful")
     }
