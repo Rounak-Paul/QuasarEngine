@@ -37,7 +37,7 @@ b8 VulkanDevice::create(VkInstance instance, VkSurfaceKHR* surface, VkAllocation
         LOG_WARN("No Discrete GPU with Vulkan support found. Defaulting to Integrated GPU.")
         if (!select_physical_device(instance, surface, &swapchain_support, false)) {
             LOG_FATAL("No Device with Vulkan support found")
-            return FALSE;
+            return false;
         }
     }
 
@@ -148,7 +148,7 @@ b8 VulkanDevice::create(VkInstance instance, VkSurfaceKHR* surface, VkAllocation
         &graphics_command_pool));
     LOG_DEBUG("Graphics command pool created.");
 
-    return TRUE;
+    return true;
 }
 
 void VulkanDevice::destroy(VkAllocationCallbacks* allocator) {
@@ -244,7 +244,7 @@ b8 VulkanDevice::select_physical_device(VkInstance instance, VkSurfaceKHR* surfa
     VK_CHECK(vkEnumeratePhysicalDevices(instance, &physical_device_count, nullptr));
     if (physical_device_count == 0) {
         LOG_FATAL("No devices which support Vulkan were found.");
-        return FALSE;
+        return false;
     }
 
     std::vector<VkPhysicalDevice> physical_devices(physical_device_count);
@@ -275,18 +275,18 @@ b8 VulkanDevice::select_physical_device(VkInstance instance, VkSurfaceKHR* surfa
         // TODO: These requirements should probably be driven by engine
         // configuration.
         vulkan_physical_device_requirements requirements = {};
-        requirements.graphics = TRUE;
-        requirements.present = TRUE;
-        requirements.transfer = TRUE;
+        requirements.graphics = true;
+        requirements.present = true;
+        requirements.transfer = true;
         // NOTE: Enable this if compute will be required.
-        // requirements.compute = TRUE;
-        requirements.sampler_anisotropy = TRUE;
+        // requirements.compute = true;
+        requirements.sampler_anisotropy = true;
         requirements.discrete_gpu = discreteGPU;
         requirements.device_extension_names = {};
         requirements.device_extension_names.emplace_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
-        requirements.wide_lines = TRUE;
+        requirements.wide_lines = true;
 #ifdef QS_PLATFORM_APPLE
-        requirements.discrete_gpu = FALSE;
+        requirements.discrete_gpu = false;
         requirements.device_extension_names.emplace_back("VK_KHR_portability_subset");
 #endif
 
@@ -363,12 +363,12 @@ b8 VulkanDevice::select_physical_device(VkInstance instance, VkSurfaceKHR* surfa
     // Ensure a device was selected
     if (!physical_device) {
         LOG_ERROR("No physical devices were found which meet the requirements.");
-        return FALSE;
+        return false;
     }
 
     physical_devices.clear();
     LOG_DEBUG("Physical device selected.");
-    return TRUE;
+    return true;
 }
 
 b8 physical_device_meets_requirements(
@@ -389,7 +389,7 @@ b8 physical_device_meets_requirements(
     if (requirements->discrete_gpu) {
         if (properties->deviceType != VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU) {
             LOG_DEBUG("Device is not a discrete GPU, and one is required. Skipping.");
-            return FALSE;
+            return false;
         }
     }
 
@@ -488,7 +488,7 @@ b8 physical_device_meets_requirements(
                 out_swapchain_support->present_modes.clear();
             }
             LOG_DEBUG("Required swapchain support not present, skipping device.");
-            return FALSE;
+            return false;
         }
 
         // Device extensions.
@@ -509,17 +509,17 @@ b8 physical_device_meets_requirements(
 
                 u32 required_extension_count = requirements->device_extension_names.size();
                 for (u32 i = 0; i < required_extension_count; ++i) {
-                    b8 found = FALSE;
+                    b8 found = false;
                     for (u32 j = 0; j < available_extension_count; ++j) {
                         if (strcmp(requirements->device_extension_names[i], available_extensions[j].extensionName)) {
-                            found = TRUE;
+                            found = true;
                             break;
                         }
                     }
 
                     if (!found) {
                         LOG_DEBUG("Required extension not found: '%s', skipping device.", requirements->device_extension_names[i]);
-                        return FALSE;
+                        return false;
                     }
                 }
             }
@@ -528,19 +528,19 @@ b8 physical_device_meets_requirements(
         // Sampler anisotropy
         if (requirements->sampler_anisotropy && !features->samplerAnisotropy) {
             LOG_DEBUG("Device does not support samplerAnisotropy, skipping.");
-            return FALSE;
+            return false;
         }
 
         // if (requirements->wide_lines && !features->wideLines) {
         //     LOG_DEBUG("Device does not support wide lines, skipping.");
-        //     return FALSE;
+        //     return false;
         // }
 
         // Device meets all requirements.
-        return TRUE;
+        return true;
     }
 
-    return FALSE;
+    return false;
 }
 
 
@@ -565,15 +565,15 @@ b8 VulkanDevice::detect_depth_format() {
         if ((properties.linearTilingFeatures & flags) == flags) {
             depth_format = candidates[i];
             depth_channel_count = sizes[i];
-            return TRUE;
+            return true;
         } else if ((properties.optimalTilingFeatures & flags) == flags) {
             depth_format = candidates[i];
             depth_channel_count = sizes[i];
-            return TRUE;
+            return true;
         }
     }
 
-    return FALSE;
+    return false;
 }
 
 }

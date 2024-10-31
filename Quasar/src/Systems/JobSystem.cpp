@@ -46,7 +46,7 @@ u32 JobSystem::job_thread_run(void* params) {
     }
 
     // Run forever, waiting for jobs.
-    while (TRUE) {
+    while (true) {
         if (!QS_JOB_SYSTEM.state.running || !thread) {
             break;
         }
@@ -106,7 +106,7 @@ u32 JobSystem::job_thread_run(void* params) {
 
 b8 JobSystem::init(void* config) {
     job_system_config* cfg = (job_system_config*)config;
-    state.running = TRUE;
+    state.running = true;
 
     state.low_priority_queue.create(sizeof(job_info), 1024, 0);
     state.normal_priority_queue.create(sizeof(job_info), 1024, 0);
@@ -125,9 +125,9 @@ b8 JobSystem::init(void* config) {
     for (u8 i = 0; i < state.thread_count; ++i) {
         state.job_threads[i].index = i;
         state.job_threads[i].type_mask = cfg->type_masks[i];
-        if (!state.job_threads[i].thread.start(job_thread_run, &state.job_threads[i].index, FALSE)) {
+        if (!state.job_threads[i].thread.start(job_thread_run, &state.job_threads[i].index, false)) {
             LOG_FATAL("OS Error in creating job thread. Application cannot continue.");
-            return FALSE;
+            return false;
         }
         memset(&state.job_threads[i].info, 0, sizeof(job_info));
     }
@@ -135,26 +135,26 @@ b8 JobSystem::init(void* config) {
     // Create needed mutexes
     if (!state.result_mutex.create()) {
         LOG_ERROR("Failed to create result mutex!.");
-        return FALSE;
+        return false;
     }
     if (!state.low_pri_queue_mutex.create()) {
         LOG_ERROR("Failed to create low priority queue mutex!.");
-        return FALSE;
+        return false;
     }
     if (!state.normal_pri_queue_mutex.create()) {
         LOG_ERROR("Failed to create normal priority queue mutex!.");
-        return FALSE;
+        return false;
     }
     if (!state.high_pri_queue_mutex.create()) {
         LOG_ERROR("Failed to create high priority queue mutex!.");
-        return FALSE;
+        return false;
     }
 
-    return TRUE;
+    return true;
 }
 
 void JobSystem::shutdown() {
-    state.running = FALSE;
+    state.running = false;
 
     u64 thread_count = state.thread_count;
 
@@ -183,7 +183,7 @@ void JobSystem::process_queue(RingQueue* queue, Mutex* queue_mutex) {
             break;
         }
 
-        b8 thread_found = FALSE;
+        b8 thread_found = false;
         for (u8 i = 0; i < thread_count; ++i) {
             job_thread* thread = &state.job_threads[i];
             if ((thread->type_mask & info.type) == 0) {
@@ -205,7 +205,7 @@ void JobSystem::process_queue(RingQueue* queue, Mutex* queue_mutex) {
                 }
                 thread->info = info;
                 LOG_DEBUG("Assigning job to thread: %u", thread->index);
-                thread_found = TRUE;
+                thread_found = true;
             }
             if (!thread->info_mutex.unlock()) {
                 LOG_ERROR("Failed to release lock on job thread mutex!");
@@ -280,14 +280,14 @@ void JobSystem::submit(job_info info) {
         for (u8 i = 0; i < thread_count; ++i) {
             job_thread* thread = &state.job_threads[i];
             if (state.job_threads[i].type_mask & info.type) {
-                b8 found = FALSE;
+                b8 found = false;
                 if (!thread->info_mutex.lock()) {
                     LOG_ERROR("Failed to obtain lock on job thread mutex!");
                 }
                 if (!state.job_threads[i].info.entry_point) {
                     LOG_DEBUG("Job immediately submitted on thread %i", state.job_threads[i].index);
                     state.job_threads[i].info = info;
-                    found = TRUE;
+                    found = true;
                 }
                 if (!thread->info_mutex.unlock()) {
                     LOG_ERROR("Failed to release lock on job thread mutex!");

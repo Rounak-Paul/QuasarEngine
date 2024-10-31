@@ -134,16 +134,16 @@ namespace Quasar {
 
             if (width == 0 || height == 0) {
                 LOG_INFO("Application suspended")
-                app->suspended = TRUE;
+                app->suspended = true;
             }
             else {
-                app->suspended = FALSE;
+                app->suspended = false;
                 LOG_INFO("Application Resized [%u, %u]", width, height)
                 // QS_RENDERER_API.resize(width, height);
             }
 
-            return TRUE;
+            return true;
         }
-        return FALSE;
+        return false;
     }
 }

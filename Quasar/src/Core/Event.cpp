@@ -3,7 +3,7 @@
 namespace Quasar {
 
     b8 Event::init(void* config) {
-        return TRUE;
+        return true;
     }
 
     void Event::shutdown() {
@@ -15,7 +15,7 @@ namespace Quasar {
         for(size_t i = 0; i < registered_count; ++i) {
             if(event_state.registered[code].events[i].listener == listener) {
                 LOG_WARN("Duplicate event listener was issued!");
-                return FALSE;
+                return false;
             }
         }
 
@@ -25,14 +25,14 @@ namespace Quasar {
         event.callback = on_event;
         event_state.registered[code].events.push_back(event);
 
-        return TRUE;
+        return true;
     }
 
     b8 Event::Unregister(u16 code, void* listener, PFN_on_event on_event) {
         // On nothing is registered for the code, boot out.
         if(event_state.registered[code].events.size() == 0) {
             LOG_WARN("Event list is empty");
-            return FALSE;
+            return false;
         }
 
         u64 registered_count = event_state.registered[code].events.size();
@@ -41,18 +41,18 @@ namespace Quasar {
             if (e.listener == listener && e.callback == on_event) {
                 // Found the element to remove
                 event_state.registered[code].events.erase(event_state.registered[code].events.begin() + i);
-                return true; // Assuming TRUE is a typo and you meant true (lowercase)
+                return true; // Assuming true is a typo and you meant true (lowercase)
             }
         }
 
         // Not found.
-        return FALSE;
+        return false;
     }
 
     b8 Event::Execute(u16 code, void* sender, event_context context) {
         // If nothing is registered for the code, boot out.
         if(event_state.registered[code].events.size() == 0) {
-            return FALSE;
+            return false;
         }
 
         u64 registered_count = event_state.registered[code].events.size();
@@ -60,11 +60,11 @@ namespace Quasar {
             registered_event e = event_state.registered[code].events[i];
             if(e.callback(code, sender, e.listener, context)) {
                 // Message has been handled, do not send to other listeners.
-                return TRUE;
+                return true;
             }
         }
 
         // Not found.
-        return FALSE;
+        return false;
     }  
 }

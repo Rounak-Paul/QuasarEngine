@@ -24,6 +24,6 @@ namespace Quasar
         private:
         void* internal_data;
         u64 thread_id;
-        b8 is_created = FALSE;
+        b8 is_created = false;
     };
 } // namespace Quasar

@@ -11,9 +11,9 @@ b8 Mutex::create() {
     internal_data = CreateMutex(0, 0, 0);
     if (!internal_data) {
         LOG_ERROR("Unable to create mutex.");
-        return FALSE;
+        return false;
     }
-    return TRUE;
+    return true;
 }
 
 void Mutex::destroy() {
@@ -24,7 +24,7 @@ void Mutex::destroy() {
 }
 
 b8 Mutex::lock() {
-    if (internal_data == nullptr) {return FALSE;}
+    if (internal_data == nullptr) {return false;}
     DWORD result = WaitForSingleObject(internal_data, INFINITE);
     switch (result) {
         // The thread got ownership of the mutex

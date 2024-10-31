@@ -166,8 +166,8 @@ b8 platform_create_vulkan_surface(VkInstance instance, GLFWwindow* window, VkAll
     if (res != VK_SUCCESS)
     {
         LOG_ERROR("Failed to create Window Surface, VkResult: %d", res);
-        return FALSE;
+        return false;
     }
-    return TRUE;
+    return true;
 }
 }

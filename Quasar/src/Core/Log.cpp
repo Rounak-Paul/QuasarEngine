@@ -16,7 +16,7 @@ namespace Quasar
 
     b8 Log::init() {
         f.open("run.log", File::Mode::WRITE);
-        return TRUE;
+        return true;
     }
 
     void Log::shutdown() {

@@ -13,7 +13,7 @@ b8 Memory::init() {
     free_list_allocator = new FreeListAllocator(GIGABYTES(1), 16);
     frame_allocator = new LinearAllocator(MEGABYTES(256), 16);
 
-    return TRUE;
+    return true;
 }
 
 void Memory::shutdown() {

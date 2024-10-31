@@ -9,9 +9,12 @@ b8 Renderer::init(void* config) {
     // state.frames_since_resize = 0;
 
     // Initialize the backend.
-    backend.init(cfg->application_name, cfg->window);
+    if(!backend.init(cfg->application_name, cfg->window)) {
+        LOG_FATAL("Failed to initialize renderer backend!")
+        return false;
+    }
 
-    return TRUE;
+    return true;
 }
 void Renderer::shutdown() {
     backend.shutdown();

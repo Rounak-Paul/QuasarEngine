@@ -39,7 +39,7 @@ namespace Quasar
 		auto qsWindow = reinterpret_cast<Window*>(glfwGetWindowUserPointer(window));
 		qsWindow->width = width;
 		qsWindow->height = height;
-		qsWindow->framebuffer_resized = TRUE;
+		qsWindow->framebuffer_resized = true;
 		event_context context;
 		context.data.u16[0] = width;
 		context.data.u16[1] = height;

@@ -136,12 +136,6 @@ STATIC_ASSERT(sizeof(glm::mat3) == 4*3*3, "Expected f64 to be 8 bytes.");
 /** @brief Assert glm::mat4 to be 4*4*4 bytes.*/
 STATIC_ASSERT(sizeof(glm::mat4) == 4*4*4, "Expected f64 to be 8 bytes.");
 
-/** @brief True.*/
-#define TRUE true
-
-/** @brief False. */
-#define FALSE false
-
 /**
  * @brief Any id set to this should be considered invalid,
  * and not actually pointing to a real object.

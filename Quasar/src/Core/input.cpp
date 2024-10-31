@@ -9,7 +9,7 @@ namespace Quasar
 		// glfwSetInputMode(main_window->get_GLFWwindow(), GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 		glfwSetKeyCallback(main_window->get_GLFWwindow(), is_key_pressed);
 		glfwSetMouseButtonCallback(main_window->get_GLFWwindow() ,is_mbtn_pressed);
-		return TRUE;
+		return true;
 	}
 
 	void Input::shutdown() {

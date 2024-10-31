@@ -17,13 +17,13 @@ b8 Mutex::create() {
     i32 result = pthread_mutex_init(&mutex, &mutex_attr);
     if (result != 0) {
         LOG_ERROR("Mutex creation failure!");
-        return FALSE;
+        return false;
     }
 
     // Save off the mutex handle.
     internal_data = std::malloc(sizeof(pthread_mutex_t));
     *(pthread_mutex_t*)internal_data = mutex;
-    return TRUE;
+    return true;
 }
 
 void Mutex::destroy() {
@@ -49,7 +49,7 @@ void Mutex::destroy() {
 
 b8 Mutex::lock() {
     // Lock
-    if (internal_data == nullptr) {return FALSE;}
+    if (internal_data == nullptr) {return false;}
     i32 result = pthread_mutex_lock((pthread_mutex_t*)internal_data);
     switch (result) {
         case 0:
