@@ -70,6 +70,8 @@ b8 Backend::init(String name, Window* window) {
         LOG_ERROR("Failed to create device!");
         return false;
     }
+
+    return true;
 }
 
 void Backend::shutdown() {
