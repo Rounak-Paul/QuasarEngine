@@ -16,10 +16,9 @@ class Renderer : public System {
     ~Renderer() = default;
     virtual b8 init(void* config) override;
     virtual void shutdown() override;
-    b8 is_multithreaded() {return false;}
+    b8 is_multithreaded() {return backend.multithreading_enabled;}
 
     private:
     Vulkan::Backend backend;
-    Window* main_window;
 };
 }

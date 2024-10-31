@@ -1,5 +1,7 @@
 #pragma once
 
+#include "VulkanDevice.h"
+
 namespace Quasar::Vulkan
 {
     const std::vector<const char*> validation_layers = { 
@@ -10,8 +12,26 @@ namespace Quasar::Vulkan
     class Backend {
         public:
         Backend() {};
-        Backend(String name, u32 width, u32 height);
-        ~Backend();
+        ~Backend() = default;
 
+        b8 init(String name, Window* window);
+        void shutdown();
+
+        b8 multithreading_enabled = false;
+
+        private:
+        String engine_name;
+        Window* main_window;
+        VkAllocationCallbacks* vkallocator = nullptr;
+        VkInstance instance;
+        VkSurfaceKHR surface;
+        VulkanDevice device;
+
+        friend void populate_debug_messenger_create_info(VkDebugUtilsMessengerCreateInfoEXT& createInfo);
+        static VKAPI_ATTR VkBool32 VKAPI_CALL debug_callback(
+        VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
+        VkDebugUtilsMessageTypeFlagsEXT messageType,
+        const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData,
+        void* pUserData);
     };
 } // namespace Quasar
