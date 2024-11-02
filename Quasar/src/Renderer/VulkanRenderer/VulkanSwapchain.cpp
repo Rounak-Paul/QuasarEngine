@@ -69,7 +69,7 @@ b8 VulkanSwapchain::_create(u32 width, u32 height) {
     swapchain_create_info.imageColorSpace = image_format.colorSpace;
     swapchain_create_info.imageExtent = swapchain_extent;
     swapchain_create_info.imageArrayLayers = 1;
-    swapchain_create_info.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+    swapchain_create_info.imageUsage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
 
     // Setup the queue family indices
     if (_device->graphics_queue_index != _device->present_queue_index) {
