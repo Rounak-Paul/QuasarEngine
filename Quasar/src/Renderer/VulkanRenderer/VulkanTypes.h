@@ -1,5 +1,4 @@
 #pragma once
-#include "VulkanInfo.h"
 
 #define VK_CHECK(expr)                  \
 {                                      \

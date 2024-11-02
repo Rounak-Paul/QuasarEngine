@@ -1,4 +1,5 @@
 #include "VulkanBackend.h"
+#include "VulkanInfo.h"
 
 namespace Quasar::Vulkan{
 b8 check_validation_layer_support();
