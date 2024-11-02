@@ -20,6 +20,7 @@ namespace Quasar::Vulkan
         void shutdown();
 
         void draw();
+        void resize(u32 width, u32 height);
 
         b8 multithreading_enabled = false;
 
