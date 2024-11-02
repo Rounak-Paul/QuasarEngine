@@ -166,6 +166,8 @@ void JobSystem::shutdown() {
     state.normal_priority_queue.destroy();
     state.high_priority_queue.destroy();
 
+    platform_sleep(32);
+
     // Destroy mutexes
     state.result_mutex.destroy();
     state.low_pri_queue_mutex.destroy();

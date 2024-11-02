@@ -27,9 +27,9 @@ namespace Quasar
         ~SystemManager() = default;
         static b8 init();
         void shutdown();
-        static SystemManager& get_instance() {return *instance;}
+        static inline SystemManager& get_instance() {return *instance;}
 
-        System* get_system(qs_system s_id) {return registered_systems[s_id];}
+        inline System* get_system(qs_system s_id) {return registered_systems[s_id];}
 
         /**
          * @brief Register a system to the system manager, calls init() of the System, this SystemManager becomes owner of the system instance

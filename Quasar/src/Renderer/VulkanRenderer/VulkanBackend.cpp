@@ -67,7 +67,15 @@ b8 Backend::init(String name, Window* window) {
     // Device creation
     LOG_DEBUG("Creating Vulkan Device...");
     if (!device.create(instance, &surface, vkallocator)) {
-        LOG_ERROR("Failed to create device!");
+        LOG_ERROR("Failed to create Device!");
+        return false;
+    }
+
+    // Swapchain creation
+    LOG_DEBUG("Creating Vulkan Swapchain...");
+    VkExtent2D extent = main_window->get_extent();
+    if (!swapchain.create(&device, &surface, extent.width, extent.height, vkallocator)) {
+        LOG_ERROR("Failed to create Swapchain!");
         return false;
     }
 
@@ -75,6 +83,11 @@ b8 Backend::init(String name, Window* window) {
 }
 
 void Backend::shutdown() {
+    vkDeviceWaitIdle(device.logical_device);
+
+    LOG_DEBUG("Destroying Vulkan Swapchain...");
+    swapchain.destroy();
+
     LOG_DEBUG("Destroying Vulkan device...");
     device.destroy(vkallocator);
 

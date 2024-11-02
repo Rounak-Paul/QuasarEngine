@@ -1,6 +1,7 @@
 #pragma once
 
 #include "VulkanDevice.h"
+#include "VulkanSwapchain.h"
 
 namespace Quasar::Vulkan
 {
@@ -26,6 +27,7 @@ namespace Quasar::Vulkan
         VkInstance instance;
         VkSurfaceKHR surface;
         VulkanDevice device;
+        VulkanSwapchain swapchain;
 
         friend void populate_debug_messenger_create_info(VkDebugUtilsMessengerCreateInfoEXT& createInfo);
         static VKAPI_ATTR VkBool32 VKAPI_CALL debug_callback(
