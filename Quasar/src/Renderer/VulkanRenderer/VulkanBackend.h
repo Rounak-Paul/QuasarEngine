@@ -23,6 +23,7 @@ namespace Quasar::Vulkan
 
         private:
         u8 frame_count;
+
         String engine_name;
         Window* main_window;
         VkAllocationCallbacks* vkallocator = nullptr;
