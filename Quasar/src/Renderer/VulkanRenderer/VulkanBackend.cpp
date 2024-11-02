@@ -79,11 +79,40 @@ b8 Backend::init(String name, Window* window) {
         return false;
     }
 
+    //create a command pool for commands submitted to the graphics queue.
+	//we also want the pool to allow for resetting of individual command buffers
+    LOG_DEBUG("Creating Vulkan Command Pool & Buffer...");
+	VkCommandPoolCreateInfo commandPoolInfo =  {};
+	commandPoolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+	commandPoolInfo.pNext = nullptr;
+	commandPoolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+	commandPoolInfo.queueFamilyIndex = device.graphics_queue_index;
+	
+	for (int i = 0; i < FRAME_OVERLAP; i++) {
+
+		VK_CHECK(vkCreateCommandPool(device.logical_device, &commandPoolInfo, nullptr, &frames[i].command_pool));
+
+		// allocate the default command buffer that we will use for rendering
+		VkCommandBufferAllocateInfo cmdAllocInfo = {};
+		cmdAllocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+		cmdAllocInfo.pNext = nullptr;
+		cmdAllocInfo.commandPool = frames[i].command_pool;
+		cmdAllocInfo.commandBufferCount = 1;
+		cmdAllocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+
+		VK_CHECK(vkAllocateCommandBuffers(device.logical_device, &cmdAllocInfo, &frames[i].main_command_buffer));
+	}
+
     return true;
 }
 
 void Backend::shutdown() {
     vkDeviceWaitIdle(device.logical_device);
+
+    LOG_DEBUG("Destroying Vulkan Command Pool & Buffer...");
+    for (int i = 0; i < FRAME_OVERLAP; i++) {
+        vkDestroyCommandPool(device.logical_device, frames[i].command_pool, vkallocator);
+    }
 
     LOG_DEBUG("Destroying Vulkan Swapchain...");
     swapchain.destroy();

@@ -137,17 +137,6 @@ b8 VulkanDevice::create(VkInstance instance, VkSurfaceKHR* surface, VkAllocation
         &transfer_queue);
     LOG_DEBUG("Queues obtained.");
 
-    // Create command pool for graphics queue.
-    VkCommandPoolCreateInfo pool_create_info = {VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO};
-    pool_create_info.queueFamilyIndex = graphics_queue_index;
-    pool_create_info.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
-    VK_CHECK(vkCreateCommandPool(
-        logical_device,
-        &pool_create_info,
-        allocator,
-        &graphics_command_pool));
-    LOG_DEBUG("Graphics command pool created.");
-
     return true;
 }
 
@@ -469,10 +458,10 @@ b8 physical_device_meets_requirements(
         (!requirements->compute || (requirements->compute && out_queue_info->compute_family_index != -1)) &&
         (!requirements->transfer || (requirements->transfer && out_queue_info->transfer_family_index != -1))) {
         LOG_DEBUG("Device meets queue requirements.");
-        LOG_TRACE("Graphics Family Index: %i", out_queue_info->graphics_family_index);
-        LOG_TRACE("Present Family Index:  %i", out_queue_info->present_family_index);
-        LOG_TRACE("Transfer Family Index: %i", out_queue_info->transfer_family_index);
-        LOG_TRACE("Compute Family Index:  %i", out_queue_info->compute_family_index);
+        LOG_DEBUG("Graphics Family Index: %i", out_queue_info->graphics_family_index);
+        LOG_DEBUG("Present Family Index:  %i", out_queue_info->present_family_index);
+        LOG_DEBUG("Transfer Family Index: %i", out_queue_info->transfer_family_index);
+        LOG_DEBUG("Compute Family Index:  %i", out_queue_info->compute_family_index);
 
         // Query swapchain support.
         VulkanDevice::query_swapchain_support(

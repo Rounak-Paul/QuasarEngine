@@ -2,6 +2,7 @@
 
 #include "VulkanDevice.h"
 #include "VulkanSwapchain.h"
+#include "VulkanTypes.h"
 
 namespace Quasar::Vulkan
 {
@@ -21,6 +22,7 @@ namespace Quasar::Vulkan
         b8 multithreading_enabled = false;
 
         private:
+        u8 frame_count;
         String engine_name;
         Window* main_window;
         VkAllocationCallbacks* vkallocator = nullptr;
@@ -28,6 +30,10 @@ namespace Quasar::Vulkan
         VkSurfaceKHR surface;
         VulkanDevice device;
         VulkanSwapchain swapchain;
+        FrameData frames[FRAME_OVERLAP];
+        
+        FrameData& get_current_frame() { return frames[frame_count % FRAME_OVERLAP]; };
+        
 
         friend void populate_debug_messenger_create_info(VkDebugUtilsMessengerCreateInfoEXT& createInfo);
         static VKAPI_ATTR VkBool32 VKAPI_CALL debug_callback(
@@ -35,5 +41,6 @@ namespace Quasar::Vulkan
         VkDebugUtilsMessageTypeFlagsEXT messageType,
         const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData,
         void* pUserData);
+        
     };
 } // namespace Quasar
