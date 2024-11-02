@@ -21,6 +21,7 @@ target_include_directories(Quasar PUBLIC
     ${PROJECT_SOURCE_DIR}/Quasar/Vendor/GLM
     ${PROJECT_SOURCE_DIR}/Quasar/Vendor/STB
     ${PROJECT_SOURCE_DIR}/Quasar/Vendor/IMGUI/imgui
+    ${PROJECT_SOURCE_DIR}/Quasar/Vendor/VMA
     ${VULKAN_PATH}/include
 )
 

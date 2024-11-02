@@ -108,6 +108,8 @@ namespace Quasar {
             if (QS_INPUT.get_key_state(KeyCode::QS_KEY_SPACE)) {
                 LOG_TRACE("Space clicked");
             }
+
+            QS_RENDERER.draw();
         }
 
         // Shutdown routine

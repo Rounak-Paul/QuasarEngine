@@ -19,4 +19,8 @@ b8 Renderer::init(void* config) {
 void Renderer::shutdown() {
     backend.shutdown();
 }
+void Renderer::draw()
+{
+    backend.draw();
+}
 } // namespace Quasar

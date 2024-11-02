@@ -85,6 +85,10 @@ b8 VulkanDevice::create(VkInstance instance, VkSurfaceKHR* surface, VkAllocation
 
     // Request device features.
     // TODO: should be config driven
+    VkPhysicalDeviceSynchronization2FeaturesKHR sync2Features = {};
+    sync2Features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES_KHR;
+    sync2Features.synchronization2 = VK_TRUE;
+
     VkPhysicalDeviceFeatures device_features = {};
     device_features.samplerAnisotropy = VK_TRUE;  // Request anistrophy
     // device_features.wideLines = VK_TRUE;
@@ -93,11 +97,12 @@ b8 VulkanDevice::create(VkInstance instance, VkSurfaceKHR* surface, VkAllocation
     device_create_info.queueCreateInfoCount = index_count;
     device_create_info.pQueueCreateInfos = queue_create_infos.data();
     device_create_info.pEnabledFeatures = &device_features;
+    device_create_info.pNext = &sync2Features;
 
     // std::vector<f32> queue_priority{1.0f, 1.0f};
     // device_create_info.pQueueCreateInfos->pQueuePriorities = queue_priority.data();
     
-    std::vector<const char*> extension_names = {VK_KHR_SWAPCHAIN_EXTENSION_NAME};
+    std::vector<const char*> extension_names = {VK_KHR_SWAPCHAIN_EXTENSION_NAME, "VK_KHR_synchronization2"};
 #ifdef QS_PLATFORM_APPLE
     extension_names.push_back("VK_KHR_portability_subset");
 #endif
