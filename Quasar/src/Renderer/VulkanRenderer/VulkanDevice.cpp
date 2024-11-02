@@ -83,37 +83,40 @@ b8 VulkanDevice::create(VkInstance instance, VkSurfaceKHR* surface, VkAllocation
         queue_create_infos[i].pQueuePriorities = &queue_priority;
     }
 
-    // Request device features.
-    // TODO: should be config driven
+    // Enable VK_KHR_buffer_device_address
+    VkPhysicalDeviceBufferDeviceAddressFeatures bufferDeviceAddressFeatures{};
+    bufferDeviceAddressFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_BUFFER_DEVICE_ADDRESS_FEATURES;
+    bufferDeviceAddressFeatures.bufferDeviceAddress = VK_TRUE;
+
+    // Synchronization 2 feature setup (already in your code)
     VkPhysicalDeviceSynchronization2FeaturesKHR sync2Features = {};
     sync2Features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES_KHR;
     sync2Features.synchronization2 = VK_TRUE;
+    sync2Features.pNext = &bufferDeviceAddressFeatures;  // Chain bufferDeviceAddressFeatures after sync2Features
 
     VkPhysicalDeviceFeatures device_features = {};
-    device_features.samplerAnisotropy = VK_TRUE;  // Request anistrophy
-    // device_features.wideLines = VK_TRUE;
+    device_features.samplerAnisotropy = VK_TRUE;  // Request anisotropy
 
+    // Device creation setup
     VkDeviceCreateInfo device_create_info = {VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO};
     device_create_info.queueCreateInfoCount = index_count;
     device_create_info.pQueueCreateInfos = queue_create_infos.data();
     device_create_info.pEnabledFeatures = &device_features;
-    device_create_info.pNext = &sync2Features;
+    device_create_info.pNext = &sync2Features;  // Set pNext to sync2Features, which chains bufferDeviceAddressFeatures
 
-    // std::vector<f32> queue_priority{1.0f, 1.0f};
-    // device_create_info.pQueueCreateInfos->pQueuePriorities = queue_priority.data();
-    
-    std::vector<const char*> extension_names = {VK_KHR_SWAPCHAIN_EXTENSION_NAME, "VK_KHR_synchronization2"};
-#ifdef QS_PLATFORM_APPLE
+    // Add necessary extensions
+    std::vector<const char*> extension_names = {VK_KHR_SWAPCHAIN_EXTENSION_NAME, "VK_KHR_synchronization2", "VK_KHR_buffer_device_address"};
+    #ifdef QS_PLATFORM_APPLE
     extension_names.push_back("VK_KHR_portability_subset");
-#endif
+    #endif
     device_create_info.enabledExtensionCount = static_cast<uint32_t>(extension_names.size());
     device_create_info.ppEnabledExtensionNames = extension_names.data();
 
     // Deprecated and ignored, so pass nothing.
     device_create_info.enabledLayerCount = 0;
-    device_create_info.ppEnabledLayerNames = 0;
+    device_create_info.ppEnabledLayerNames = nullptr;
 
-    // Create the device.
+    // Create the logical device
     VK_CHECK(vkCreateDevice(
         physical_device,
         &device_create_info,
