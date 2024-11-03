@@ -236,7 +236,6 @@ void Backend::draw()
 
 	// execute a copy from the draw image into the swapchain
 	copy_image_to_image(cmd, draw_image.image, swapchain.images[swapchain_image_index], draw_extent, swapchain.extent);
-    LOG_TRACE("%u, %u | %u, %u", draw_extent.width, draw_extent.height, swapchain.extent.width, swapchain.extent.height)
 
 	// set swapchain image layout to Present so we can show it on the screen
 	transition_image(cmd, swapchain.images[swapchain_image_index], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
