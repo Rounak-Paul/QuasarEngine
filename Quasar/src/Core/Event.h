@@ -72,6 +72,12 @@ namespace Quasar
         */
         EVENT_CODE_RESIZED = 0x02,
 
+        /** 
+         * @brief An event fired by the renderer backend to indicate when any render targets
+         * associated with the default window resources need to be refreshed (i.e. a window resize)
+         */
+        EVENT_CODE_DEFAULT_RENDERTARGET_REFRESH_REQUIRED = 0x16,
+
         // Change the render mode for debugging purposes.
         /* Context usage:
         * i32 mode = context.data.i32[0];
@@ -89,12 +95,6 @@ namespace Quasar
          * i32 id = context.data.u32[0]; - will be INVALID ID if nothing is hovered over.
          */
         EVENT_CODE_OBJECT_HOVER_ID_CHANGED = 0x15,
-
-        /** 
-         * @brief An event fired by the renderer backend to indicate when any render targets
-         * associated with the default window resources need to be refreshed (i.e. a window resize)
-         */
-        EVENT_CODE_DEFAULT_RENDERTARGET_REFRESH_REQUIRED = 0x16,
 
         /**
          * @brief An event fired when a watched file has been written to.

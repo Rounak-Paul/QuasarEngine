@@ -18,7 +18,7 @@ class Renderer : public System {
     virtual void shutdown() override;
     b8 is_multithreaded() {return backend.multithreading_enabled;}
     void draw();
-    void resize_backend(u32 width, u32 height);
+    void resize(u32 width, u32 height);
 
     private:
     Vulkan::Backend backend;

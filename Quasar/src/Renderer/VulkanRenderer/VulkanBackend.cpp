@@ -121,7 +121,7 @@ b8 Backend::init(String name, Window* window) {
 	rimg_allocinfo.requiredFlags = VkMemoryPropertyFlags(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
 	//allocate and create the image
-	vmaCreateImage(allocator, &rimg_info, &rimg_allocinfo, &draw_image.image, &draw_image.allocation, nullptr);
+	VK_CHECK(vmaCreateImage(allocator, &rimg_info, &rimg_allocinfo, &draw_image.image, &draw_image.allocation, nullptr));
 
 	//build a image-view for the draw image to use for rendering
 	VkImageViewCreateInfo rview_info = imageview_create_info(draw_image.format, draw_image.image, VK_IMAGE_ASPECT_COLOR_BIT);
@@ -201,9 +201,13 @@ void Backend::draw()
 	get_current_frame().deletion_queue.flush();
 
     //request image from the swapchain
-	uint32_t swapchain_image_index;
-	VK_CHECK(vkAcquireNextImageKHR(device.logical_device, swapchain.handle, 1000000000, get_current_frame().swapchain_semaphore, nullptr, &swapchain_image_index));
-
+	u32 swapchain_image_index;
+	VkResult e = vkAcquireNextImageKHR(device.logical_device, swapchain.handle, 1000000000, get_current_frame().swapchain_semaphore, nullptr, &swapchain_image_index);
+	if(e == VK_ERROR_OUT_OF_DATE_KHR) {
+        event_context context{};
+		QS_EVENT.Execute(EVENT_CODE_DEFAULT_RENDERTARGET_REFRESH_REQUIRED, this, context);
+		return;
+	}
     VK_CHECK(vkResetFences(device.logical_device, 1, &get_current_frame().render_fence));
 
 	// now that we are sure that the commands finished executing, we can safely reset the command buffer to begin recording again.
@@ -232,6 +236,7 @@ void Backend::draw()
 
 	// execute a copy from the draw image into the swapchain
 	copy_image_to_image(cmd, draw_image.image, swapchain.images[swapchain_image_index], draw_extent, swapchain.extent);
+    LOG_TRACE("%u, %u | %u, %u", draw_extent.width, draw_extent.height, swapchain.extent.width, swapchain.extent.height)
 
 	// set swapchain image layout to Present so we can show it on the screen
 	transition_image(cmd, swapchain.images[swapchain_image_index], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
@@ -273,6 +278,46 @@ void Backend::draw()
 
 	//increase the number of frames drawn
 	frame_count++;
+}
+
+void Backend::resize(u32 width, u32 height)
+{
+    swapchain.recreate(width, height);
+
+    vkDestroyImageView(device.logical_device, draw_image.view, nullptr);
+	vmaDestroyImage(allocator, draw_image.image, draw_image.allocation);
+
+    //draw image size will match the window
+	VkExtent3D draw_image_extent = {
+		width,
+		height,
+		1
+	};
+
+	//hardcoding the draw format to 32 bit float
+	draw_image.format = VK_FORMAT_R16G16B16A16_SFLOAT;
+	draw_image.extent = draw_image_extent;
+
+	VkImageUsageFlags drawImageUsages{};
+	drawImageUsages |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+	drawImageUsages |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+	drawImageUsages |= VK_IMAGE_USAGE_STORAGE_BIT;
+	drawImageUsages |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+
+	VkImageCreateInfo rimg_info = image_create_info(draw_image.format, drawImageUsages, draw_image_extent);
+
+	//for the draw image, we want to allocate it from gpu local memory
+	VmaAllocationCreateInfo rimg_allocinfo = {};
+	rimg_allocinfo.usage = VMA_MEMORY_USAGE_GPU_ONLY;
+	rimg_allocinfo.requiredFlags = VkMemoryPropertyFlags(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+
+	//allocate and create the image
+	VK_CHECK(vmaCreateImage(allocator, &rimg_info, &rimg_allocinfo, &draw_image.image, &draw_image.allocation, nullptr));
+
+	//build a image-view for the draw image to use for rendering
+	VkImageViewCreateInfo rview_info = imageview_create_info(draw_image.format, draw_image.image, VK_IMAGE_ASPECT_COLOR_BIT);
+
+	VK_CHECK(vkCreateImageView(device.logical_device, &rview_info, nullptr, &draw_image.view));
 }
 
 b8 check_validation_layer_support() {

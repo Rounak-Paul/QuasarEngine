@@ -23,7 +23,8 @@ void Renderer::draw()
 {
     backend.draw();
 }
-void Renderer::resize_backend(u32 width, u32 height)
+void Renderer::resize(u32 width, u32 height)
 {
+    backend.resize(width, height);
 }
 } // namespace Quasar

@@ -8,7 +8,7 @@
 
 namespace Quasar::Vulkan {
 
-constexpr u8 FRAME_OVERLAP = 2;
+constexpr u8 FRAME_OVERLAP = 3;
 
 struct DeletionQueue
 {

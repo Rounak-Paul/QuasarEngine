@@ -5,7 +5,7 @@ namespace Quasar::Vulkan
 {
 
 b8 VulkanSwapchain::_create(u32 width, u32 height) {
-    VkExtent2D swapchain_extent = {width, height};
+    extent = {width, height};
 
     // Choose a swap surface format.
     b8 found = false;
@@ -45,14 +45,14 @@ b8 VulkanSwapchain::_create(u32 width, u32 height) {
 
     // Swapchain extent
     if (_device->swapchain_support.capabilities.currentExtent.width != UINT32_MAX) {
-        swapchain_extent = _device->swapchain_support.capabilities.currentExtent;
+        extent = _device->swapchain_support.capabilities.currentExtent;
     }
 
     // Clamp to the value allowed by the GPU.
     VkExtent2D min = _device->swapchain_support.capabilities.minImageExtent;
     VkExtent2D max = _device->swapchain_support.capabilities.maxImageExtent;
-    swapchain_extent.width = QS_CLAMP(swapchain_extent.width, min.width, max.width);
-    swapchain_extent.height = QS_CLAMP(swapchain_extent.height, min.height, max.height);
+    extent.width = QS_CLAMP(extent.width, min.width, max.width);
+    extent.height = QS_CLAMP(extent.height, min.height, max.height);
 
     u32 image_count = _device->swapchain_support.capabilities.minImageCount + 1;
     if (_device->swapchain_support.capabilities.maxImageCount > 0 && image_count > _device->swapchain_support.capabilities.maxImageCount) {
@@ -67,7 +67,7 @@ b8 VulkanSwapchain::_create(u32 width, u32 height) {
     swapchain_create_info.minImageCount = image_count;
     swapchain_create_info.imageFormat = image_format.format;
     swapchain_create_info.imageColorSpace = image_format.colorSpace;
-    swapchain_create_info.imageExtent = swapchain_extent;
+    swapchain_create_info.imageExtent = extent;
     swapchain_create_info.imageArrayLayers = 1;
     swapchain_create_info.imageUsage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
 
