@@ -248,16 +248,25 @@ void Backend::draw()
 	//we want to wait on the _presentSemaphore, as that semaphore is signaled when the swapchain is ready
 	//we will signal the _renderSemaphore, to signal that rendering has finished
 
-	VkCommandBufferSubmitInfo cmdinfo = command_buffer_submit_info(cmd);	
-	
-	VkSemaphoreSubmitInfo waitinfo = semaphore_submit_info(VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT_KHR,get_current_frame().swapchain_semaphore);
-	VkSemaphoreSubmitInfo signalinfo = semaphore_submit_info(VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT, get_current_frame().render_semaphore);	
-	
-	VkSubmitInfo2 submit = submit_info(&cmdinfo,&signalinfo,&waitinfo);	
+	// Set up wait stage and wait semaphore for synchronization
+    VkPipelineStageFlags waitStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
 
-	//submit command buffer to the queue and execute it.
-	// render_fence will now block until the graphic commands finish execution
-	VK_CHECK(vkQueueSubmit2(device.graphics_queue, 1, &submit, get_current_frame().render_fence));
+    VkSubmitInfo submitInfo{};
+    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    submitInfo.pNext = nullptr;
+    submitInfo.commandBufferCount = 1;
+    submitInfo.pCommandBuffers = &cmd;  // Pass the command buffer directly
+
+    // Set up wait and signal semaphores
+    submitInfo.waitSemaphoreCount = 1;
+    submitInfo.pWaitSemaphores = &get_current_frame().swapchain_semaphore;
+    submitInfo.pWaitDstStageMask = &waitStageMask;
+
+    submitInfo.signalSemaphoreCount = 1;
+    submitInfo.pSignalSemaphores = &get_current_frame().render_semaphore;
+
+    // Submit command buffer to the queue
+    VK_CHECK(vkQueueSubmit(device.graphics_queue, 1, &submitInfo, get_current_frame().render_fence));
 
     //prepare present
 	// this will put the image we just rendered to into the visible window.
@@ -412,8 +421,8 @@ void Backend::draw_background(VkCommandBuffer cmd)
 {
 	//make a clear-color from frame number. This will flash with a 120 frame period.
 	VkClearColorValue clearValue;
-	float flash = std::abs(std::sin(frame_count / 120.f));
-	clearValue = { { 0.0f, 0.0f, flash, 1.0f } };
+	float flash = 0.5f * (std::sin(frame_count / 120.f) + 1.0f);
+	clearValue = { { 0.0f, 1-flash, flash, 1.0f } };
 
 	VkImageSubresourceRange clearRange = image_subresource_range(VK_IMAGE_ASPECT_COLOR_BIT);
 
