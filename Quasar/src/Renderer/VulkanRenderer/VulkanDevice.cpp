@@ -279,8 +279,7 @@ b8 VulkanDevice::select_physical_device(VkInstance instance, VkSurfaceKHR* surfa
         // requirements.compute = true;
         requirements.sampler_anisotropy = true;
         requirements.discrete_gpu = discreteGPU;
-        requirements.device_extension_names = {};
-        requirements.device_extension_names.emplace_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
+        requirements.device_extension_names = {VK_KHR_SWAPCHAIN_EXTENSION_NAME, "VK_KHR_synchronization2", "VK_KHR_buffer_device_address"};
         requirements.wide_lines = true;
 #ifdef QS_PLATFORM_APPLE
         requirements.discrete_gpu = false;
