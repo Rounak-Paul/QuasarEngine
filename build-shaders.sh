@@ -2,7 +2,7 @@
 
 echo "Compiling shaders..."
 
-vulkanSDKPath="$1"
+vulkanSDKPath=$1
 
 if [ -z "$vulkanSDKPath" ]; then
     echo "VULKAN_SDK path not provided. Please provide it as an argument."
@@ -22,45 +22,30 @@ fi
 
 # Loop over all .glsl files in shaderDir
 for filepath in "$shaderDir"/*.glsl; do
-    # Check if there are any .glsl files
-    if [ ! -e "$filepath" ]; then
-        echo "No shader files found in $shaderDir."
-        break
-    fi
-
-    # Get the filename and extension
-    filename=$(basename "$filepath")
-    extension="${filename##*.}"
-
-    # Echo the name of the shader source file
-    echo "Processing shader file: $filename"
+    filename=$(basename -- "$filepath")
+    filename_no_ext="${filename%.*}"
 
     # Determine shader stage based on file extension suffix
-    case "${filename: -4}" in
-        .vert)
-            stage="vert"
-            ;;
-        .frag)
-            stage="frag"
-            ;;
-        .comp)
-            stage="comp"
-            ;;
-        *)
-            echo "Skipping unknown shader type: $filepath"
-            continue
-            ;;
-    esac
+    if [[ "$filename_no_ext" == *"vert" ]]; then
+        stage="vert"
+    elif [[ "$filename_no_ext" == *"frag" ]]; then
+        stage="frag"
+    elif [[ "$filename_no_ext" == *"comp" ]]; then
+        stage="comp"
+    else
+        echo "Skipping unknown shader type: $filepath"
+        continue
+    fi
 
     # Output file path
-    outputfile="$outputDir/${filename%.glsl}.spv"
+    outputfile="$outputDir/$filename_no_ext.spv"
     echo "$filepath -> $outputfile"
 
     # Compile shader
-    "$glslcPath" -fshader-stage="$stage" "$filepath" -o "$outputfile"
+    "$glslcPath" -fshader-stage=$stage "$filepath" -o "$outputfile"
     if [ $? -ne 0 ]; then
-        echo "Error: Compilation failed for $filename"
-        exit 1
+        echo "Error: $?"
+        exit $?
     fi
 done
 
