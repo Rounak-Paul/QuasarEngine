@@ -43,6 +43,7 @@ File::~File() {
 
 void File::close() {
     if (_file.is_open()) {
+        _file.flush();
         _file.close();
     }
 }

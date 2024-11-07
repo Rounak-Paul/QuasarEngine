@@ -15,6 +15,7 @@
 #include <utility>
 #include <list>
 #include <algorithm>
+#include <span>
 #pragma warning(pop)
 
 // Vendor

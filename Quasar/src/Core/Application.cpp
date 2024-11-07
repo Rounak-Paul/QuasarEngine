@@ -60,7 +60,7 @@ namespace Quasar {
         renderer_system_config renderer_sys_config;
         renderer_sys_config.application_name = info.app_name;
         renderer_sys_config.window = &window;
-        Renderer* renderer_system = new (QSMEM.allocate(sizeof(Renderer))) Renderer;
+        RendererAPI* renderer_system = new (QSMEM.allocate(sizeof(RendererAPI))) RendererAPI;
         QS_SYSTEM_MANAGER.Register(SYSTEM_RENDERER, renderer_system, &renderer_sys_config);
 
         b8 renderer_multithreaded = QS_RENDERER.is_multithreaded();

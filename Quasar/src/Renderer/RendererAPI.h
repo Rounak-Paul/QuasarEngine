@@ -1,7 +1,7 @@
 #pragma once
 
 #include <Core/System.h>
-#include "VulkanRenderer/VulkanBackend.h"
+#include "Vulkan/VulkanBackend.h"
 
 namespace Quasar {
 
@@ -10,10 +10,10 @@ typedef struct renderer_system_config {
     Window* window;
 } renderer_system_config;
 
-class Renderer : public System {
+class RendererAPI : public System {
     public:
-    Renderer() {};
-    ~Renderer() = default;
+    RendererAPI() {};
+    ~RendererAPI() = default;
     virtual b8 init(void* config) override;
     virtual void shutdown() override;
     b8 is_multithreaded() {return backend.multithreading_enabled;}
@@ -21,6 +21,6 @@ class Renderer : public System {
     void resize(u32 width, u32 height);
 
     private:
-    Vulkan::Backend backend;
+    Renderer::Backend backend;
 };
 }

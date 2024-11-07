@@ -1,8 +1,8 @@
-#include "Renderer.h"
+#include "RendererAPI.h"
 
 namespace Quasar
 {
-b8 Renderer::init(void* config) {
+b8 RendererAPI::init(void* config) {
     renderer_system_config* cfg = (renderer_system_config*)config;
 
     // state.resizing = false;
@@ -16,14 +16,14 @@ b8 Renderer::init(void* config) {
 
     return true;
 }
-void Renderer::shutdown() {
+void RendererAPI::shutdown() {
     backend.shutdown();
 }
-void Renderer::draw()
+void RendererAPI::draw()
 {
     backend.draw();
 }
-void Renderer::resize(u32 width, u32 height)
+void RendererAPI::resize(u32 width, u32 height)
 {
     backend.resize(width, height);
 }
