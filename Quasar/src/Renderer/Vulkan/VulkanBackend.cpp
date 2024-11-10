@@ -55,11 +55,26 @@ b8 Backend::init(String &app_name, Window *main_window)
     }
 #endif
 
+    // TODO: implement multi-threading.
+    multithreading_enabled = false;
+
+    // Surface
+    LOG_INFO("Creating Vulkan surface...");
+    if (!create_vulkan_surface(&context, main_window)) {
+        LOG_ERROR("Failed to create platform surface!");
+        return false;
+    }
+
     return true;
 }
 
 void Backend::shutdown()
 {
+    if (context.surface) {
+        vkDestroySurfaceKHR(context.instance, context.surface, context.allocator);
+        context.surface = 0;
+    }
+
 #ifdef QS_DEBUG
     auto func = (PFN_vkDestroyDebugUtilsMessengerEXT) vkGetInstanceProcAddr(context.instance, "vkDestroyDebugUtilsMessengerEXT");
     if (func != nullptr) {
@@ -170,5 +185,17 @@ VkResult Backend::create_debug_messenger() {
     }
 #endif
     return VK_SUCCESS;
+}
+
+b8 Backend::create_vulkan_surface(VulkanContext* context, Window* window)
+{
+    GLFWwindow* w = window->get_GLFWwindow();
+    auto res = glfwCreateWindowSurface(context->instance, w, context->allocator, &context->surface);
+    if (res != VK_SUCCESS)
+    {
+        LOG_ERROR("Failed to create Window Surface, VkResult: %d", res);
+        return false;
+    }
+    return true;
 }
 } // namespace Quasa::Vulkan

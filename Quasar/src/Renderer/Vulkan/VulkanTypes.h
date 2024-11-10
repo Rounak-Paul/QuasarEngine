@@ -13,6 +13,7 @@ typedef struct VulkanContext {
     VkInstance instance;
     VkAllocationCallbacks* allocator = nullptr;
     VkDebugUtilsMessengerEXT debug_messenger;
+    VkSurfaceKHR surface;
 } VkContext;
 
 }
