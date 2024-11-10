@@ -1,4 +1,5 @@
 #include "VulkanBackend.h"
+#include "VulkanDevice.h"
 
 namespace Quasar::Renderer
 {
@@ -59,9 +60,15 @@ b8 Backend::init(String &app_name, Window *main_window)
     multithreading_enabled = false;
 
     // Surface
-    LOG_INFO("Creating Vulkan surface...");
+    LOG_DEBUG("Creating Vulkan surface...");
     if (!create_vulkan_surface(&context, main_window)) {
         LOG_ERROR("Failed to create platform surface!");
+        return false;
+    }
+
+    // Device creation
+    if (!vulkan_device_create(&context)) {
+        LOG_ERROR("Failed to create device!");
         return false;
     }
 
@@ -70,18 +77,14 @@ b8 Backend::init(String &app_name, Window *main_window)
 
 void Backend::shutdown()
 {
-    if (context.surface) {
-        vkDestroySurfaceKHR(context.instance, context.surface, context.allocator);
-        context.surface = 0;
-    }
-
+    vulkan_device_destroy(&context);
+    vkDestroySurfaceKHR(context.instance, context.surface, context.allocator);
 #ifdef QS_DEBUG
     auto func = (PFN_vkDestroyDebugUtilsMessengerEXT) vkGetInstanceProcAddr(context.instance, "vkDestroyDebugUtilsMessengerEXT");
     if (func != nullptr) {
         func(context.instance, context.debug_messenger, context.allocator);
     }
 #endif
-
     vkDestroyInstance(context.instance, context.allocator);
 }
 
