@@ -43,7 +43,7 @@ b8 Backend::init(String &app_name, Window *main_window)
 
     VkResult result = vkCreateInstance(&createInfo, context.allocator, &context.instance);
     if (result != VK_SUCCESS) {
-        LOG_ERROR("Instance creation failed with VkResult: %d", result);
+        LOG_ERROR("Instance creation failed with VkResult: %d", result); 
         return false;
     }
 
