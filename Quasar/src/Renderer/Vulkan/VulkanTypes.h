@@ -44,6 +44,23 @@ typedef struct VulkanDevice {
     u8 depth_channel_count;
 } VulkanDevice;
 
+typedef struct vulkan_image {
+    VkImage handle;
+    VkDeviceMemory memory;
+    VkImageView view;
+    u32 width;
+    u32 height;
+} vulkan_image;
+
+typedef struct vulkan_swapchain {
+    VkSurfaceFormatKHR image_format;
+    u8 max_frames_in_flight;
+    VkSwapchainKHR handle;
+    u32 image_count;
+    vulkan_image* render_textures;
+    vulkan_image* depth_textures;
+} vulkan_swapchain;
+
 typedef struct VulkanContext {
     VkInstance instance;
     VkAllocationCallbacks* allocator = nullptr;
