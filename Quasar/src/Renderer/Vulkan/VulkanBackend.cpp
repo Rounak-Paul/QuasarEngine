@@ -1,5 +1,6 @@
 #include "VulkanBackend.h"
 #include "VulkanDevice.h"
+#include "VulkanSwapchain.h"
 
 namespace Quasar::Renderer
 {
@@ -72,11 +73,20 @@ b8 Backend::init(String &app_name, Window *main_window)
         return false;
     }
 
+    // Swapchain
+    u32 width = main_window->get_extent().width;
+    u32 height = main_window->get_extent().height;
+    if (!vulkan_swapchain_create(&context, width, height, &context.swapchain)) {
+        LOG_ERROR("Failed to create device!");
+        return false;
+    }
+
     return true;
 }
 
 void Backend::shutdown()
 {
+    vulkan_swapchain_destroy(&context, &context.swapchain);
     vulkan_device_destroy(&context);
     vkDestroySurfaceKHR(context.instance, context.surface, context.allocator);
 #ifdef QS_DEBUG
@@ -95,6 +105,7 @@ void Backend::draw()
 
 void Backend::resize(u32 width, u32 height)
 {
+    vulkan_swapchain_recreate(&context, width, height, &context.swapchain);
 }
 
 b8 Backend::check_validation_layer_support() {
