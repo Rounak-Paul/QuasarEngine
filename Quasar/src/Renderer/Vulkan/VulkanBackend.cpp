@@ -1,6 +1,7 @@
 #include "VulkanBackend.h"
 #include "VulkanDevice.h"
 #include "VulkanSwapchain.h"
+#include "VulkanShader.h"
 
 namespace Quasar::Renderer
 {
@@ -81,6 +82,7 @@ b8 Backend::init(String &app_name, Window *main_window)
         return false;
     }
 
+    auto frag_shader = vulkan_shader_create(&context, "../Shaders/Builtin.World.frag.spv");
     return true;
 }
 

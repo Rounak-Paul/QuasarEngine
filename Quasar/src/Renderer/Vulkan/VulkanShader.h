@@ -4,5 +4,5 @@
 #include"VulkanTypes.h"
 
 namespace Quasar::Renderer {
-VkShaderModule vulkan_shader_create(String shader_file);
+VkShaderModule vulkan_shader_create(VulkanContext* context, String shader_file);
 }
