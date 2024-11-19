@@ -71,7 +71,7 @@ void File::open_file(Mode mode, Type type) {
     _file.open(_path, open_mode);
 
     if (!_file.is_open()) {
-        std::cerr << "Failed to open file: " << _path << std::endl;
+        LOG_ERROR("Failed to open file: %s", _path.c_str());
     }
 }
 

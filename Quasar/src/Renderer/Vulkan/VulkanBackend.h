@@ -24,6 +24,7 @@ namespace Quasar::Renderer
         void populate_debug_messenger_create_info(VkDebugUtilsMessengerCreateInfoEXT& createInfo);
         VkResult create_debug_messenger();
         b8 create_vulkan_surface(VulkanContext* context, Window* window);
+        void create_graphics_pipeline();
 
     };
 } // namespace Vulkan

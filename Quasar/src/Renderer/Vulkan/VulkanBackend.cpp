@@ -82,7 +82,7 @@ b8 Backend::init(String &app_name, Window *main_window)
         return false;
     }
 
-    auto frag_shader = vulkan_shader_create(&context, "../Shaders/Builtin.World.frag.spv");
+    create_graphics_pipeline();
     return true;
 }
 
@@ -213,5 +213,27 @@ b8 Backend::create_vulkan_surface(VulkanContext* context, Window* window)
         return false;
     }
     return true;
+}
+void Backend::create_graphics_pipeline()
+{
+    auto vert_shader = vulkan_shader_create(&context, "./Shaders/Builtin.World.vert.spv");
+    auto frag_shader = vulkan_shader_create(&context, "./Shaders/Builtin.World.frag.spv");
+
+    VkPipelineShaderStageCreateInfo vertShaderStageInfo{};
+    vertShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    vertShaderStageInfo.stage = VK_SHADER_STAGE_VERTEX_BIT;
+    vertShaderStageInfo.module = vert_shader;
+    vertShaderStageInfo.pName = "main";
+
+    VkPipelineShaderStageCreateInfo fragShaderStageInfo{};
+    fragShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    fragShaderStageInfo.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+    fragShaderStageInfo.module = frag_shader;
+    fragShaderStageInfo.pName = "main";
+
+    VkPipelineShaderStageCreateInfo shaderStages[] = {vertShaderStageInfo, fragShaderStageInfo};
+
+    vkDestroyShaderModule(context.device.logical_device, vert_shader, context.allocator);
+    vkDestroyShaderModule(context.device.logical_device, frag_shader, context.allocator);
 }
 } // namespace Quasa::Vulkan
