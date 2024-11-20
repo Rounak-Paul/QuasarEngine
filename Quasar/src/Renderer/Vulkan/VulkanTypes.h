@@ -8,6 +8,8 @@ namespace Quasar::Renderer {
     assert(expr == VK_SUCCESS);        \
 } 
 
+#define MAX_FRAMES_IN_FLIGHT 2
+
 const std::vector<const char*> validationLayers = { 
     "VK_LAYER_KHRONOS_validation" 
     // ,"VK_LAYER_LUNARG_api_dump" // For all vulkan calls
@@ -74,10 +76,10 @@ typedef struct VulkanContext {
     VkPipelineLayout pipeline_layout;
     VkPipeline graphics_pipeline;
     std::vector<VkFramebuffer> swapchain_framebuffers;
-    VkCommandBuffer command_buffer;
-    VkSemaphore image_available_semaphore;
-    VkSemaphore render_finished_semaphore;
-    VkFence in_flight_fence;
+    std::vector<VkCommandBuffer> commandbuffers;
+    std::vector<VkSemaphore> image_available_semaphores;
+    std::vector<VkSemaphore> render_finished_semaphores;
+    std::vector<VkFence> in_flight_fences;
     u8 current_frame = 0;
 } VulkanContext;
 
