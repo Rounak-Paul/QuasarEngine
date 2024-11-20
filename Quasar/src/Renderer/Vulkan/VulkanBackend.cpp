@@ -82,13 +82,20 @@ b8 Backend::init(String &app_name, Window *main_window)
         return false;
     }
 
+    create_renderpass();
     create_graphics_pipeline();
+    create_framebuffers();
     return true;
 }
 
 void Backend::shutdown()
 {
+    for (auto framebuffer : context.swapchain_framebuffers) {
+        vkDestroyFramebuffer(context.device.logical_device, framebuffer, context.allocator);
+    }
+    vkDestroyPipeline(context.device.logical_device, context.graphics_pipeline, context.allocator);
     vkDestroyPipelineLayout(context.device.logical_device, context.pipeline_layout, context.allocator);
+    vkDestroyRenderPass(context.device.logical_device, context.renderpass, context.allocator);
     vulkan_swapchain_destroy(&context, &context.swapchain);
     vulkan_device_destroy(&context);
     vkDestroySurfaceKHR(context.instance, context.surface, context.allocator);
@@ -297,7 +304,82 @@ void Backend::create_graphics_pipeline()
         throw std::runtime_error("failed to create pipeline layout!");
     }
 
+    VkGraphicsPipelineCreateInfo pipelineInfo{};
+    pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+    pipelineInfo.stageCount = 2;
+    pipelineInfo.pStages = shaderStages;
+    pipelineInfo.pVertexInputState = &vertexInputInfo;
+    pipelineInfo.pInputAssemblyState = &inputAssembly;
+    pipelineInfo.pViewportState = &viewportState;
+    pipelineInfo.pRasterizationState = &rasterizer;
+    pipelineInfo.pMultisampleState = &multisampling;
+    pipelineInfo.pColorBlendState = &colorBlending;
+    pipelineInfo.pDynamicState = &dynamicState;
+    pipelineInfo.layout = context.pipeline_layout;
+    pipelineInfo.renderPass = context.renderpass;
+    pipelineInfo.subpass = 0;
+    pipelineInfo.basePipelineHandle = VK_NULL_HANDLE;
+
+    if (vkCreateGraphicsPipelines(context.device.logical_device, VK_NULL_HANDLE, 1, &pipelineInfo, context.allocator, &context.graphics_pipeline) != VK_SUCCESS) {
+        throw std::runtime_error("failed to create graphics pipeline!");
+    }
+
     vulkan_shader_module_destroy(&context, vert_shader_module);
     vulkan_shader_module_destroy(&context, frag_shader_module);
+}
+void Backend::create_renderpass()
+{
+    VkAttachmentDescription colorAttachment{};
+    colorAttachment.format = context.swapchain.format.format;
+    colorAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
+    colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+    colorAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    colorAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    colorAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    colorAttachment.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+
+    VkAttachmentReference colorAttachmentRef{};
+    colorAttachmentRef.attachment = 0;
+    colorAttachmentRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+
+    VkSubpassDescription subpass{};
+    subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+    subpass.colorAttachmentCount = 1;
+    subpass.pColorAttachments = &colorAttachmentRef;
+
+    VkRenderPassCreateInfo renderPassInfo{};
+    renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
+    renderPassInfo.attachmentCount = 1;
+    renderPassInfo.pAttachments = &colorAttachment;
+    renderPassInfo.subpassCount = 1;
+    renderPassInfo.pSubpasses = &subpass;
+
+    if (vkCreateRenderPass(context.device.logical_device, &renderPassInfo, context.allocator, &context.renderpass) != VK_SUCCESS) {
+        throw std::runtime_error("failed to create render pass!");
+    }
+}
+void Backend::create_framebuffers()
+{
+    context.swapchain_framebuffers.resize(context.swapchain.image_count);
+
+    for (size_t i = 0; i < context.swapchain.image_count; i++) {
+        VkImageView attachments[] = {
+            context.swapchain.images[i].view
+        };
+
+        VkFramebufferCreateInfo framebufferInfo{};
+        framebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+        framebufferInfo.renderPass = context.renderpass;
+        framebufferInfo.attachmentCount = 1;
+        framebufferInfo.pAttachments = attachments;
+        framebufferInfo.width = context.swapchain.images[0].extent.width;
+        framebufferInfo.height = context.swapchain.images[0].extent.height;
+        framebufferInfo.layers = 1;
+
+        if (vkCreateFramebuffer(context.device.logical_device, &framebufferInfo, nullptr, &context.swapchain_framebuffers[i]) != VK_SUCCESS) {
+            throw std::runtime_error("failed to create framebuffer!");
+        }
+    }
 }
 } // namespace Quasa::Vulkan
