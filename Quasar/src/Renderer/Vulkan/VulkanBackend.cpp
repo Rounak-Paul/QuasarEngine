@@ -217,19 +217,19 @@ b8 Backend::create_vulkan_surface(VulkanContext* context, Window* window)
 }
 void Backend::create_graphics_pipeline()
 {
-    auto vert_shader = vulkan_shader_create(&context, "../Shaders/Builtin.World.vert.spv");
-    auto frag_shader = vulkan_shader_create(&context, "../Shaders/Builtin.World.frag.spv");
+    auto vert_shader_module = vulkan_shader_module_create(&context, "../Shaders/Builtin.World.vert.spv");
+    auto frag_shader_module = vulkan_shader_module_create(&context, "../Shaders/Builtin.World.frag.spv");
 
     VkPipelineShaderStageCreateInfo vertShaderStageInfo{};
     vertShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
     vertShaderStageInfo.stage = VK_SHADER_STAGE_VERTEX_BIT;
-    vertShaderStageInfo.module = vert_shader;
+    vertShaderStageInfo.module = vert_shader_module;
     vertShaderStageInfo.pName = "main";
 
     VkPipelineShaderStageCreateInfo fragShaderStageInfo{};
     fragShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
     fragShaderStageInfo.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
-    fragShaderStageInfo.module = frag_shader;
+    fragShaderStageInfo.module = frag_shader_module;
     fragShaderStageInfo.pName = "main";
 
     VkPipelineShaderStageCreateInfo shaderStages[] = {vertShaderStageInfo, fragShaderStageInfo};
@@ -297,7 +297,7 @@ void Backend::create_graphics_pipeline()
         throw std::runtime_error("failed to create pipeline layout!");
     }
 
-    vkDestroyShaderModule(context.device.logical_device, vert_shader, context.allocator);
-    vkDestroyShaderModule(context.device.logical_device, frag_shader, context.allocator);
+    vulkan_shader_module_destroy(&context, vert_shader_module);
+    vulkan_shader_module_destroy(&context, frag_shader_module);
 }
 } // namespace Quasa::Vulkan

@@ -3,7 +3,7 @@
 
 namespace Quasar::Renderer
 {
-    VkShaderModule vulkan_shader_create(VulkanContext* context, String shader_file)
+    VkShaderModule vulkan_shader_module_create(VulkanContext* context, String shader_file)
     {
         File f;
         f.open(shader_file, File::Mode::READ, File::Type::BINARY);
@@ -21,6 +21,11 @@ namespace Quasar::Renderer
             LOG_ERROR("failed to create shader module!");
         }
         return shader_module;
+    }
+
+    void vulkan_shader_module_destroy(VulkanContext *context, VkShaderModule module)
+    {
+        vkDestroyShaderModule(context->device.logical_device, module, context->allocator);
     }
 
 } // namespace Quasar::Renderer
