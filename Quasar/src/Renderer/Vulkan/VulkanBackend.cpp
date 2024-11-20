@@ -88,13 +88,15 @@ b8 Backend::init(String &app_name, Window *main_window)
     create_framebuffers();
     create_commandbuffer();
     create_sync_objects();
-    vulkan_imgui_init(&context);
+    vulkan_imgui_init(&context, main_window);
     return true;
 }
 
 void Backend::shutdown()
 {
     vkDeviceWaitIdle(context.device.logical_device);
+
+    vulkan_imgui_shutdown(&context);
 
     for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
         vkDestroySemaphore(context.device.logical_device, context.image_available_semaphores[i], context.allocator);
@@ -129,7 +131,10 @@ void Backend::draw()
     vkAcquireNextImageKHR(context.device.logical_device, context.swapchain.handle, UINT64_MAX, context.image_available_semaphores[context.current_frame], VK_NULL_HANDLE, &image_index);
 
     vkResetCommandBuffer(context.commandbuffers[context.current_frame], /*VkCommandBufferResetFlagBits*/ 0);
+
+    vulkan_imgui_render();
     record_commandbuffer(context.commandbuffers[context.current_frame], image_index);
+    vulkan_imgui_post_render();
 
     VkSubmitInfo submitInfo{};
     submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
@@ -495,6 +500,8 @@ void Backend::record_commandbuffer(VkCommandBuffer command_buffer, uint32_t imag
         vkCmdSetScissor(command_buffer, 0, 1, &scissor);            
 
         vkCmdDraw(command_buffer, 3, 1, 0, 0);
+
+        ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), command_buffer);
 
     vkCmdEndRenderPass(command_buffer);
 

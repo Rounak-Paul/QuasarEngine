@@ -84,6 +84,7 @@ typedef struct VulkanContext {
 
     // ImGui
     ImGuiContext* imgui_context;
+    VkDescriptorPool imgui_descriptorpool;
 } VulkanContext;
 
 }
