@@ -74,6 +74,10 @@ typedef struct VulkanContext {
     VkPipelineLayout pipeline_layout;
     VkPipeline graphics_pipeline;
     std::vector<VkFramebuffer> swapchain_framebuffers;
+    VkCommandBuffer command_buffer;
+    VkSemaphore image_available_semaphore;
+    VkSemaphore render_finished_semaphore;
+    VkFence in_flight_fence;
     u8 current_frame = 0;
 } VulkanContext;
 

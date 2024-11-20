@@ -27,5 +27,8 @@ namespace Quasar::Renderer
         void create_graphics_pipeline();
         void create_renderpass();
         void create_framebuffers();
+        void create_commandbuffer();
+        void record_commandbuffer(VkCommandBuffer command_buffer, uint32_t image_index);
+        void create_sync_objects();
     };
 } // namespace Vulkan
