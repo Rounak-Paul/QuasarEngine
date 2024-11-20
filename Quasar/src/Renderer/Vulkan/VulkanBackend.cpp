@@ -2,6 +2,7 @@
 #include "VulkanDevice.h"
 #include "VulkanSwapchain.h"
 #include "VulkanShader.h"
+#include "VulkanImgui.h"
 
 namespace Quasar::Renderer
 {
@@ -87,6 +88,7 @@ b8 Backend::init(String &app_name, Window *main_window)
     create_framebuffers();
     create_commandbuffer();
     create_sync_objects();
+    vulkan_imgui_init(&context);
     return true;
 }
 
