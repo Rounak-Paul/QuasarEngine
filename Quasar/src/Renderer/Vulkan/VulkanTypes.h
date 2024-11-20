@@ -70,6 +70,7 @@ typedef struct VulkanContext {
     VkSurfaceKHR surface;
     VulkanDevice device;
     VulkanSwapchain swapchain;
+    VkPipelineLayout pipeline_layout;
     u8 current_frame = 0;
 } VulkanContext;
 
