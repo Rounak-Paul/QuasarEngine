@@ -15,18 +15,27 @@
 #include <utility>
 #include <list>
 #include <algorithm>
+#include <span>
 #pragma warning(pop)
 
 // Vendor
 #define GLFW_INCLUDE_VULKAN
-
-#include <GLFW/glfw3.h>
+#include <GLFW/glfw3.h> // This includes vulkan already
+#include <vulkan/vulkan.h>
 #include <imgui.h>
 #include <backends/imgui_impl_glfw.h>
 #include <backends/imgui_impl_vulkan.h>
 
 #include <Defines.h>
+#include <Core/Log.h>
 
-// Customs
+// Customs Containers
+#include <Containers/String.h>
+#include <Containers/RingQueue.h>
 
+// Custom 
+#include <Memory/Memory.h>
+#include <Platform/Thread.h>
+#include <Platform/Platform.h>
+#include <Core/SystemManager.h>
 

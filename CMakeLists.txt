@@ -41,19 +41,19 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/bin)
 add_subdirectory(Quasar)
 add_subdirectory(Editor)
 
-# if(WIN32)
-# add_custom_target(
-#     custom-build ALL
-#     COMMAND "${PROJECT_SOURCE_DIR}/build-shaders.bat" ${VULKAN_PATH}
-#     WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
-#     COMMENT "custom build jobs"
-# )
-# else()
-# add_custom_target(
-#     custom-build ALL
-#     COMMAND chmod +x "${PROJECT_SOURCE_DIR}/build-shaders.sh"
-#     COMMAND "${PROJECT_SOURCE_DIR}/build-shaders.sh" ${VULKAN_PATH}
-#     WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
-#     COMMENT "custom build jobs"
-# )
-# endif()
+if(WIN32)
+add_custom_target(
+    custom-build ALL
+    COMMAND "${PROJECT_SOURCE_DIR}/build-shaders.bat" ${VULKAN_PATH}
+    WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
+    COMMENT "custom build jobs"
+)
+else()
+add_custom_target(
+    custom-build ALL
+    COMMAND chmod +x "${PROJECT_SOURCE_DIR}/build-shaders.sh"
+    COMMAND "${PROJECT_SOURCE_DIR}/build-shaders.sh" ${VULKAN_PATH}
+    WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
+    COMMENT "custom build jobs"
+)
+endif()

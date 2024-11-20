@@ -29,7 +29,7 @@ namespace Quasar
 
 		u32 width;
 		u32 height;
-		b8 framebufferResized = FALSE;
+		b8 framebuffer_resized = false;
 
 		const char* windowName;
 		GLFWwindow* window;

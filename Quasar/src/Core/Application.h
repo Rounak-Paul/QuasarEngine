@@ -1,11 +1,16 @@
 #pragma once
 #include <qspch.h>
-#include <AppTypes.inl>
 
 #include "Window.h"
 
 namespace Quasar
 {
+    typedef struct QS_API app_create_info {
+        String app_name;
+        u32 width;
+        u32 height;
+    } app_create_info ;
+
     /**
      * @brief Singleton Quasar Application class to be created by the main() function in EntryPoint.h.
      * 
@@ -36,20 +41,38 @@ namespace Quasar
     class QS_API Application
     {
     public:
+
+        /**
+         * @brief Construct a new Application object
+         * 
+         * @param info create new application with Width, Height and App name
+         */
         Application(app_create_info info);
         ~Application();
 
         Application(const Application&) = delete;
 		Application& operator=(const Application&) = delete;
 
+        /**
+         * @brief Main application loop for Quasar Engine
+         * 
+         */
         void run();
     
     private:
         static Application* instance;
+
+        /**
+         * @brief Main window used for Input, Events and Rendering on to the surface of
+         * 
+         */
         Window window;
-        std::string engine_name;
+        
+        String engine_name;
         b8 running = true;
         b8 suspended = false;
+
+        static b8 application_on_resized(u16 code, void* sender, void* listener_inst, event_context context);
     };
 
     Application* CreateApplication();

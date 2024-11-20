@@ -20,6 +20,12 @@ namespace Quasar
 		glfwSetWindowUserPointer(window, this);
 		glfwSetFramebufferSizeCallback(window, framebuffer_resize_callback);
 		glfwSetWindowFocusCallback(window, window_focus_callback);
+
+		// Get the initial framebuffer size
+		int framebufferWidth, framebufferHeight;
+		glfwGetFramebufferSize(window, &framebufferWidth, &framebufferHeight);
+		width = framebufferWidth;
+		height = framebufferHeight;
 	}
 
 	Window::~Window()
@@ -33,18 +39,18 @@ namespace Quasar
 		auto qsWindow = reinterpret_cast<Window*>(glfwGetWindowUserPointer(window));
 		qsWindow->width = width;
 		qsWindow->height = height;
-		qsWindow->framebufferResized = TRUE;
-		// event_context context;
-		// context.data.u16[0] = width;
-		// context.data.u16[1] = height;
-		// QS_EVENT.Execute(EVENT_CODE_RESIZED, 0, context);
+		qsWindow->framebuffer_resized = true;
+		event_context context;
+		context.data.u16[0] = width;
+		context.data.u16[1] = height;
+		QS_EVENT.Execute(EVENT_CODE_RESIZED, 0, context);
 	}
 
 	// GLFW window focus callback
 	void Window::window_focus_callback(GLFWwindow* window, int focused) {
 		ImGuiHasFocus = focused == GLFW_FALSE; // TODO: Not used yet	
-		// event_context context = {};
-		// context.data.i32[0] = focused;
-		// QS_EVENT.Execute(EVENT_CODE_WINDOW_FOCUS_CHANGED, nullptr, context);
+		event_context context = {};
+		context.data.i32[0] = focused;
+		QS_EVENT.Execute(EVENT_CODE_WINDOW_FOCUS_CHANGED, nullptr, context);
 	}
 }
