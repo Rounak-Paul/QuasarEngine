@@ -168,7 +168,12 @@ void Backend::draw()
 
 void Backend::resize(u32 width, u32 height)
 {
+    vkDeviceWaitIdle(context.device.logical_device);
+    for (auto framebuffer : context.swapchain_framebuffers) {
+        vkDestroyFramebuffer(context.device.logical_device, framebuffer, context.allocator);
+    }
     vulkan_swapchain_recreate(&context, width, height, &context.swapchain);
+    create_framebuffers();
 }
 
 b8 Backend::check_validation_layer_support() {
