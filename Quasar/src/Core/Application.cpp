@@ -1,5 +1,7 @@
 #include "Application.h"
 
+#include <Gui/Windows/Dockspace.h>
+
 namespace Quasar {
     Application* Application::instance = nullptr;
 
@@ -88,6 +90,9 @@ namespace Quasar {
         JobSystem* job_system = new (QSMEM.allocate(sizeof(JobSystem))) JobSystem;
         QS_SYSTEM_MANAGER.Register(SYSTEM_JOB, job_system, &job_sys_config);
 
+        LOG_DEBUG("Initializing GUI System...")
+        GuiSystem* gui_system = new (QSMEM.allocate(sizeof(GuiSystem))) GuiSystem;
+        QS_SYSTEM_MANAGER.Register(SYSTEM_GUI, gui_system, nullptr);
     }
 
     Application::~Application() {
@@ -96,6 +101,7 @@ namespace Quasar {
 
     void Application::run() {
         LOG_DEBUG("Running...");
+        QS_GUI_SYSTEM.register_window(new Dockspace{});
         while (!window.should_close() && running)
         {
             if (suspended) { 
@@ -119,6 +125,7 @@ namespace Quasar {
         }
         QS_EVENT.Unregister(EVENT_CODE_RESIZED, this, application_on_resized);
         
+        QS_SYSTEM_MANAGER.Unregister(SYSTEM_GUI);
         QS_SYSTEM_MANAGER.Unregister(SYSTEM_JOB);
         QS_SYSTEM_MANAGER.Unregister(SYSTEM_RENDERER);
         QS_SYSTEM_MANAGER.Unregister(SYSTEM_INPUT);

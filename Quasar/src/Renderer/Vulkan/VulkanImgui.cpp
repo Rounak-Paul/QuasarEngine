@@ -1,4 +1,7 @@
 #include "VulkanImgui.h"
+#include <Core/System.h>
+#include <Gui/GuiStyles.h>
+#include <Gui/GuiFonts.h>
 
 namespace Quasar::Renderer {
     static void check_vk_result(VkResult err)
@@ -17,15 +20,23 @@ namespace Quasar::Renderer {
         ImGui::GetIO().ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;      // Enable Gamepad Controls
         ImGui::GetIO().ConfigFlags |= ImGuiConfigFlags_DockingEnable;         // Enable Docking
         ImGui::GetIO().ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;       // Enable Multi-Viewport / Platform Windows
-        ImGui::GetIO().ConfigViewportsNoAutoMerge = true;
+        ImGui::GetIO().ConfigViewportsNoAutoMerge = false;
         ImGui::GetIO().ConfigViewportsNoTaskBarIcon = false;
 
-        ImGui::GetIO().Fonts->AddFontDefault();
+        // ImGui::GetIO().Fonts->AddFontDefault();
+        ImFontConfig font_cfg;
+        font_cfg.FontDataOwnedByAtlas = false;
+        ImFont* font = ImGui::GetIO().Fonts->AddFontFromMemoryTTF(Roboto_Medium, Roboto_Medium_size, 14.0f, &font_cfg);
+        if (font == nullptr) {
+            LOG_WARN("Failed to load custom font!")
+        }
 
         // Setup Dear ImGui style
         // ImGui::StyleColorsClassic();
         ImGui::StyleColorsDark();
         //ImGui::StyleColorsLight();
+
+        customize_style();
 
         VkDescriptorPoolSize pool_sizes[] =
         {
@@ -80,6 +91,14 @@ namespace Quasar::Renderer {
         ImGui::NewFrame();
 
         auto gui_in_focus = ImGui::IsWindowFocused(ImGuiFocusedFlags_AnyWindow);
+
+        auto render_data = QS_GUI_SYSTEM.get_render_data();
+        for (int i=0; i<MAX_GUI_WINDOWS; i++) {
+            if (render_data[i]) {
+                ImGui::SetNextWindowBgAlpha(0.2f); // Transparent background
+                render_data[i]->update();
+            }
+        }
 
         b8 demo_window = true;
         ImGui::ShowDemoWindow(&demo_window);

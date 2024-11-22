@@ -32,6 +32,10 @@
 // Customs Containers
 #include <Containers/String.h>
 #include <Containers/RingQueue.h>
+#include <Containers/DynamicArray.h>
+#include <Containers/FrameDynamicArray.h>
+#include <Containers/Hashmap.h>
+#include <Containers/XMLPaser.h>
 
 // Custom 
 #include <Memory/Memory.h>
