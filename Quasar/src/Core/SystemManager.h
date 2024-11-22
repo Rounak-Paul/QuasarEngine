@@ -7,6 +7,7 @@
 #include <Core/Input.h>
 #include <Systems/JobSystem.h>
 #include <Renderer/RendererAPI.h>
+#include <Systems/GuiSystem.h>
 
 namespace Quasar
 {
@@ -19,6 +20,7 @@ namespace Quasar
         SYSTEM_INPUT,
         SYSTEM_JOB,
         SYSTEM_RENDERER,
+        SYSTEM_GUI,
         SYSTEM_MAX = 0xFF
     } qs_system;
 
@@ -64,4 +66,5 @@ namespace Quasar
     #define QS_INPUT (*(Input*)QS_SYSTEM_MANAGER.get_system(SYSTEM_INPUT))
     #define QS_JOB_SYSTEM (*(JobSystem*)QS_SYSTEM_MANAGER.get_system(SYSTEM_JOB))
     #define QS_RENDERER (*(RendererAPI*)QS_SYSTEM_MANAGER.get_system(SYSTEM_RENDERER))
+    #define QS_GUI_SYSTEM (*(GuiSystem*)QS_SYSTEM_MANAGER.get_system(SYSTEM_GUI))
 } // namespace Quasar

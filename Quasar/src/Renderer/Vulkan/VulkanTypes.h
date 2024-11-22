@@ -81,6 +81,10 @@ typedef struct VulkanContext {
     std::vector<VkSemaphore> render_finished_semaphores;
     std::vector<VkFence> in_flight_fences;
     u8 current_frame = 0;
+
+    // ImGui
+    ImGuiContext* imgui_context;
+    VkDescriptorPool imgui_descriptorpool;
 } VulkanContext;
 
 }

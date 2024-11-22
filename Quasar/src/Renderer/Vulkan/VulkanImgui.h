@@ -1,0 +1,12 @@
+#pragma once
+#include <qspch.h>
+
+#include"VulkanTypes.h"
+
+namespace Quasar::Renderer
+{
+    b8 vulkan_imgui_init(VulkanContext* context, Window* window);
+    void vulkan_imgui_shutdown(VulkanContext* context);
+    void vulkan_imgui_render();
+    void vulkan_imgui_post_render();
+} // namespace Quasar::Renderer
