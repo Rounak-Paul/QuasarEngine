@@ -289,8 +289,13 @@ b8 Backend::create_vulkan_surface(VulkanContext* context, Window* window)
 }
 void Backend::create_graphics_pipeline()
 {
+    #ifdef QS_PLATFORM_APPLE
+    auto vert_shader_module = vulkan_shader_module_create(&context, "./Shaders/Builtin.World.vert.spv");
+    auto frag_shader_module = vulkan_shader_module_create(&context, "./Shaders/Builtin.World.frag.spv");
+    #else
     auto vert_shader_module = vulkan_shader_module_create(&context, "../Shaders/Builtin.World.vert.spv");
     auto frag_shader_module = vulkan_shader_module_create(&context, "../Shaders/Builtin.World.frag.spv");
+    #endif
 
     VkPipelineShaderStageCreateInfo vertShaderStageInfo{};
     vertShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
