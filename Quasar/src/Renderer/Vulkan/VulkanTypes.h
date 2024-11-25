@@ -23,7 +23,7 @@ typedef struct vulkan_swapchain_support_info {
         std::vector<VkPresentModeKHR> present_modes;
     } vulkan_swapchain_support_info;
 
-typedef struct VulkanDevice {
+typedef struct vulkan_device {
     VkPhysicalDevice physical_device;
     VkDevice logical_device;
     vulkan_swapchain_support_info swapchain_support;
@@ -44,47 +44,59 @@ typedef struct VulkanDevice {
 
     VkFormat depth_format;
     u8 depth_channel_count;
-} VulkanDevice;
+} vulkan_device;
 
-typedef struct VulkanImage {
-    VkImage handle = VK_NULL_HANDLE;                        // Vulkan image handle
-    VkImageView view = VK_NULL_HANDLE;                      // Image view for accessing the image in shaders
-    VkDeviceMemory memory = VK_NULL_HANDLE;                 // Device memory backing the image (if applicable)
-    VkFormat format;                                        // Format of the image
-    VkExtent3D extent;                                      // Extent (width, height, depth) of the image
-    VkImageLayout layout = VK_IMAGE_LAYOUT_UNDEFINED;       // Current layout of the image
-} VulkanImage;
+typedef struct vulkan_image {
+    VkImage handle;
+    VkDeviceMemory memory;
+    VkImageView view;
+    u32 width;
+    u32 height;
+} vulkan_image;
 
-typedef struct VulkanSwapchain {
-    VkSwapchainKHR handle = VK_NULL_HANDLE;                 // The Vulkan swapchain handle
-    std::vector<VulkanImage> images;                        // Images in the swapchain
-    VkSurfaceFormatKHR format;                              // Chosen surface format for the swapchain
-    VkPresentModeKHR present_mode;                          // Chosen presentation mode (e.g., FIFO, MAILBOX)
-    VkSurfaceCapabilitiesKHR capabilities;                  // Surface capabilities for current swapchain
-    u32 image_count;                                        // Number of images in the swapchain
-    u32 current_image_index;                                // The index of the current image to render to
-} VulkanSwapchain;
+typedef struct vulkan_swapchain {
+    VkSurfaceFormatKHR image_format;
+    u8 max_frames_in_flight;
+    VkSwapchainKHR handle;
+    u32 image_count;
+    VkImage* images;
+    VkImageView* views;
+    vulkan_image depth_attachment;
+} vulkan_swapchain;
 
-typedef struct VulkanContext {
+typedef struct vulkan_context {
+    u32 framebuffer_width;
+    u32 framebuffer_height;
+
     VkInstance instance;
     VkAllocationCallbacks* allocator = nullptr;
+    #ifdef QS_DEBUG
     VkDebugUtilsMessengerEXT debug_messenger;
-    VkSurfaceKHR surface;
-    VulkanDevice device;
-    VulkanSwapchain swapchain;
-    VkRenderPass renderpass;
-    VkPipelineLayout pipeline_layout;
-    VkPipeline graphics_pipeline;
-    std::vector<VkFramebuffer> swapchain_framebuffers;
-    std::vector<VkCommandBuffer> commandbuffers;
-    std::vector<VkSemaphore> image_available_semaphores;
-    std::vector<VkSemaphore> render_finished_semaphores;
-    std::vector<VkFence> in_flight_fences;
-    u8 current_frame = 0;
+    #endif
 
-    // ImGui
-    ImGuiContext* imgui_context;
-    VkDescriptorPool imgui_descriptorpool;
-} VulkanContext;
+    VkSurfaceKHR surface;
+    vulkan_device device;
+
+    vulkan_swapchain swapchain;
+    u32 image_index;
+    u32 current_frame;
+
+    b8 recreating_swapchain;
+
+    i32 find_memory_index(u32 type_filter, u32 property_flags) {
+        VkPhysicalDeviceMemoryProperties memory_properties;
+        vkGetPhysicalDeviceMemoryProperties(device.physical_device, &memory_properties);
+
+        for (u32 i = 0; i < memory_properties.memoryTypeCount; ++i) {
+            // Check each memory type to see if its bit is set to 1.
+            if (type_filter & (1 << i) && (memory_properties.memoryTypes[i].propertyFlags & property_flags) == property_flags) {
+                return i;
+            }
+        }
+
+        LOG_WARN("Unable to find suitable memory type!");
+        return -1;
+    }
+} vulkan_context;
 
 }

@@ -115,7 +115,9 @@ namespace Quasar {
                 LOG_TRACE("Space clicked");
             }
 
-            QS_RENDERER.draw();
+            render_packet packet;
+            packet.dt = 0.f;
+            QS_RENDERER.draw(&packet);
         }
 
         // Shutdown routine

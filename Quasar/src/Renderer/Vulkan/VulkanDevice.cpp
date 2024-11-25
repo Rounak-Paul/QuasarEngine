@@ -22,7 +22,7 @@ typedef struct vulkan_physical_device_queue_family_info {
     u32 transfer_family_index;
 } vulkan_physical_device_queue_family_info;
 
-b8 select_physical_device(VulkanContext* context, b8 discreteGPU);
+b8 select_physical_device(vulkan_context* context, b8 discreteGPU);
 b8 physical_device_meets_requirements(
     VkPhysicalDevice device,
     VkSurfaceKHR surface,
@@ -32,7 +32,7 @@ b8 physical_device_meets_requirements(
     vulkan_physical_device_queue_family_info* out_queue_family_info,
     vulkan_swapchain_support_info* out_swapchain_support);
 
-b8 vulkan_device_create(VulkanContext *context)
+b8 vulkan_device_create(vulkan_context *context)
 {
     if (!select_physical_device(context, true)) {
         LOG_WARN("No Discrete GPU with Vulkan support found. Defaulting to Integrated GPU.")
@@ -151,7 +151,7 @@ b8 vulkan_device_create(VulkanContext *context)
     return true;
 }
 
-void vulkan_device_destroy(VulkanContext* context) {
+void vulkan_device_destroy(vulkan_context* context) {
     // Unset queues
     context->device.graphics_queue = 0;
     context->device.present_queue = 0;
@@ -191,7 +191,7 @@ void vulkan_device_destroy(VulkanContext* context) {
     context->device.transfer_queue_index = -1;
 }
 
-b8 select_physical_device(VulkanContext* context, b8 discreteGPU) {
+b8 select_physical_device(vulkan_context* context, b8 discreteGPU) {
     uint32_t physical_device_count = 0;
     VK_CHECK(vkEnumeratePhysicalDevices(context->instance, &physical_device_count, nullptr));
     if (physical_device_count == 0) {
@@ -543,7 +543,7 @@ void vulkan_device_query_swapchain_support(
     }
 }
 
-b8 vulkan_device_detect_depth_format(VulkanDevice* device) {
+b8 vulkan_device_detect_depth_format(vulkan_device* device) {
     // Format candidates
     const u64 candidate_count = 3;
     VkFormat candidates[3] = {

@@ -10,6 +10,10 @@ typedef struct renderer_system_config {
     Window* window;
 } renderer_system_config;
 
+typedef struct render_packet {
+    f32 dt;
+} render_packet;
+
 class RendererAPI : public System {
     public:
     RendererAPI() {};
@@ -17,7 +21,7 @@ class RendererAPI : public System {
     virtual b8 init(void* config) override;
     virtual void shutdown() override;
     b8 is_multithreaded() {return backend.multithreading_enabled;}
-    void draw();
+    b8 draw(render_packet* packet);
     void resize(u32 width, u32 height);
 
     private:

@@ -5,32 +5,32 @@
 
 namespace Quasar::Renderer { 
     b8 vulkan_swapchain_create(
-        VulkanContext* context,
+        vulkan_context* context,
         u32 width,
         u32 height,
-        VulkanSwapchain* out_swapchain);
+        vulkan_swapchain* out_swapchain);
 
     void vulkan_swapchain_recreate(
-        VulkanContext* context,
+        vulkan_context* context,
         u32 width,
         u32 height,
-        VulkanSwapchain* swapchain);
+        vulkan_swapchain* swapchain);
 
     void vulkan_swapchain_destroy(
-        VulkanContext* context,
-        VulkanSwapchain* swapchain);
+        vulkan_context* context,
+        vulkan_swapchain* swapchain);
 
     b8 vulkan_swapchain_acquire_next_image_index(
-        VulkanContext* context,
-        VulkanSwapchain* swapchain,
+        vulkan_context* context,
+        vulkan_swapchain* swapchain,
         u64 timeout_ns,
         VkSemaphore image_available_semaphore,
         VkFence fence,
         u32* out_image_index);
 
     void vulkan_swapchain_present(
-        VulkanContext* context,
-        VulkanSwapchain* swapchain,
+        vulkan_context* context,
+        vulkan_swapchain* swapchain,
         VkQueue present_queue,
         VkSemaphore render_complete_semaphore,
         u32 present_image_index);
