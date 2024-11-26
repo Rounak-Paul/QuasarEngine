@@ -2,6 +2,7 @@
 #include "VulkanDevice.h"
 #include "VulkanSwapchain.h"
 #include "VulkanImgui.h"
+#include "VulkanRenderpass.h"
 
 namespace Quasar::Renderer
 {
@@ -83,6 +84,16 @@ b8 Backend::init(String &app_name, Window *main_window)
         LOG_ERROR("Failed to create swapchain!");
         return false;
     }
+
+    vulkan_renderpass_create(
+        &context,
+        &context.main_renderpass,
+        0, 0, context.framebuffer_width, context.framebuffer_height,
+        0.0f, 0.0f, 0.2f, 1.0f,
+        1.0f,
+        0
+    );
+
     return true;
 }
 
@@ -90,8 +101,7 @@ void Backend::shutdown()
 {
     vkDeviceWaitIdle(context.device.logical_device);
 
-    // vulkan_imgui_shutdown(&context);
-
+    vulkan_renderpass_destroy(&context, &context.main_renderpass);
     vulkan_swapchain_destroy(&context, &context.swapchain);
     vulkan_device_destroy(&context);
     vkDestroySurfaceKHR(context.instance, context.surface, context.allocator);
