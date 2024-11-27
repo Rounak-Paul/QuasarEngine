@@ -111,6 +111,8 @@ typedef struct vulkan_context {
     vulkan_swapchain swapchain;
     vulkan_renderpass main_renderpass;
 
+    DynamicArray<vulkan_command_buffer> graphics_command_buffers;
+
     u32 image_index;
     u32 current_frame;
 

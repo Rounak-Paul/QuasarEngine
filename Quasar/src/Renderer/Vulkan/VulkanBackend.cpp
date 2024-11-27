@@ -3,6 +3,7 @@
 #include "VulkanSwapchain.h"
 #include "VulkanImgui.h"
 #include "VulkanRenderpass.h"
+#include "VulkanCommandbuffer.h"
 
 namespace Quasar::Renderer
 {
@@ -66,7 +67,7 @@ b8 Backend::init(String &app_name, Window *main_window)
 
     // Surface
     LOG_DEBUG("Creating Vulkan surface...");
-    if (!create_vulkan_surface(&context, main_window)) {
+    if (!create_vulkan_surface(main_window)) {
         LOG_ERROR("Failed to create platform surface!");
         return false;
     }
@@ -94,12 +95,27 @@ b8 Backend::init(String &app_name, Window *main_window)
         0
     );
 
+    // Create command buffers.
+    create_command_buffers();
+
     return true;
 }
 
 void Backend::shutdown()
 {
     vkDeviceWaitIdle(context.device.logical_device);
+
+    // Command buffers
+    for (u32 i = 0; i < context.swapchain.image_count; ++i) {
+        if (context.graphics_command_buffers[i].handle) {
+            vulkan_command_buffer_free(
+                &context,
+                context.device.graphics_command_pool,
+                &context.graphics_command_buffers[i]);
+            context.graphics_command_buffers[i].handle = 0;
+        }
+    }
+    context.graphics_command_buffers.destroy();
 
     vulkan_renderpass_destroy(&context, &context.main_renderpass);
     vulkan_swapchain_destroy(&context, &context.swapchain);
@@ -223,15 +239,39 @@ VkResult Backend::create_debug_messenger() {
     return VK_SUCCESS;
 }
 
-b8 Backend::create_vulkan_surface(vulkan_context* context, Window* window)
+b8 Backend::create_vulkan_surface(Window* window)
 {
     GLFWwindow* w = window->get_GLFWwindow();
-    auto res = glfwCreateWindowSurface(context->instance, w, context->allocator, &context->surface);
+    auto res = glfwCreateWindowSurface(context.instance, w, context.allocator, &context.surface);
     if (res != VK_SUCCESS)
     {
         LOG_ERROR("Failed to create Window Surface, VkResult: %d", res);
         return false;
     }
     return true;
+}
+void Backend::create_command_buffers()
+{
+    if (context.graphics_command_buffers.is_empty()) {
+        context.graphics_command_buffers.resize(context.swapchain.image_count);
+        for (u32 i = 0; i < context.swapchain.image_count; ++i) {
+            memset(&context.graphics_command_buffers[i], 0, sizeof(vulkan_command_buffer));
+        }
+    }
+    for (u32 i = 0; i < context.swapchain.image_count; ++i) {
+        if (context.graphics_command_buffers[i].handle) {
+            vulkan_command_buffer_free(
+                &context,
+                context.device.graphics_command_pool,
+                &context.graphics_command_buffers[i]);
+        }
+        memset(&context.graphics_command_buffers[i], 0, sizeof(vulkan_command_buffer));
+        vulkan_command_buffer_allocate(
+            &context,
+            context.device.graphics_command_pool,
+            true,
+            &context.graphics_command_buffers[i]);
+    }
+    LOG_DEBUG("Vulkan command buffers created.");
 }
 } // namespace Quasa::Vulkan

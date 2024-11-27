@@ -25,6 +25,7 @@ namespace Quasar::Renderer
         std::vector<const char*> get_required_extensions();
         void populate_debug_messenger_create_info(VkDebugUtilsMessengerCreateInfoEXT& createInfo);
         VkResult create_debug_messenger();
-        b8 create_vulkan_surface(vulkan_context* context, Window* window);
+        b8 create_vulkan_surface(Window* window);
+        void create_command_buffers();
     };
 } // namespace Vulkan
