@@ -27,5 +27,6 @@ namespace Quasar::Renderer
         VkResult create_debug_messenger();
         b8 create_vulkan_surface(Window* window);
         void create_command_buffers();
+        void regenerate_framebuffers(vulkan_swapchain* swapchain, vulkan_renderpass* renderpass);
     };
 } // namespace Vulkan

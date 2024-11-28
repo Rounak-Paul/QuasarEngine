@@ -4,6 +4,8 @@
 #include "VulkanImgui.h"
 #include "VulkanRenderpass.h"
 #include "VulkanCommandbuffer.h"
+#include "VulkanFramebuffer.h"
+#include "VulkanFence.h"
 
 namespace Quasar::Renderer
 {
@@ -79,9 +81,9 @@ b8 Backend::init(String &app_name, Window *main_window)
     }
 
     // Swapchain
-    u32 width = main_window->get_extent().width;
-    u32 height = main_window->get_extent().height;
-    if (!vulkan_swapchain_create(&context, width, height, &context.swapchain)) {
+    context.framebuffer_width = main_window->get_extent().width;
+    context.framebuffer_height = main_window->get_extent().height;
+    if (!vulkan_swapchain_create(&context, context.framebuffer_width, context.framebuffer_height, &context.swapchain)) {
         LOG_ERROR("Failed to create swapchain!");
         return false;
     }
@@ -95,8 +97,35 @@ b8 Backend::init(String &app_name, Window *main_window)
         0
     );
 
+    // Swapchain framebuffers.
+    context.swapchain.framebuffers.resize(context.swapchain.image_count);
+    regenerate_framebuffers(&context.swapchain, &context.main_renderpass);
+
     // Create command buffers.
     create_command_buffers();
+
+    // Create sync objects.
+    context.image_available_semaphores.resize(context.swapchain.max_frames_in_flight);
+    context.queue_complete_semaphores.resize(context.swapchain.max_frames_in_flight);
+    context.in_flight_fences.resize(context.swapchain.max_frames_in_flight);
+
+    for (u8 i = 0; i < context.swapchain.max_frames_in_flight; ++i) {
+        VkSemaphoreCreateInfo semaphore_create_info = {VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
+        vkCreateSemaphore(context.device.logical_device, &semaphore_create_info, context.allocator, &context.image_available_semaphores[i]);
+        vkCreateSemaphore(context.device.logical_device, &semaphore_create_info, context.allocator, &context.queue_complete_semaphores[i]);
+        // Create the fence in a signaled state, indicating that the first frame has already been "rendered".
+        // This will prevent the application from waiting indefinitely for the first frame to render since it
+        // cannot be rendered until a frame is "rendered" before it.
+        vulkan_fence_create(&context, true, &context.in_flight_fences[i]);
+    }
+
+    // In flight fences should not yet exist at this point, so clear the list. These are stored in pointers
+    // because the initial state should be 0, and will be 0 when not in use. Acutal fences are not owned
+    // by this list.
+    context.images_in_flight.resize(context.swapchain.image_count);
+    for (u32 i = 0; i < context.swapchain.image_count; ++i) {
+        context.images_in_flight[i] = 0;
+    }
 
     return true;
 }
@@ -104,6 +133,29 @@ b8 Backend::init(String &app_name, Window *main_window)
 void Backend::shutdown()
 {
     vkDeviceWaitIdle(context.device.logical_device);
+
+    // Sync objects
+    for (u8 i = 0; i < context.swapchain.max_frames_in_flight; ++i) {
+        if (context.image_available_semaphores[i]) {
+            vkDestroySemaphore(
+                context.device.logical_device,
+                context.image_available_semaphores[i],
+                context.allocator);
+            context.image_available_semaphores[i] = 0;
+        }
+        if (context.queue_complete_semaphores[i]) {
+            vkDestroySemaphore(
+                context.device.logical_device,
+                context.queue_complete_semaphores[i],
+                context.allocator);
+            context.queue_complete_semaphores[i] = 0;
+        }
+        vulkan_fence_destroy(&context, &context.in_flight_fences[i]);
+    }
+    context.image_available_semaphores.destroy();
+    context.queue_complete_semaphores.destroy();
+    context.in_flight_fences.destroy();
+    context.images_in_flight.destroy();
 
     // Command buffers
     for (u32 i = 0; i < context.swapchain.image_count; ++i) {
@@ -116,6 +168,11 @@ void Backend::shutdown()
         }
     }
     context.graphics_command_buffers.destroy();
+
+    // Destroy framebuffers
+    for (u32 i = 0; i < context.swapchain.image_count; ++i) {
+        vulkan_framebuffer_destroy(&context, &context.swapchain.framebuffers[i]);
+    }
 
     vulkan_renderpass_destroy(&context, &context.main_renderpass);
     vulkan_swapchain_destroy(&context, &context.swapchain);
@@ -273,5 +330,23 @@ void Backend::create_command_buffers()
             &context.graphics_command_buffers[i]);
     }
     LOG_DEBUG("Vulkan command buffers created.");
+}
+void Backend::regenerate_framebuffers(vulkan_swapchain *swapchain, vulkan_renderpass *renderpass)
+{
+    for (u32 i = 0; i < swapchain->image_count; ++i) {
+        // TODO: make this dynamic based on the currently configured attachments
+        u32 attachment_count = 2;
+        VkImageView attachments[] = {
+            swapchain->views[i],
+            swapchain->depth_attachment.view};
+        vulkan_framebuffer_create(
+            &context,
+            renderpass,
+            context.framebuffer_width,
+            context.framebuffer_height,
+            attachment_count,
+            attachments,
+            &context.swapchain.framebuffers[i]);
+    }
 }
 } // namespace Quasa::Vulkan

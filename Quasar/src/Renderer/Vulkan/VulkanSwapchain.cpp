@@ -66,6 +66,8 @@ void vulkan_swapchain_present(vulkan_context *context, vulkan_swapchain *swapcha
     } else if (result != VK_SUCCESS) {
         LOG_FATAL("Failed to present swap chain image!");
     }
+    // Increment (and loop) the index.
+    context->current_frame = (context->current_frame + 1) % swapchain->max_frames_in_flight;
 }
 
 b8 _create(vulkan_context* context, VkExtent2D swapchain_extent, vulkan_swapchain* swapchain) {
