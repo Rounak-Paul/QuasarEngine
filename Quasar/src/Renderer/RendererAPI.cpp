@@ -21,6 +21,9 @@ void RendererAPI::shutdown() {
 }
 b8 RendererAPI::draw(render_packet* packet)
 {
+    if (packet->app_suspended) {
+        return true;
+    }
     // If the begin frame returned successfully, mid-frame operations may continue.
     if (backend.begin_frame(packet->dt)) {
 

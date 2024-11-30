@@ -117,6 +117,7 @@ namespace Quasar {
 
             render_packet packet;
             packet.dt = 0.f;
+            packet.app_suspended = suspended;
             QS_RENDERER.draw(&packet);
         }
 
@@ -149,10 +150,8 @@ namespace Quasar {
             }
             else {
                 app->suspended = false;
-                LOG_INFO("Application Resized [%u, %u]", width, height)
                 QS_RENDERER.resize(width, height);
             }
-
             return true;
         }
         return false;

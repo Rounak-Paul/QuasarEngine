@@ -49,7 +49,13 @@ b8 vulkan_swapchain_acquire_next_image_index(vulkan_context *context, vulkan_swa
     return true;
 }
 
-void vulkan_swapchain_present(vulkan_context *context, vulkan_swapchain *swapchain, VkQueue present_queue, VkSemaphore render_complete_semaphore, u32 present_image_index)
+void vulkan_swapchain_present(
+    vulkan_context* context,
+    vulkan_swapchain* swapchain,
+    VkQueue graphics_queue,
+    VkQueue present_queue,
+    VkSemaphore render_complete_semaphore,
+    u32 present_image_index)
 {
     // Return the image to the swapchain for presentation.
     VkPresentInfoKHR present_info = {VK_STRUCTURE_TYPE_PRESENT_INFO_KHR};
@@ -59,6 +65,7 @@ void vulkan_swapchain_present(vulkan_context *context, vulkan_swapchain *swapcha
     present_info.pSwapchains = &swapchain->handle;
     present_info.pImageIndices = &present_image_index;
     present_info.pResults = 0;
+
     VkResult result = vkQueuePresentKHR(present_queue, &present_info);
     if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR) {
         // Swapchain is out of date, suboptimal or a framebuffer resize has occurred. Trigger swapchain recreation.
@@ -66,11 +73,13 @@ void vulkan_swapchain_present(vulkan_context *context, vulkan_swapchain *swapcha
     } else if (result != VK_SUCCESS) {
         LOG_FATAL("Failed to present swap chain image!");
     }
+
     // Increment (and loop) the index.
     context->current_frame = (context->current_frame + 1) % swapchain->max_frames_in_flight;
 }
 
 b8 _create(vulkan_context* context, VkExtent2D swapchain_extent, vulkan_swapchain* swapchain) {
+    swapchain->max_frames_in_flight = 2;
     // Choose a swap surface format.
     b8 found = false;
     for (u32 i = 0; i < context->device.swapchain_support.format_count; ++i) {

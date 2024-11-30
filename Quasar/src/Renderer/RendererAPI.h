@@ -12,6 +12,7 @@ typedef struct renderer_system_config {
 
 typedef struct render_packet {
     f32 dt;
+    b8 app_suspended;
 } render_packet;
 
 class RendererAPI : public System {
