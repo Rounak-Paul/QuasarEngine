@@ -8,6 +8,9 @@
 #include "VulkanFence.h"
 #include "VulkanUtils.h"
 #include "VulkanShader.h"
+#include "VulkanBuffer.h"
+
+#include <Math/Math.h>
 
 namespace Quasar::Renderer
 {
@@ -132,7 +135,15 @@ b8 Backend::init(String &app_name, Window *main_window)
         context.images_in_flight[i] = 0;
     }
 
-    vulkan_object_shader_create(&context, &context.object_shader);
+    // Create builtin shaders
+    if (!vulkan_object_shader_create(&context, &context.object_shader)) {
+        LOG_ERROR("Error loading built-in basic_lighting shader.");
+        return false;
+    }
+
+    create_buffers();
+
+    LOG_DEBUG("Vulkan renderer initialized successfully.");
 
     return true;
 }
@@ -140,6 +151,10 @@ b8 Backend::init(String &app_name, Window *main_window)
 void Backend::shutdown()
 {
     vkDeviceWaitIdle(context.device.logical_device);
+
+    // Destroy buffers
+    vulkan_buffer_destroy(&context, &context.object_vertex_buffer);
+    vulkan_buffer_destroy(&context, &context.object_index_buffer);
 
     vulkan_object_shader_destroy(&context, &context.object_shader);
 
@@ -201,7 +216,7 @@ void Backend::resize(u32 width, u32 height)
     cached_framebuffer_width = width;
     cached_framebuffer_height = height;
     context.framebuffer_size_generation++;
-    LOG_INFO("Vulkan renderer backend resized [w, h, gen] [%i, %i, %llu]", width, height, context.framebuffer_size_generation);
+    LOG_DEBUG("Vulkan renderer backend resized [w, h, gen] [%i, %i, %llu]", width, height, context.framebuffer_size_generation);
 }
 
 b8 Backend::begin_frame(f32 dt)
@@ -547,6 +562,35 @@ b8 Backend::recreate_swapchain() {
 
     // Clear the recreating flag.
     context.recreating_swapchain = false;
+    return true;
+}
+b8 Backend::create_buffers()
+{
+    VkMemoryPropertyFlagBits memory_property_flags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+    const u64 vertex_buffer_size = sizeof(Math::Vertex3d) * 1024 * 1024;
+    if (!vulkan_buffer_create(
+            &context,
+            vertex_buffer_size,
+            (VkBufferUsageFlagBits)(VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT),
+            memory_property_flags,
+            true,
+            &context.object_vertex_buffer)) {
+        LOG_ERROR("Error creating vertex buffer.");
+        return false;
+    }
+    context.geometry_vertex_offset = 0;
+    const u64 index_buffer_size = sizeof(u32) * 1024 * 1024;
+    if (!vulkan_buffer_create(
+            &context,
+            index_buffer_size,
+            (VkBufferUsageFlagBits)(VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT),
+            memory_property_flags,
+            true,
+            &context.object_index_buffer)) {
+        LOG_ERROR("Error creating vertex buffer.");
+        return false;
+    }
+    context.geometry_index_offset = 0;
     return true;
 }
 } // namespace Quasa::Vulkan

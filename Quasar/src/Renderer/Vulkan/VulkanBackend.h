@@ -29,5 +29,6 @@ namespace Quasar::Renderer
         void create_command_buffers();
         void regenerate_framebuffers(vulkan_swapchain* swapchain, vulkan_renderpass* renderpass);
         b8 recreate_swapchain();
+        b8 create_buffers();
     };
 } // namespace Vulkan
