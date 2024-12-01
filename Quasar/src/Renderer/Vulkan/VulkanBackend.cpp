@@ -147,14 +147,15 @@ b8 Backend::init(String &app_name, Window *main_window)
     const u32 vert_count = 4;
     Math::Vertex3d verts[vert_count];
     memset(verts, 0, sizeof(Math::Vertex3d) * vert_count);
-    verts[0].position.x = 0.0;
-    verts[0].position.y = -0.5;
-    verts[1].position.x = 0.5;
-    verts[1].position.y = 0.5;
-    verts[2].position.x = 0;
-    verts[2].position.y = 0.5;
-    verts[3].position.x = 0.5;
-    verts[3].position.y = -0.5;
+    const f32 f = 10.0f;
+    verts[0].position.x = -0.5 * f;
+    verts[0].position.y = -0.5 * f;
+    verts[1].position.y = 0.5 * f;
+    verts[1].position.x = 0.5 * f;
+    verts[2].position.x = -0.5 * f;
+    verts[2].position.y = 0.5 * f;
+    verts[3].position.x = 0.5 * f;
+    verts[3].position.y = -0.5 * f;
     const u32 index_count = 6;
     u32 indices[index_count] = {0, 1, 2, 0, 3, 1};
     upload_data_range(context.device.graphics_command_pool, 0, context.device.graphics_queue, &context.object_vertex_buffer, 0, sizeof(Math::Vertex3d) * vert_count, verts);
@@ -311,6 +312,17 @@ b8 Backend::begin_frame(f32 dt)
         &context.main_renderpass,
         context.swapchain.framebuffers[context.image_index].handle);
 
+    return true;
+}
+
+void Backend::update_global_state(Math::Mat4 projection, Math::Mat4 view, Math::Vec3 view_position, Math::Vec4 ambient_colour, i32 mode) {
+    vulkan_command_buffer* command_buffer = &context.graphics_command_buffers[context.image_index];
+    vulkan_object_shader_use(&context, &context.object_shader);
+    context.object_shader.global_ubo.projection = projection;
+    context.object_shader.global_ubo.view = view;
+    // TODO: other ubo properties
+    vulkan_object_shader_update_global_state(&context, &context.object_shader);
+
     // TODO: temporary test code
     vulkan_object_shader_use(&context, &context.object_shader);
     // Bind vertex buffer at offset.
@@ -321,8 +333,6 @@ b8 Backend::begin_frame(f32 dt)
     // Issue the draw.
     vkCmdDrawIndexed(command_buffer->handle, 6, 1, 0, 0, 0);
     // TODO: end temporary test code
-    
-    return true;
 }
 
 b8 Backend::end_frame(f32 dt)

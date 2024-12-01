@@ -2,6 +2,7 @@
 
 #include <Core/System.h>
 #include "Vulkan/VulkanBackend.h"
+#include <Math/Math.h>
 
 namespace Quasar {
 

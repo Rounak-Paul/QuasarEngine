@@ -43,10 +43,7 @@ b8 create_shader_module(
     shader_stages[stage_index].shader_stage_create_info.stage = shader_stage_flag;
     shader_stages[stage_index].shader_stage_create_info.module = shader_stages[stage_index].handle;
     shader_stages[stage_index].shader_stage_create_info.pName = "main";
-    if (file_buffer) {
-        QSMEM.free(file_buffer);
-        file_buffer = 0;
-    }
+
     return true;
 }
 

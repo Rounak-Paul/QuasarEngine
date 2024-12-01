@@ -1,6 +1,7 @@
 #pragma once
 #include <qspch.h>
 #include "VulkanTypes.h"
+#include <Math/Math.h>
 
 namespace Quasar::Renderer
 {
@@ -14,6 +15,7 @@ namespace Quasar::Renderer
         void resize(u32 width, u32 height);
 
         b8 begin_frame(f32 dt);
+        void update_global_state(Math::Mat4 projection, Math::Mat4 view, Math::Vec3 view_position, Math::Vec4 ambient_colour, i32 mode);
         b8 end_frame(f32 dt);
 
         b8 multithreading_enabled = false;

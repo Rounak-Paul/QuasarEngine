@@ -3,41 +3,41 @@
 namespace Quasar::Math {
 
 // Utility functions
-bool float_equal(float a, float b, float epsilon) {
+b8 f32_equal(f32 a, f32 b, f32 epsilon) {
     return std::abs(a - b) <= epsilon;
 }
 
 // Trigonometric functions
-float sin(float radians) {
+f32 sin(f32 radians) {
     return std::sin(radians);
 }
 
-float cos(float radians) {
+f32 cos(f32 radians) {
     return std::cos(radians);
 }
 
-float tan(float radians) {
+f32 tan(f32 radians) {
     return std::tan(radians);
 }
 
 // Square root
-float sqrt(float value) {
+f32 sqrt(f32 value) {
     assert(value >= 0.0f); // Ensure non-negative input
     return std::sqrt(value);
 }
 
 // Absolute value
-float abs(float value) {
+f32 abs(f32 value) {
     return std::fabs(value);
 }
 
 // Vec2 implementations
-Vec2::Vec2(float x, float y) : x(x), y(y) {}
+Vec2::Vec2(f32 x, f32 y) : x(x), y(y) {}
 
 Vec2 Vec2::operator+(const Vec2& other) const { return {x + other.x, y + other.y}; }
 Vec2 Vec2::operator-(const Vec2& other) const { return {x - other.x, y - other.y}; }
-Vec2 Vec2::operator*(float scalar) const { return {x * scalar, y * scalar}; }
-Vec2 Vec2::operator/(float scalar) const {
+Vec2 Vec2::operator*(f32 scalar) const { return {x * scalar, y * scalar}; }
+Vec2 Vec2::operator/(f32 scalar) const {
     assert(scalar != 0.0f);
     return {x / scalar, y / scalar};
 }
@@ -54,38 +54,38 @@ Vec2& Vec2::operator-=(const Vec2& other) {
     return *this;
 }
 
-Vec2& Vec2::operator*=(float scalar) {
+Vec2& Vec2::operator*=(f32 scalar) {
     x *= scalar;
     y *= scalar;
     return *this;
 }
 
-Vec2& Vec2::operator/=(float scalar) {
+Vec2& Vec2::operator/=(f32 scalar) {
     assert(scalar != 0.0f);
     x /= scalar;
     y /= scalar;
     return *this;
 }
 
-float Vec2::length() const { return std::sqrt(x * x + y * y); }
+f32 Vec2::length() const { return std::sqrt(x * x + y * y); }
 
 Vec2 Vec2::normalized() const {
-    float len = length();
+    f32 len = length();
     assert(len != 0.0f);
     return {x / len, y / len};
 }
 
-float Vec2::dot(const Vec2& other) const { return x * other.x + y * other.y; }
+f32 Vec2::dot(const Vec2& other) const { return x * other.x + y * other.y; }
 
 void Vec2::print() const { std::cout << "Vec2(" << x << ", " << y << ")\n"; }
 
 // Vec3 implementations
-Vec3::Vec3(float x, float y, float z) : x(x), y(y), z(z) {}
+Vec3::Vec3(f32 x, f32 y, f32 z) : x(x), y(y), z(z) {}
 
 Vec3 Vec3::operator+(const Vec3& other) const { return {x + other.x, y + other.y, z + other.z}; }
 Vec3 Vec3::operator-(const Vec3& other) const { return {x - other.x, y - other.y, z - other.z}; }
-Vec3 Vec3::operator*(float scalar) const { return {x * scalar, y * scalar, z * scalar}; }
-Vec3 Vec3::operator/(float scalar) const {
+Vec3 Vec3::operator*(f32 scalar) const { return {x * scalar, y * scalar, z * scalar}; }
+Vec3 Vec3::operator/(f32 scalar) const {
     assert(scalar != 0.0f);
     return {x / scalar, y / scalar, z / scalar};
 }
@@ -104,14 +104,14 @@ Vec3& Vec3::operator-=(const Vec3& other) {
     return *this;
 }
 
-Vec3& Vec3::operator*=(float scalar) {
+Vec3& Vec3::operator*=(f32 scalar) {
     x *= scalar;
     y *= scalar;
     z *= scalar;
     return *this;
 }
 
-Vec3& Vec3::operator/=(float scalar) {
+Vec3& Vec3::operator/=(f32 scalar) {
     assert(scalar != 0.0f);
     x /= scalar;
     y /= scalar;
@@ -119,15 +119,15 @@ Vec3& Vec3::operator/=(float scalar) {
     return *this;
 }
 
-float Vec3::length() const { return std::sqrt(x * x + y * y + z * z); }
+f32 Vec3::length() const { return std::sqrt(x * x + y * y + z * z); }
 
 Vec3 Vec3::normalized() const {
-    float len = length();
+    f32 len = length();
     assert(len != 0.0f);
     return {x / len, y / len, z / len};
 }
 
-float Vec3::dot(const Vec3& other) const { return x * other.x + y * other.y + z * other.z; }
+f32 Vec3::dot(const Vec3& other) const { return x * other.x + y * other.y + z * other.z; }
 
 Vec3 Vec3::cross(const Vec3& other) const {
     return {y * other.z - z * other.y, z * other.x - x * other.z, x * other.y - y * other.x};
@@ -136,12 +136,12 @@ Vec3 Vec3::cross(const Vec3& other) const {
 void Vec3::print() const { std::cout << "Vec3(" << x << ", " << y << ", " << z << ")\n"; }
 
 // Vec4 implementations
-Vec4::Vec4(float x, float y, float z, float w) : x(x), y(y), z(z), w(w) {}
+Vec4::Vec4(f32 x, f32 y, f32 z, f32 w) : x(x), y(y), z(z), w(w) {}
 
 Vec4 Vec4::operator+(const Vec4& other) const { return {x + other.x, y + other.y, z + other.z, w + other.w}; }
 Vec4 Vec4::operator-(const Vec4& other) const { return {x - other.x, y - other.y, z - other.z, w - other.w}; }
-Vec4 Vec4::operator*(float scalar) const { return {x * scalar, y * scalar, z * scalar, w * scalar}; }
-Vec4 Vec4::operator/(float scalar) const {
+Vec4 Vec4::operator*(f32 scalar) const { return {x * scalar, y * scalar, z * scalar, w * scalar}; }
+Vec4 Vec4::operator/(f32 scalar) const {
     assert(scalar != 0.0f);
     return {x / scalar, y / scalar, z / scalar, w / scalar};
 }
@@ -162,7 +162,7 @@ Vec4& Vec4::operator-=(const Vec4& other) {
     return *this;
 }
 
-Vec4& Vec4::operator*=(float scalar) {
+Vec4& Vec4::operator*=(f32 scalar) {
     x *= scalar;
     y *= scalar;
     z *= scalar;
@@ -170,7 +170,7 @@ Vec4& Vec4::operator*=(float scalar) {
     return *this;
 }
 
-Vec4& Vec4::operator/=(float scalar) {
+Vec4& Vec4::operator/=(f32 scalar) {
     assert(scalar != 0.0f);
     x /= scalar;
     y /= scalar;
@@ -179,15 +179,15 @@ Vec4& Vec4::operator/=(float scalar) {
     return *this;
 }
 
-float Vec4::length() const { return std::sqrt(x * x + y * y + z * z + w * w); }
+f32 Vec4::length() const { return std::sqrt(x * x + y * y + z * z + w * w); }
 
 Vec4 Vec4::normalized() const {
-    float len = length();
+    f32 len = length();
     assert(len != 0.0f);
     return {x / len, y / len, z / len, w / len};
 }
 
-float Vec4::dot(const Vec4& other) const { return x * other.x + y * other.y + z * other.z + w * other.w; }
+f32 Vec4::dot(const Vec4& other) const { return x * other.x + y * other.y + z * other.z + w * other.w; }
 
 void Vec4::print() const { std::cout << "Vec4(" << x << ", " << y << ", " << z << ", " << w << ")\n"; }
 
@@ -195,7 +195,7 @@ void Vec4::print() const { std::cout << "Vec4(" << x << ", " << y << ", " << z <
 // Mat4
 Mat4 Mat4::identity() {
     Mat4 result = {};
-    for (int i = 0; i < 4; i++) result.elements[i][i] = 1.0f;
+    for (i32 i = 0; i < 4; i++) result.elements[i][i] = 1.0f;
     return result;
 }
 
@@ -215,11 +215,11 @@ Mat4 Mat4::scale(const Vec3& scale) {
     return result;
 }
 
-Mat4 Mat4::rotation(float angle, const Vec3& axis) {
+Mat4 Mat4::rotation(f32 angle, const Vec3& axis) {
     Mat4 result = Mat4::identity();
-    float c = cos(angle);
-    float s = sin(angle);
-    float omc = 1.0f - c;
+    f32 c = cos(angle);
+    f32 s = sin(angle);
+    f32 omc = 1.0f - c;
 
     result.elements[0][0] = axis.x * axis.x * omc + c;
     result.elements[0][1] = axis.x * axis.y * omc - axis.z * s;
@@ -236,9 +236,9 @@ Mat4 Mat4::rotation(float angle, const Vec3& axis) {
     return result;
 }
 
-Mat4 Mat4::perspective(float fov, float aspect, float near, float far) {
+Mat4 Mat4::perspective(f32 fov, f32 aspect, f32 near, f32 far) {
     Mat4 result = {};
-    float tanHalfFOV = tan(fov / 2.0f);
+    f32 tanHalfFOV = tan(fov / 2.0f);
     result.elements[0][0] = 1.0f / (aspect * tanHalfFOV);
     result.elements[1][1] = 1.0f / tanHalfFOV;
     result.elements[2][2] = -(far + near) / (far - near);
@@ -247,7 +247,7 @@ Mat4 Mat4::perspective(float fov, float aspect, float near, float far) {
     return result;
 }
 
-Mat4 Mat4::orthographic(float left, float right, float bottom, float top, float near, float far) {
+Mat4 Mat4::orthographic(f32 left, f32 right, f32 bottom, f32 top, f32 near, f32 far) {
     Mat4 result = Mat4::identity();
     result.elements[0][0] = 2.0f / (right - left);
     result.elements[1][1] = 2.0f / (top - bottom);
@@ -261,8 +261,8 @@ Mat4 Mat4::orthographic(float left, float right, float bottom, float top, float 
 // Matrix-matrix multiplication.
 Mat4 Mat4::operator*(const Mat4& other) const {
     Mat4 result = {};
-    for (int row = 0; row < 4; ++row) {
-        for (int col = 0; col < 4; ++col) {
+    for (i32 row = 0; row < 4; ++row) {
+        for (i32 col = 0; col < 4; ++col) {
             result.elements[row][col] = 
                 elements[row][0] * other.elements[0][col] +
                 elements[row][1] * other.elements[1][col] +
@@ -283,15 +283,15 @@ Vec4 Mat4::operator*(const Vec4& vec) const {
     return result;
 }
 
-Quaternion::Quaternion(float x, float y, float z, float w) : x(x), y(y), z(z), w(w) {}
+Quaternion::Quaternion(f32 x, f32 y, f32 z, f32 w) : x(x), y(y), z(z), w(w) {}
 
 Quaternion Quaternion::identity() {
     return {0, 0, 0, 1};
 }
 
-Quaternion Quaternion::from_axis_angle(const Vec3& axis, float angle) {
-    float halfAngle = angle / 2.0f;
-    float s = sin(halfAngle);
+Quaternion Quaternion::from_axis_angle(const Vec3& axis, f32 angle) {
+    f32 halfAngle = angle / 2.0f;
+    f32 s = sin(halfAngle);
     return {axis.x * s, axis.y * s, axis.z * s, cos(halfAngle)};
 }
 
@@ -300,7 +300,7 @@ Quaternion Quaternion::conjugate() const {
 }
 
 Quaternion Quaternion::normalized() const {
-    float length = sqrt(x * x + y * y + z * z + w * w);
+    f32 length = sqrt(x * x + y * y + z * z + w * w);
     return {x / length, y / length, z / length, w / length};
 }
 
@@ -315,11 +315,11 @@ Quaternion Quaternion::operator*(const Quaternion& other) const {
 
 Vec3 Quaternion::operator*(const Vec3& vec) const {
     Vec3 u{x, y, z};
-    float s = w;
+    f32 s = w;
     return u * 2.0f * u.dot(vec) + vec * (s * s - u.dot(u)) + u.cross(vec) * 2.0f * s;
 }
 
-Vec3 lerp(const Vec3& start, const Vec3& end, float t) {
+Vec3 lerp(const Vec3& start, const Vec3& end, f32 t) {
     return start + (end - start) * t;
 }
 
@@ -328,5 +328,9 @@ Mat4 transform(const Vec3& position, const Quaternion& rotation, const Vec3& sca
     Mat4 rotate = Mat4::rotation(acos(rotation.w) * 2, (Vec3{rotation.x, rotation.y, rotation.z}).normalized());
     Mat4 scaleMat = Mat4::scale(scale);
     return translate * rotate * scaleMat;
+}
+
+f32 deg_to_rad(f32 degrees) {
+    return degrees * (PI / 180.0f);
 }
 } // namespace Quasar::Math

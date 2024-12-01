@@ -1,5 +1,6 @@
 #pragma once
 #include <qspch.h>
+#include <Math/Math.h>
 
 namespace Quasar::Renderer {
 
@@ -14,6 +15,13 @@ const std::vector<const char*> validationLayers = {
     "VK_LAYER_KHRONOS_validation" 
     // ,"VK_LAYER_LUNARG_api_dump" // For all vulkan calls
 };
+
+typedef struct global_uniform_object {
+    Math::Mat4 projection;   // 64 bytes
+    Math::Mat4 view;         // 64 bytes
+    Math::Mat4 m_reserved0;  // 64 bytes, reserved for future use
+    Math::Mat4 m_reserved1;  // 64 bytes, reserved for future use
+} global_uniform_object;
 
 typedef struct vulkan_buffer {
     u64 total_size;
@@ -130,10 +138,24 @@ typedef struct vulkan_pipeline {
     VkPipeline handle;
     VkPipelineLayout pipeline_layout;
 } vulkan_pipeline;
+
 #define OBJECT_SHADER_STAGE_COUNT 2
+
 typedef struct vulkan_object_shader {
     // vertex, fragment
     vulkan_shader_stage stages[OBJECT_SHADER_STAGE_COUNT];
+    VkDescriptorPool global_descriptor_pool;
+    VkDescriptorSetLayout global_descriptor_set_layout;
+
+    // One descriptor set per frame - max 3 for triple-buffering.
+    VkDescriptorSet global_descriptor_sets[3];
+
+    // Global uniform object.
+    global_uniform_object global_ubo;
+
+    // Global uniform buffer.
+    vulkan_buffer global_uniform_buffer;
+
     vulkan_pipeline pipeline;
 } vulkan_object_shader;
 
