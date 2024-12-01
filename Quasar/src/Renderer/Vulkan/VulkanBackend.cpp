@@ -7,6 +7,7 @@
 #include "VulkanFramebuffer.h"
 #include "VulkanFence.h"
 #include "VulkanUtils.h"
+#include "VulkanShader.h"
 
 namespace Quasar::Renderer
 {
@@ -131,12 +132,16 @@ b8 Backend::init(String &app_name, Window *main_window)
         context.images_in_flight[i] = 0;
     }
 
+    vulkan_object_shader_create(&context, &context.object_shader);
+
     return true;
 }
 
 void Backend::shutdown()
 {
     vkDeviceWaitIdle(context.device.logical_device);
+
+    vulkan_object_shader_destroy(&context, &context.object_shader);
 
     // Sync objects
     for (u8 i = 0; i < context.swapchain.max_frames_in_flight; ++i) {

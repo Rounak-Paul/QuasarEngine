@@ -1,9 +1,6 @@
 #version 450
-
-layout(location = 0) in vec3 fragColor;
-
-layout(location = 0) out vec4 outColor;
-
+#extension GL_ARB_separate_shader_objects : enable
+layout(location = 0) out vec4 out_colour;
 void main() {
-    outColor = vec4(fragColor, 1.0);
+    out_colour = vec4(1.0);
 }
