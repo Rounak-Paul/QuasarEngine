@@ -16,6 +16,9 @@
 #include <list>
 #include <algorithm>
 #include <span>
+#include <cmath>
+#include <random>
+#include <array>
 #pragma warning(pop)
 
 // Vendor

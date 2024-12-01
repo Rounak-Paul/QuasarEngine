@@ -1,11 +1,23 @@
 #include "VulkanBackend.h"
 #include "VulkanDevice.h"
 #include "VulkanSwapchain.h"
-#include "VulkanShader.h"
 #include "VulkanImgui.h"
+#include "VulkanRenderpass.h"
+#include "VulkanCommandbuffer.h"
+#include "VulkanFramebuffer.h"
+#include "VulkanFence.h"
+#include "VulkanUtils.h"
+#include "VulkanShader.h"
+#include "VulkanBuffer.h"
+
+#include <Math/Math.h>
 
 namespace Quasar::Renderer
 {
+
+u32 cached_framebuffer_width = 0;
+u32 cached_framebuffer_height = 0;
+
 b8 Backend::init(String &app_name, Window *main_window)
 {
 #ifdef QS_DEBUG 
@@ -14,6 +26,7 @@ b8 Backend::init(String &app_name, Window *main_window)
         return false;
     }
 #endif
+
     VkApplicationInfo app_info = {VK_STRUCTURE_TYPE_APPLICATION_INFO};
     app_info.pApplicationName = app_name.c_str();
     app_info.applicationVersion = VK_MAKE_API_VERSION(0, 1, 3, 0);
@@ -64,7 +77,7 @@ b8 Backend::init(String &app_name, Window *main_window)
 
     // Surface
     LOG_DEBUG("Creating Vulkan surface...");
-    if (!create_vulkan_surface(&context, main_window)) {
+    if (!create_vulkan_surface(main_window)) {
         LOG_ERROR("Failed to create platform surface!");
         return false;
     }
@@ -76,19 +89,80 @@ b8 Backend::init(String &app_name, Window *main_window)
     }
 
     // Swapchain
-    u32 width = main_window->get_extent().width;
-    u32 height = main_window->get_extent().height;
-    if (!vulkan_swapchain_create(&context, width, height, &context.swapchain)) {
-        LOG_ERROR("Failed to create device!");
+    context.framebuffer_width = main_window->get_extent().width;
+    context.framebuffer_height = main_window->get_extent().height;
+    if (!vulkan_swapchain_create(&context, context.framebuffer_width, context.framebuffer_height, &context.swapchain)) {
+        LOG_ERROR("Failed to create swapchain!");
         return false;
     }
 
-    create_renderpass();
-    create_graphics_pipeline();
-    create_framebuffers();
-    create_commandbuffer();
-    create_sync_objects();
-    vulkan_imgui_init(&context, main_window);
+    vulkan_renderpass_create(
+        &context,
+        &context.main_renderpass,
+        0, 0, context.framebuffer_width, context.framebuffer_height,
+        0.0f, 0.0f, 0.2f, 1.0f,
+        1.0f,
+        0
+    );
+
+    // Swapchain framebuffers.
+    context.swapchain.framebuffers.resize(context.swapchain.image_count);
+    regenerate_framebuffers(&context.swapchain, &context.main_renderpass);
+
+    // Create command buffers.
+    create_command_buffers();
+
+    // Create sync objects.
+    context.image_available_semaphores.resize(context.swapchain.max_frames_in_flight);
+    context.queue_complete_semaphores.resize(context.swapchain.max_frames_in_flight);
+    context.in_flight_fences.resize(context.swapchain.max_frames_in_flight);
+
+    for (u8 i = 0; i < context.swapchain.max_frames_in_flight; ++i) {
+        VkSemaphoreCreateInfo semaphore_create_info = {VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
+        vkCreateSemaphore(context.device.logical_device, &semaphore_create_info, context.allocator, &context.image_available_semaphores[i]);
+        vkCreateSemaphore(context.device.logical_device, &semaphore_create_info, context.allocator, &context.queue_complete_semaphores[i]);
+        // Create the fence in a signaled state, indicating that the first frame has already been "rendered".
+        // This will prevent the application from waiting indefinitely for the first frame to render since it
+        // cannot be rendered until a frame is "rendered" before it.
+        vulkan_fence_create(&context, true, &context.in_flight_fences[i]);
+    }
+
+    // In flight fences should not yet exist at this point, so clear the list. These are stored in pointers
+    // because the initial state should be 0, and will be 0 when not in use. Acutal fences are not owned
+    // by this list.
+    context.images_in_flight.resize(context.swapchain.image_count);
+    for (u32 i = 0; i < context.swapchain.image_count; ++i) {
+        context.images_in_flight[i] = 0;
+    }
+
+    // Create builtin shaders
+    if (!vulkan_object_shader_create(&context, &context.object_shader)) {
+        LOG_ERROR("Error loading built-in basic_lighting shader.");
+        return false;
+    }
+
+    create_buffers();
+
+    // TODO: temporary test code
+    const u32 vert_count = 4;
+    Math::Vertex3d verts[vert_count];
+    memset(verts, 0, sizeof(Math::Vertex3d) * vert_count);
+    verts[0].position.x = 0.0;
+    verts[0].position.y = -0.5;
+    verts[1].position.x = 0.5;
+    verts[1].position.y = 0.5;
+    verts[2].position.x = 0;
+    verts[2].position.y = 0.5;
+    verts[3].position.x = 0.5;
+    verts[3].position.y = -0.5;
+    const u32 index_count = 6;
+    u32 indices[index_count] = {0, 1, 2, 0, 3, 1};
+    upload_data_range(context.device.graphics_command_pool, 0, context.device.graphics_queue, &context.object_vertex_buffer, 0, sizeof(Math::Vertex3d) * vert_count, verts);
+    upload_data_range(context.device.graphics_command_pool, 0, context.device.graphics_queue, &context.object_index_buffer, 0, sizeof(u32) * index_count, indices);
+    // TODO: end temp code
+
+    LOG_DEBUG("Vulkan renderer initialized successfully.");
+
     return true;
 }
 
@@ -96,20 +170,53 @@ void Backend::shutdown()
 {
     vkDeviceWaitIdle(context.device.logical_device);
 
-    vulkan_imgui_shutdown(&context);
+    // Destroy buffers
+    vulkan_buffer_destroy(&context, &context.object_vertex_buffer);
+    vulkan_buffer_destroy(&context, &context.object_index_buffer);
 
-    for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
-        vkDestroySemaphore(context.device.logical_device, context.image_available_semaphores[i], context.allocator);
-        vkDestroySemaphore(context.device.logical_device, context.render_finished_semaphores[i], context.allocator);
-        vkDestroyFence(context.device.logical_device, context.in_flight_fences[i], context.allocator);
+    vulkan_object_shader_destroy(&context, &context.object_shader);
+
+    // Sync objects
+    for (u8 i = 0; i < context.swapchain.max_frames_in_flight; ++i) {
+        if (context.image_available_semaphores[i]) {
+            vkDestroySemaphore(
+                context.device.logical_device,
+                context.image_available_semaphores[i],
+                context.allocator);
+            context.image_available_semaphores[i] = 0;
+        }
+        if (context.queue_complete_semaphores[i]) {
+            vkDestroySemaphore(
+                context.device.logical_device,
+                context.queue_complete_semaphores[i],
+                context.allocator);
+            context.queue_complete_semaphores[i] = 0;
+        }
+        vulkan_fence_destroy(&context, &context.in_flight_fences[i]);
+    }
+    context.image_available_semaphores.destroy();
+    context.queue_complete_semaphores.destroy();
+    context.in_flight_fences.destroy();
+    context.images_in_flight.destroy();
+
+    // Command buffers
+    for (u32 i = 0; i < context.swapchain.image_count; ++i) {
+        if (context.graphics_command_buffers[i].handle) {
+            vulkan_command_buffer_free(
+                &context,
+                context.device.graphics_command_pool,
+                &context.graphics_command_buffers[i]);
+            context.graphics_command_buffers[i].handle = 0;
+        }
+    }
+    context.graphics_command_buffers.destroy();
+
+    // Destroy framebuffers
+    for (u32 i = 0; i < context.swapchain.image_count; ++i) {
+        vulkan_framebuffer_destroy(&context, &context.swapchain.framebuffers[i]);
     }
 
-    for (auto framebuffer : context.swapchain_framebuffers) {
-        vkDestroyFramebuffer(context.device.logical_device, framebuffer, context.allocator);
-    }
-    vkDestroyPipeline(context.device.logical_device, context.graphics_pipeline, context.allocator);
-    vkDestroyPipelineLayout(context.device.logical_device, context.pipeline_layout, context.allocator);
-    vkDestroyRenderPass(context.device.logical_device, context.renderpass, context.allocator);
+    vulkan_renderpass_destroy(&context, &context.main_renderpass);
     vulkan_swapchain_destroy(&context, &context.swapchain);
     vulkan_device_destroy(&context);
     vkDestroySurfaceKHR(context.instance, context.surface, context.allocator);
@@ -122,65 +229,156 @@ void Backend::shutdown()
     vkDestroyInstance(context.instance, context.allocator);
 }
 
-void Backend::draw()
-{
-    vkWaitForFences(context.device.logical_device, 1, &context.in_flight_fences[context.current_frame], VK_TRUE, UINT64_MAX);
-    vkResetFences(context.device.logical_device, 1, &context.in_flight_fences[context.current_frame]);
-
-    uint32_t image_index;
-    vkAcquireNextImageKHR(context.device.logical_device, context.swapchain.handle, UINT64_MAX, context.image_available_semaphores[context.current_frame], VK_NULL_HANDLE, &image_index);
-
-    vkResetCommandBuffer(context.commandbuffers[context.current_frame], /*VkCommandBufferResetFlagBits*/ 0);
-
-    vulkan_imgui_render();
-    record_commandbuffer(context.commandbuffers[context.current_frame], image_index);
-    vulkan_imgui_post_render();
-
-    VkSubmitInfo submitInfo{};
-    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-
-    VkSemaphore waitSemaphores[] = {context.image_available_semaphores[context.current_frame]};
-    VkPipelineStageFlags waitStages[] = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
-    submitInfo.waitSemaphoreCount = 1;
-    submitInfo.pWaitSemaphores = waitSemaphores;
-    submitInfo.pWaitDstStageMask = waitStages;
-
-    submitInfo.commandBufferCount = 1;
-    submitInfo.pCommandBuffers = &context.commandbuffers[context.current_frame];
-
-    VkSemaphore signalSemaphores[] = {context.render_finished_semaphores[context.current_frame]};
-    submitInfo.signalSemaphoreCount = 1;
-    submitInfo.pSignalSemaphores = signalSemaphores;
-
-    if (vkQueueSubmit(context.device.graphics_queue, 1, &submitInfo, context.in_flight_fences[context.current_frame]) != VK_SUCCESS) {
-        throw std::runtime_error("failed to submit draw command buffer!");
-    }
-
-    VkPresentInfoKHR presentInfo{};
-    presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
-
-    presentInfo.waitSemaphoreCount = 1;
-    presentInfo.pWaitSemaphores = signalSemaphores;
-
-    VkSwapchainKHR swapChains[] = {context.swapchain.handle};
-    presentInfo.swapchainCount = 1;
-    presentInfo.pSwapchains = swapChains;
-
-    presentInfo.pImageIndices = &image_index;
-
-    vkQueuePresentKHR(context.device.present_queue, &presentInfo);
-
-    context.current_frame = (context.current_frame + 1) % MAX_FRAMES_IN_FLIGHT;
-}
-
 void Backend::resize(u32 width, u32 height)
 {
-    vkDeviceWaitIdle(context.device.logical_device);
-    for (auto framebuffer : context.swapchain_framebuffers) {
-        vkDestroyFramebuffer(context.device.logical_device, framebuffer, context.allocator);
+    cached_framebuffer_width = width;
+    cached_framebuffer_height = height;
+    context.framebuffer_size_generation++;
+    LOG_DEBUG("Vulkan renderer backend resized [w, h, gen] [%i, %i, %llu]", width, height, context.framebuffer_size_generation);
+}
+
+b8 Backend::begin_frame(f32 dt)
+{
+    vulkan_device* device = &context.device;
+    // Check if recreating swap chain and boot out.
+    if (context.recreating_swapchain) {
+        VkResult result = vkDeviceWaitIdle(device->logical_device);
+        if (!vulkan_result_is_success(result)) {
+            LOG_ERROR("vulkan_renderer_backend_begin_frame vkDeviceWaitIdle (1) failed: '%s'", vulkan_result_string(result, true));
+            return false;
+        }
+        LOG_INFO("Recreating swapchain, booting.");
+        return false;
     }
-    vulkan_swapchain_recreate(&context, width, height, &context.swapchain);
-    create_framebuffers();
+    // Check if the framebuffer has been resized. If so, a new swapchain must be created.
+    if (context.framebuffer_size_generation != context.framebuffer_size_last_generation) {
+        VkResult result = vkDeviceWaitIdle(device->logical_device);
+        if (!vulkan_result_is_success(result)) {
+            LOG_ERROR("vulkan_renderer_backend_begin_frame vkDeviceWaitIdle (2) failed: '%s'", vulkan_result_string(result, true));
+            return false;
+        }
+        // If the swapchain recreation failed (because, for example, the window was minimized),
+        // boot out before unsetting the flag.
+        if (!recreate_swapchain()) {
+            return false;
+        }
+        LOG_INFO("Resized, booting.");
+        return false;
+    }
+    // Wait for the execution of the current frame to complete. The fence being free will allow this one to move on.
+    if (!vulkan_fence_wait(
+            &context,
+            &context.in_flight_fences[context.current_frame],
+            UINT64_MAX)) {
+        LOG_WARN("In-flight fence wait failure!");
+        return false;
+    }
+    // Acquire the next image from the swap chain. Pass along the semaphore that should signaled when this completes.
+    // This same semaphore will later be waited on by the queue submission to ensure this image is available.
+    if (!vulkan_swapchain_acquire_next_image_index(
+            &context,
+            &context.swapchain,
+            UINT64_MAX,
+            context.image_available_semaphores[context.current_frame],
+            0,
+            &context.image_index)) {
+        return false;
+    }
+    // Begin recording commands.
+    vulkan_command_buffer* command_buffer = &context.graphics_command_buffers[context.image_index];
+    vulkan_command_buffer_reset(command_buffer);
+    vulkan_command_buffer_begin(command_buffer, false, false, false);
+    // Dynamic state
+    VkViewport viewport;
+    viewport.x = 0.0f;
+    viewport.y = (f32)context.framebuffer_height;
+    viewport.width = (f32)context.framebuffer_width;
+    viewport.height = -(f32)context.framebuffer_height;
+    viewport.minDepth = 0.0f;
+    viewport.maxDepth = 1.0f;
+    // Scissor
+    VkRect2D scissor;
+    scissor.offset.x = scissor.offset.y = 0;
+    scissor.extent.width = context.framebuffer_width;
+    scissor.extent.height = context.framebuffer_height;
+    vkCmdSetViewport(command_buffer->handle, 0, 1, &viewport);
+    vkCmdSetScissor(command_buffer->handle, 0, 1, &scissor);
+    context.main_renderpass.w = context.framebuffer_width;
+    context.main_renderpass.h = context.framebuffer_height;
+    // Begin the render pass.
+    vulkan_renderpass_begin(
+        command_buffer,
+        &context.main_renderpass,
+        context.swapchain.framebuffers[context.image_index].handle);
+
+    // TODO: temporary test code
+    vulkan_object_shader_use(&context, &context.object_shader);
+    // Bind vertex buffer at offset.
+    VkDeviceSize offsets[1] = {0};
+    vkCmdBindVertexBuffers(command_buffer->handle, 0, 1, &context.object_vertex_buffer.handle, (VkDeviceSize*)offsets);
+    // Bind index buffer at offset.
+    vkCmdBindIndexBuffer(command_buffer->handle, context.object_index_buffer.handle, 0, VK_INDEX_TYPE_UINT32);
+    // Issue the draw.
+    vkCmdDrawIndexed(command_buffer->handle, 6, 1, 0, 0, 0);
+    // TODO: end temporary test code
+    
+    return true;
+}
+
+b8 Backend::end_frame(f32 dt)
+{
+    vulkan_command_buffer* command_buffer = &context.graphics_command_buffers[context.image_index];
+    // End renderpass
+    vulkan_renderpass_end(command_buffer, &context.main_renderpass);
+    vulkan_command_buffer_end(command_buffer);
+    // Make sure the previous frame is not using this image (i.e. its fence is being waited on)
+    if (context.images_in_flight[context.image_index] != VK_NULL_HANDLE) {  // was frame
+        vulkan_fence_wait(
+            &context,
+            context.images_in_flight[context.image_index],
+            UINT64_MAX);
+    }
+    // Mark the image fence as in-use by this frame.
+    context.images_in_flight[context.image_index] = &context.in_flight_fences[context.current_frame];
+    // Reset the fence for use on the next frame
+    vulkan_fence_reset(&context, &context.in_flight_fences[context.current_frame]);
+    // Submit the queue and wait for the operation to complete.
+    // Begin queue submission
+    VkSubmitInfo submit_info = {VK_STRUCTURE_TYPE_SUBMIT_INFO};
+    // Command buffer(s) to be executed.
+    submit_info.commandBufferCount = 1;
+    submit_info.pCommandBuffers = &command_buffer->handle;
+    // The semaphore(s) to be signaled when the queue is complete.
+    submit_info.signalSemaphoreCount = 1;
+    submit_info.pSignalSemaphores = &context.queue_complete_semaphores[context.current_frame];
+    // Wait semaphore ensures that the operation cannot begin until the image is available.
+    submit_info.waitSemaphoreCount = 1;
+    submit_info.pWaitSemaphores = &context.image_available_semaphores[context.current_frame];
+    // Each semaphore waits on the corresponding pipeline stage to complete. 1:1 ratio.
+    // VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT prevents subsequent colour attachment
+    // writes from executing until the semaphore signals (i.e. one frame is presented at a time)
+    VkPipelineStageFlags flags[1] = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
+    submit_info.pWaitDstStageMask = flags;
+    VkResult result = vkQueueSubmit(
+        context.device.graphics_queue,
+        1,
+        &submit_info,
+        context.in_flight_fences[context.current_frame].handle);
+    if (result != VK_SUCCESS) {
+        LOG_ERROR("vkQueueSubmit failed with result: %s", vulkan_result_string(result, true));
+        return false;
+    }
+    vulkan_command_buffer_update_submitted(command_buffer);
+    // End queue submission
+    // Give the image back to the swapchain.
+    vulkan_swapchain_present(
+        &context,
+        &context.swapchain,
+        context.device.graphics_queue,
+        context.device.present_queue,
+        context.queue_complete_semaphores[context.current_frame],
+        context.image_index);
+    return true;
 }
 
 b8 Backend::check_validation_layer_support() {
@@ -276,10 +474,10 @@ VkResult Backend::create_debug_messenger() {
     return VK_SUCCESS;
 }
 
-b8 Backend::create_vulkan_surface(VulkanContext* context, Window* window)
+b8 Backend::create_vulkan_surface(Window* window)
 {
     GLFWwindow* w = window->get_GLFWwindow();
-    auto res = glfwCreateWindowSurface(context->instance, w, context->allocator, &context->surface);
+    auto res = glfwCreateWindowSurface(context.instance, w, context.allocator, &context.surface);
     if (res != VK_SUCCESS)
     {
         LOG_ERROR("Failed to create Window Surface, VkResult: %d", res);
@@ -287,248 +485,156 @@ b8 Backend::create_vulkan_surface(VulkanContext* context, Window* window)
     }
     return true;
 }
-void Backend::create_graphics_pipeline()
+void Backend::create_command_buffers()
 {
-    auto vert_shader_module = vulkan_shader_module_create(&context, "../Shaders/Builtin.World.vert.spv");
-    auto frag_shader_module = vulkan_shader_module_create(&context, "../Shaders/Builtin.World.frag.spv");
-
-    VkPipelineShaderStageCreateInfo vertShaderStageInfo{};
-    vertShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-    vertShaderStageInfo.stage = VK_SHADER_STAGE_VERTEX_BIT;
-    vertShaderStageInfo.module = vert_shader_module;
-    vertShaderStageInfo.pName = "main";
-
-    VkPipelineShaderStageCreateInfo fragShaderStageInfo{};
-    fragShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-    fragShaderStageInfo.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
-    fragShaderStageInfo.module = frag_shader_module;
-    fragShaderStageInfo.pName = "main";
-
-    VkPipelineShaderStageCreateInfo shaderStages[] = {vertShaderStageInfo, fragShaderStageInfo};
-
-    VkPipelineVertexInputStateCreateInfo vertexInputInfo{};
-    vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
-    vertexInputInfo.vertexBindingDescriptionCount = 0;
-    vertexInputInfo.vertexAttributeDescriptionCount = 0;
-
-    VkPipelineInputAssemblyStateCreateInfo inputAssembly{};
-    inputAssembly.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
-    inputAssembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
-    inputAssembly.primitiveRestartEnable = VK_FALSE;
-
-    VkPipelineViewportStateCreateInfo viewportState{};
-    viewportState.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
-    viewportState.viewportCount = 1;
-    viewportState.scissorCount = 1;
-
-    VkPipelineRasterizationStateCreateInfo rasterizer{};
-    rasterizer.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
-    rasterizer.depthClampEnable = VK_FALSE;
-    rasterizer.rasterizerDiscardEnable = VK_FALSE;
-    rasterizer.polygonMode = VK_POLYGON_MODE_FILL;
-    rasterizer.lineWidth = 1.0f;
-    rasterizer.cullMode = VK_CULL_MODE_BACK_BIT;
-    rasterizer.frontFace = VK_FRONT_FACE_CLOCKWISE;
-    rasterizer.depthBiasEnable = VK_FALSE;
-
-    VkPipelineMultisampleStateCreateInfo multisampling{};
-    multisampling.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
-    multisampling.sampleShadingEnable = VK_FALSE;
-    multisampling.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
-
-    VkPipelineColorBlendAttachmentState colorBlendAttachment{};
-    colorBlendAttachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
-    colorBlendAttachment.blendEnable = VK_FALSE;
-
-    VkPipelineColorBlendStateCreateInfo colorBlending{};
-    colorBlending.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
-    colorBlending.logicOpEnable = VK_FALSE;
-    colorBlending.logicOp = VK_LOGIC_OP_COPY;
-    colorBlending.attachmentCount = 1;
-    colorBlending.pAttachments = &colorBlendAttachment;
-    colorBlending.blendConstants[0] = 0.0f;
-    colorBlending.blendConstants[1] = 0.0f;
-    colorBlending.blendConstants[2] = 0.0f;
-    colorBlending.blendConstants[3] = 0.0f;
-
-    std::vector<VkDynamicState> dynamicStates = {
-        VK_DYNAMIC_STATE_VIEWPORT,
-        VK_DYNAMIC_STATE_SCISSOR
-    };
-    VkPipelineDynamicStateCreateInfo dynamicState{};
-    dynamicState.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
-    dynamicState.dynamicStateCount = static_cast<uint32_t>(dynamicStates.size());
-    dynamicState.pDynamicStates = dynamicStates.data();
-
-    VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
-    pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-    pipelineLayoutInfo.setLayoutCount = 0;
-    pipelineLayoutInfo.pushConstantRangeCount = 0;
-
-    if (vkCreatePipelineLayout(context.device.logical_device, &pipelineLayoutInfo, context.allocator, &context.pipeline_layout) != VK_SUCCESS) {
-        throw std::runtime_error("failed to create pipeline layout!");
+    if (context.graphics_command_buffers.is_empty()) {
+        context.graphics_command_buffers.resize(context.swapchain.image_count);
+        for (u32 i = 0; i < context.swapchain.image_count; ++i) {
+            memset(&context.graphics_command_buffers[i], 0, sizeof(vulkan_command_buffer));
+        }
     }
-
-    VkGraphicsPipelineCreateInfo pipelineInfo{};
-    pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
-    pipelineInfo.stageCount = 2;
-    pipelineInfo.pStages = shaderStages;
-    pipelineInfo.pVertexInputState = &vertexInputInfo;
-    pipelineInfo.pInputAssemblyState = &inputAssembly;
-    pipelineInfo.pViewportState = &viewportState;
-    pipelineInfo.pRasterizationState = &rasterizer;
-    pipelineInfo.pMultisampleState = &multisampling;
-    pipelineInfo.pColorBlendState = &colorBlending;
-    pipelineInfo.pDynamicState = &dynamicState;
-    pipelineInfo.layout = context.pipeline_layout;
-    pipelineInfo.renderPass = context.renderpass;
-    pipelineInfo.subpass = 0;
-    pipelineInfo.basePipelineHandle = VK_NULL_HANDLE;
-
-    if (vkCreateGraphicsPipelines(context.device.logical_device, VK_NULL_HANDLE, 1, &pipelineInfo, context.allocator, &context.graphics_pipeline) != VK_SUCCESS) {
-        throw std::runtime_error("failed to create graphics pipeline!");
+    for (u32 i = 0; i < context.swapchain.image_count; ++i) {
+        if (context.graphics_command_buffers[i].handle) {
+            vulkan_command_buffer_free(
+                &context,
+                context.device.graphics_command_pool,
+                &context.graphics_command_buffers[i]);
+        }
+        memset(&context.graphics_command_buffers[i], 0, sizeof(vulkan_command_buffer));
+        vulkan_command_buffer_allocate(
+            &context,
+            context.device.graphics_command_pool,
+            true,
+            &context.graphics_command_buffers[i]);
     }
-
-    vulkan_shader_module_destroy(&context, vert_shader_module);
-    vulkan_shader_module_destroy(&context, frag_shader_module);
+    LOG_DEBUG("Vulkan command buffers created.");
 }
-void Backend::create_renderpass()
+void Backend::regenerate_framebuffers(vulkan_swapchain *swapchain, vulkan_renderpass *renderpass)
 {
-    VkAttachmentDescription colorAttachment{};
-    colorAttachment.format = context.swapchain.format.format;
-    colorAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
-    colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-    colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-    colorAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-    colorAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-    colorAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    colorAttachment.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-
-    VkAttachmentReference colorAttachmentRef{};
-    colorAttachmentRef.attachment = 0;
-    colorAttachmentRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-
-    VkSubpassDescription subpass{};
-    subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
-    subpass.colorAttachmentCount = 1;
-    subpass.pColorAttachments = &colorAttachmentRef;
-
-    VkRenderPassCreateInfo renderPassInfo{};
-    renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
-    renderPassInfo.attachmentCount = 1;
-    renderPassInfo.pAttachments = &colorAttachment;
-    renderPassInfo.subpassCount = 1;
-    renderPassInfo.pSubpasses = &subpass;
-
-    if (vkCreateRenderPass(context.device.logical_device, &renderPassInfo, context.allocator, &context.renderpass) != VK_SUCCESS) {
-        throw std::runtime_error("failed to create render pass!");
-    }
-}
-void Backend::create_framebuffers()
-{
-    context.swapchain_framebuffers.resize(context.swapchain.image_count);
-
-    for (size_t i = 0; i < context.swapchain.image_count; i++) {
+    for (u32 i = 0; i < swapchain->image_count; ++i) {
+        // TODO: make this dynamic based on the currently configured attachments
+        u32 attachment_count = 2;
         VkImageView attachments[] = {
-            context.swapchain.images[i].view
-        };
-
-        VkFramebufferCreateInfo framebufferInfo{};
-        framebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
-        framebufferInfo.renderPass = context.renderpass;
-        framebufferInfo.attachmentCount = 1;
-        framebufferInfo.pAttachments = attachments;
-        framebufferInfo.width = context.swapchain.images[0].extent.width;
-        framebufferInfo.height = context.swapchain.images[0].extent.height;
-        framebufferInfo.layers = 1;
-
-        if (vkCreateFramebuffer(context.device.logical_device, &framebufferInfo, nullptr, &context.swapchain_framebuffers[i]) != VK_SUCCESS) {
-            throw std::runtime_error("failed to create framebuffer!");
-        }
-    }
-}
-void Backend::create_commandbuffer()
-{   
-    context.commandbuffers.resize(MAX_FRAMES_IN_FLIGHT);
-    VkCommandBufferAllocateInfo allocInfo{};
-    allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-    allocInfo.commandPool = context.device.graphics_command_pool;
-    allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-    allocInfo.commandBufferCount = (uint32_t) context.commandbuffers.size();
-
-    if (vkAllocateCommandBuffers(context.device.logical_device, &allocInfo, context.commandbuffers.data()) != VK_SUCCESS) {
-        throw std::runtime_error("failed to allocate command buffers!");
+            swapchain->views[i],
+            swapchain->depth_attachment.view};
+        vulkan_framebuffer_create(
+            &context,
+            renderpass,
+            context.framebuffer_width,
+            context.framebuffer_height,
+            attachment_count,
+            attachments,
+            &context.swapchain.framebuffers[i]);
     }
 }
 
-void Backend::record_commandbuffer(VkCommandBuffer command_buffer, uint32_t image_index)
+b8 Backend::recreate_swapchain() {
+    // If already being recreated, do not try again.
+    if (context.recreating_swapchain) {
+        LOG_DEBUG("recreate_swapchain called when already recreating. Booting.");
+        return false;
+    }
+
+    // Detect if the window is too small to be drawn to
+    if (context.framebuffer_width == 0 || context.framebuffer_height == 0) {
+        LOG_DEBUG("recreate_swapchain called when window is < 1 in a dimension. Booting.");
+        return false;
+    }
+
+    // Mark as recreating if the dimensions are valid.
+    context.recreating_swapchain = true;
+
+    // Wait for any operations to complete.
+    vkDeviceWaitIdle(context.device.logical_device);
+    // Clear these out just in case.
+    for (u32 i = 0; i < context.swapchain.image_count; ++i) {
+        context.images_in_flight[i] = 0;
+    }
+
+    // Requery support
+    vulkan_device_query_swapchain_support(
+        context.device.physical_device,
+        context.surface,
+        &context.device.swapchain_support);
+    vulkan_device_detect_depth_format(&context.device);
+    vulkan_swapchain_recreate(
+        &context,
+        cached_framebuffer_width,
+        cached_framebuffer_height,
+        &context.swapchain);
+    
+    // Sync the framebuffer size with the cached sizes.
+    context.framebuffer_width = cached_framebuffer_width;
+    context.framebuffer_height = cached_framebuffer_height;
+    context.main_renderpass.w = context.framebuffer_width;
+    context.main_renderpass.h = context.framebuffer_height;
+    cached_framebuffer_width = 0;
+    cached_framebuffer_height = 0;
+
+    // Update framebuffer size generation.
+    context.framebuffer_size_last_generation = context.framebuffer_size_generation;
+
+    // cleanup swapchain
+    for (u32 i = 0; i < context.swapchain.image_count; ++i) {
+        vulkan_command_buffer_free(&context, context.device.graphics_command_pool, &context.graphics_command_buffers[i]);
+    }
+    
+    // Framebuffers.
+    for (u32 i = 0; i < context.swapchain.image_count; ++i) {
+        vulkan_framebuffer_destroy(&context, &context.swapchain.framebuffers[i]);
+    }
+    context.main_renderpass.x = 0;
+    context.main_renderpass.y = 0;
+    context.main_renderpass.w = context.framebuffer_width;
+    context.main_renderpass.h = context.framebuffer_height;
+    regenerate_framebuffers(&context.swapchain, &context.main_renderpass);
+    create_command_buffers();
+
+    // Clear the recreating flag.
+    context.recreating_swapchain = false;
+    return true;
+}
+
+b8 Backend::create_buffers()
 {
-    VkCommandBufferBeginInfo beginInfo{};
-    beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-
-    if (vkBeginCommandBuffer(command_buffer, &beginInfo) != VK_SUCCESS) {
-        throw std::runtime_error("failed to begin recording command buffer!");
+    VkMemoryPropertyFlagBits memory_property_flags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+    const u64 vertex_buffer_size = sizeof(Math::Vertex3d) * 1024 * 1024;
+    if (!vulkan_buffer_create(
+            &context,
+            vertex_buffer_size,
+            (VkBufferUsageFlagBits)(VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT),
+            memory_property_flags,
+            true,
+            &context.object_vertex_buffer)) {
+        LOG_ERROR("Error creating vertex buffer.");
+        return false;
     }
-
-    VkRenderPassBeginInfo renderPassInfo{};
-    renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-    renderPassInfo.renderPass = context.renderpass;
-    renderPassInfo.framebuffer = context.swapchain_framebuffers[image_index];
-    renderPassInfo.renderArea.offset = {0, 0};
-    renderPassInfo.renderArea.extent = {context.swapchain.images[image_index].extent.width, context.swapchain.images[image_index].extent.height};
-
-    VkClearValue clearColor = {{{0.0f, 0.0f, 0.0f, 1.0f}}};
-    renderPassInfo.clearValueCount = 1;
-    renderPassInfo.pClearValues = &clearColor;
-
-    vkCmdBeginRenderPass(command_buffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
-
-        vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, context.graphics_pipeline);
-
-        VkViewport viewport{};
-        viewport.x = 0.0f;
-        viewport.y = 0.0f;
-        viewport.width = (float) context.swapchain.images[image_index].extent.width;
-        viewport.height = (float) context.swapchain.images[image_index].extent.height;
-        viewport.minDepth = 0.0f;
-        viewport.maxDepth = 1.0f;
-        vkCmdSetViewport(command_buffer, 0, 1, &viewport);
-
-        VkRect2D scissor{};
-        scissor.offset = {0, 0};
-        scissor.extent = {context.swapchain.images[image_index].extent.width, context.swapchain.images[image_index].extent.height};
-        vkCmdSetScissor(command_buffer, 0, 1, &scissor);            
-
-        vkCmdDraw(command_buffer, 3, 1, 0, 0);
-
-        ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), command_buffer);
-
-    vkCmdEndRenderPass(command_buffer);
-
-    if (vkEndCommandBuffer(command_buffer) != VK_SUCCESS) {
-        throw std::runtime_error("failed to record command buffer!");
+    context.geometry_vertex_offset = 0;
+    const u64 index_buffer_size = sizeof(u32) * 1024 * 1024;
+    if (!vulkan_buffer_create(
+            &context,
+            index_buffer_size,
+            (VkBufferUsageFlagBits)(VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT),
+            memory_property_flags,
+            true,
+            &context.object_index_buffer)) {
+        LOG_ERROR("Error creating vertex buffer.");
+        return false;
     }
+    context.geometry_index_offset = 0;
+    return true;
 }
-void Backend::create_sync_objects()
-{
-    context.image_available_semaphores.resize(MAX_FRAMES_IN_FLIGHT);
-    context.render_finished_semaphores.resize(MAX_FRAMES_IN_FLIGHT);
-    context.in_flight_fences.resize(MAX_FRAMES_IN_FLIGHT);
 
-    VkSemaphoreCreateInfo semaphoreInfo{};
-    semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
-
-    VkFenceCreateInfo fenceInfo{};
-    fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-    fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
-
-    for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
-        if (vkCreateSemaphore(context.device.logical_device, &semaphoreInfo, context.allocator, &context.image_available_semaphores[i]) != VK_SUCCESS ||
-            vkCreateSemaphore(context.device.logical_device, &semaphoreInfo, context.allocator, &context.render_finished_semaphores[i]) != VK_SUCCESS ||
-            vkCreateFence(context.device.logical_device, &fenceInfo, context.allocator, &context.in_flight_fences[i]) != VK_SUCCESS) {
-
-            throw std::runtime_error("failed to create synchronization objects for a frame!");
-        }
-    }
+void Backend::upload_data_range(VkCommandPool pool, VkFence fence, VkQueue queue, vulkan_buffer* buffer, u64 offset, u64 size, void* data) {
+    // Create a host-visible staging buffer to upload to. Mark it as the source of the transfer.
+    VkBufferUsageFlags flags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+    vulkan_buffer staging;
+    vulkan_buffer_create(&context, size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, flags, true, &staging);
+    // Load the data into the staging buffer.
+    vulkan_buffer_load_data(&context, &staging, 0, size, 0, data);
+    // Perform the copy from staging to the device local buffer.
+    vulkan_buffer_copy_to(&context, pool, fence, queue, staging.handle, 0, buffer->handle, offset, size);
+    // Clean up the staging buffer.
+    vulkan_buffer_destroy(&context, &staging);
 }
 } // namespace Quasa::Vulkan

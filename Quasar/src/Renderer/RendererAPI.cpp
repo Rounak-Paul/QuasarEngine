@@ -19,9 +19,24 @@ b8 RendererAPI::init(void* config) {
 void RendererAPI::shutdown() {
     backend.shutdown();
 }
-void RendererAPI::draw()
+b8 RendererAPI::draw(render_packet* packet)
 {
-    backend.draw();
+    if (packet->app_suspended) {
+        return true;
+    }
+    // If the begin frame returned successfully, mid-frame operations may continue.
+    if (backend.begin_frame(packet->dt)) {
+
+        // End the frame. If this fails, it is likely unrecoverable.
+        b8 result = backend.end_frame(packet->dt);
+
+        if (!result) {
+            LOG_ERROR("renderer_end_frame failed. Application shutting down...");
+            return false;
+        }
+    }
+
+    return true;
 }
 void RendererAPI::resize(u32 width, u32 height)
 {

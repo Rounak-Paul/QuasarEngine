@@ -3,7 +3,8 @@
 
 #include"VulkanTypes.h"
 
-namespace Quasar::Renderer {
-VkShaderModule vulkan_shader_module_create(VulkanContext* context, String shader_file);
-void vulkan_shader_module_destroy(VulkanContext* context, VkShaderModule module);
+namespace Quasar::Renderer { 
+b8 vulkan_object_shader_create(vulkan_context* context, vulkan_object_shader* out_shader);
+void vulkan_object_shader_destroy(vulkan_context* context, struct vulkan_object_shader* shader);
+void vulkan_object_shader_use(vulkan_context* context, struct vulkan_object_shader* shader);
 }
