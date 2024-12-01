@@ -30,5 +30,6 @@ namespace Quasar::Renderer
         void regenerate_framebuffers(vulkan_swapchain* swapchain, vulkan_renderpass* renderpass);
         b8 recreate_swapchain();
         b8 create_buffers();
+        void upload_data_range(VkCommandPool pool, VkFence fence, VkQueue queue, vulkan_buffer* buffer, u64 offset, u64 size, void* data);
     };
 } // namespace Vulkan
