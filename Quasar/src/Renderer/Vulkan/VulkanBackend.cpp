@@ -317,22 +317,14 @@ b8 Backend::begin_frame(f32 dt)
 
 void Backend::update_global_state(Math::Mat4 projection, Math::Mat4 view, Math::Vec3 view_position, Math::Vec4 ambient_colour, i32 mode) {
     vulkan_command_buffer* command_buffer = &context.graphics_command_buffers[context.image_index];
+
     vulkan_object_shader_use(&context, &context.object_shader);
+
     context.object_shader.global_ubo.projection = projection;
     context.object_shader.global_ubo.view = view;
     // TODO: other ubo properties
-    vulkan_object_shader_update_global_state(&context, &context.object_shader);
 
-    // TODO: temporary test code
-    vulkan_object_shader_use(&context, &context.object_shader);
-    // Bind vertex buffer at offset.
-    VkDeviceSize offsets[1] = {0};
-    vkCmdBindVertexBuffers(command_buffer->handle, 0, 1, &context.object_vertex_buffer.handle, (VkDeviceSize*)offsets);
-    // Bind index buffer at offset.
-    vkCmdBindIndexBuffer(command_buffer->handle, context.object_index_buffer.handle, 0, VK_INDEX_TYPE_UINT32);
-    // Issue the draw.
-    vkCmdDrawIndexed(command_buffer->handle, 6, 1, 0, 0, 0);
-    // TODO: end temporary test code
+    vulkan_object_shader_update_global_state(&context, &context.object_shader);
 }
 
 b8 Backend::end_frame(f32 dt)
@@ -389,6 +381,24 @@ b8 Backend::end_frame(f32 dt)
         context.queue_complete_semaphores[context.current_frame],
         context.image_index);
     return true;
+}
+
+void Backend::update_object(Math::Mat4 model)
+{
+    vulkan_command_buffer* command_buffer = &context.graphics_command_buffers[context.image_index];
+    
+    vulkan_object_shader_update_object(&context, &context.object_shader, model);
+    
+    // TODO: temporary test code
+    vulkan_object_shader_use(&context, &context.object_shader);
+    // Bind vertex buffer at offset.
+    VkDeviceSize offsets[1] = {0};
+    vkCmdBindVertexBuffers(command_buffer->handle, 0, 1, &context.object_vertex_buffer.handle, (VkDeviceSize*)offsets);
+    // Bind index buffer at offset.
+    vkCmdBindIndexBuffer(command_buffer->handle, context.object_index_buffer.handle, 0, VK_INDEX_TYPE_UINT32);
+    // Issue the draw.
+    vkCmdDrawIndexed(command_buffer->handle, 6, 1, 0, 0, 0);
+    // TODO: end temporary test code
 }
 
 b8 Backend::check_validation_layer_support() {

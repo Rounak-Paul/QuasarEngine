@@ -17,12 +17,14 @@ b8 vulkan_graphics_pipeline_create(
     VkRect2D scissor,
     b8 is_wireframe,
     vulkan_pipeline* out_pipeline) {
+
     // Viewport state
     VkPipelineViewportStateCreateInfo viewport_state = {VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO};
     viewport_state.viewportCount = 1;
     viewport_state.pViewports = &viewport;
     viewport_state.scissorCount = 1;
     viewport_state.pScissors = &scissor;
+
     // Rasterizer
     VkPipelineRasterizationStateCreateInfo rasterizer_create_info = {VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO};
     rasterizer_create_info.depthClampEnable = VK_FALSE;
@@ -35,6 +37,7 @@ b8 vulkan_graphics_pipeline_create(
     rasterizer_create_info.depthBiasConstantFactor = 0.0f;
     rasterizer_create_info.depthBiasClamp = 0.0f;
     rasterizer_create_info.depthBiasSlopeFactor = 0.0f;
+
     // Multisampling.
     VkPipelineMultisampleStateCreateInfo multisampling_create_info = {VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO};
     multisampling_create_info.sampleShadingEnable = VK_FALSE;
@@ -43,6 +46,7 @@ b8 vulkan_graphics_pipeline_create(
     multisampling_create_info.pSampleMask = 0;
     multisampling_create_info.alphaToCoverageEnable = VK_FALSE;
     multisampling_create_info.alphaToOneEnable = VK_FALSE;
+
     // Depth and stencil testing.
     VkPipelineDepthStencilStateCreateInfo depth_stencil = {VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO};
     depth_stencil.depthTestEnable = VK_TRUE;
@@ -66,6 +70,7 @@ b8 vulkan_graphics_pipeline_create(
     color_blend_state_create_info.logicOp = VK_LOGIC_OP_COPY;
     color_blend_state_create_info.attachmentCount = 1;
     color_blend_state_create_info.pAttachments = &color_blend_attachment_state;
+
     // Dynamic state
     const u32 dynamic_state_count = 3;
     VkDynamicState dynamic_states[dynamic_state_count] = {
@@ -75,32 +80,47 @@ b8 vulkan_graphics_pipeline_create(
     VkPipelineDynamicStateCreateInfo dynamic_state_create_info = {VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO};
     dynamic_state_create_info.dynamicStateCount = dynamic_state_count;
     dynamic_state_create_info.pDynamicStates = dynamic_states;
+
     // Vertex input
     VkVertexInputBindingDescription binding_description;
     binding_description.binding = 0;  // Binding index
     binding_description.stride = sizeof(Math::Vertex3d);
     binding_description.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;  // Move to next data entry for each vertex.
+
     // Attributes
     VkPipelineVertexInputStateCreateInfo vertex_input_info = {VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO};
     vertex_input_info.vertexBindingDescriptionCount = 1;
     vertex_input_info.pVertexBindingDescriptions = &binding_description;
     vertex_input_info.vertexAttributeDescriptionCount = attribute_count;
     vertex_input_info.pVertexAttributeDescriptions = attributes;
+
     // Input assembly
     VkPipelineInputAssemblyStateCreateInfo input_assembly = {VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO};
     input_assembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
     input_assembly.primitiveRestartEnable = VK_FALSE;
+
     // Pipeline layout
     VkPipelineLayoutCreateInfo pipeline_layout_create_info = {VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};
+
+    // Push constants
+    VkPushConstantRange push_constant;
+    push_constant.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+    push_constant.offset = sizeof(Math::Mat4) * 0;
+    push_constant.size = sizeof(Math::Mat4) * 2;
+    pipeline_layout_create_info.pushConstantRangeCount = 1;
+    pipeline_layout_create_info.pPushConstantRanges = &push_constant;
+
     // Descriptor set layouts
     pipeline_layout_create_info.setLayoutCount = descriptor_set_layout_count;
     pipeline_layout_create_info.pSetLayouts = descriptor_set_layouts;
+
     // Create the pipeline layout.
     VK_CHECK(vkCreatePipelineLayout(
         context->device.logical_device,
         &pipeline_layout_create_info,
         context->allocator,
         &out_pipeline->pipeline_layout));
+        
     // Pipeline create
     VkGraphicsPipelineCreateInfo pipeline_create_info = {VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO};
     pipeline_create_info.stageCount = stage_count;

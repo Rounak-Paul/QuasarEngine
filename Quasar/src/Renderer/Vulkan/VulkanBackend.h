@@ -17,6 +17,7 @@ namespace Quasar::Renderer
         b8 begin_frame(f32 dt);
         void update_global_state(Math::Mat4 projection, Math::Mat4 view, Math::Vec3 view_position, Math::Vec4 ambient_colour, i32 mode);
         b8 end_frame(f32 dt);
+        void update_object(Math::Mat4 model);
 
         b8 multithreading_enabled = false;
 
