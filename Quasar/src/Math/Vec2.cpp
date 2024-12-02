@@ -2,14 +2,14 @@
 
 namespace Quasar::Math
 {
-Vec2::Vec2(f32 value) : x(value), y(value) {}
+Vec2::Vec2(f32 f) : x(f), y(f) {}
 
 Vec2::Vec2(f32 x, f32 y) : x(x), y(y) {}
 
 Vec2 Vec2::operator+(const Vec2& other) const { return {x + other.x, y + other.y}; }
 Vec2 Vec2::operator-(const Vec2& other) const { return {x - other.x, y - other.y}; }
 Vec2 Vec2::operator*(f32 scalar) const { return {x * scalar, y * scalar}; }
-Vec2 Vec2::operator*(const Vec2& other) const { return x * other.x + y * other.y; }
+Vec2 Vec2::operator*(const Vec2& other) const { return {x * other.x, y * other.y}; }
 Vec2 Vec2::operator/(f32 scalar) const {
     assert(scalar != 0.0f);
     return {x / scalar, y / scalar};

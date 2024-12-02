@@ -30,63 +30,6 @@ f32 sqrt(f32 value) {
 f32 abs(f32 value) {
     return std::fabs(value);
 }
-
-// Vec3 implementations
-Vec3::Vec3(f32 x, f32 y, f32 z) : x(x), y(y), z(z) {}
-
-Vec3 Vec3::operator+(const Vec3& other) const { return {x + other.x, y + other.y, z + other.z}; }
-Vec3 Vec3::operator-(const Vec3& other) const { return {x - other.x, y - other.y, z - other.z}; }
-Vec3 Vec3::operator*(f32 scalar) const { return {x * scalar, y * scalar, z * scalar}; }
-Vec3 Vec3::operator/(f32 scalar) const {
-    assert(scalar != 0.0f);
-    return {x / scalar, y / scalar, z / scalar};
-}
-
-Vec3& Vec3::operator+=(const Vec3& other) {
-    x += other.x;
-    y += other.y;
-    z += other.z;
-    return *this;
-}
-
-Vec3& Vec3::operator-=(const Vec3& other) {
-    x -= other.x;
-    y -= other.y;
-    z -= other.z;
-    return *this;
-}
-
-Vec3& Vec3::operator*=(f32 scalar) {
-    x *= scalar;
-    y *= scalar;
-    z *= scalar;
-    return *this;
-}
-
-Vec3& Vec3::operator/=(f32 scalar) {
-    assert(scalar != 0.0f);
-    x /= scalar;
-    y /= scalar;
-    z /= scalar;
-    return *this;
-}
-
-f32 Vec3::length() const { return std::sqrt(x * x + y * y + z * z); }
-
-Vec3 Vec3::normalized() const {
-    f32 len = length();
-    assert(len != 0.0f);
-    return {x / len, y / len, z / len};
-}
-
-f32 Vec3::dot(const Vec3& other) const { return x * other.x + y * other.y + z * other.z; }
-
-Vec3 Vec3::cross(const Vec3& other) const {
-    return {y * other.z - z * other.y, z * other.x - x * other.z, x * other.y - y * other.x};
-}
-
-void Vec3::print() const { std::cout << "Vec3(" << x << ", " << y << ", " << z << ")\n"; }
-
 // Vec4 implementations
 Vec4::Vec4(f32 x, f32 y, f32 z, f32 w) : x(x), y(y), z(z), w(w) {}
 
@@ -324,7 +267,7 @@ Quat Quat::operator*(const Quat& other) const {
 Vec3 Quat::operator*(const Vec3& vec) const {
     Vec3 u{x, y, z};
     f32 s = w;
-    return u * 2.0f * u.dot(vec) + vec * (s * s - u.dot(u)) + u.cross(vec) * 2.0f * s;
+    return u * 2.0f * Math::Vec3::dot(u, vec) + vec * (s * s - Math::Vec3::dot(u, u)) + Math::Vec3::cross(u, vec) * 2.0f * s;
 }
 
 Vec3 lerp(const Vec3& start, const Vec3& end, f32 t) {

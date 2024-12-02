@@ -4,6 +4,7 @@
 
 #include "MathTypes.h"
 #include "Vec2.h"
+#include "Vec3.h"
 
 namespace Quasar::Math {
 
@@ -20,33 +21,6 @@ f32 sqrt(f32 value);
 
 // Absolute value
 f32 abs(f32 value);
-
-// Vec3
-struct alignas(16) Vec3 {
-    f32 x = 0.0f;
-    f32 y = 0.0f;
-    f32 z = 0.0f;
-    f32 padding = 0.0f; // Align to 16 bytes
-
-    Vec3() = default;
-    Vec3(f32 x, f32 y, f32 z);
-
-    Vec3 operator+(const Vec3& other) const;
-    Vec3 operator-(const Vec3& other) const;
-    Vec3 operator*(f32 scalar) const;
-    Vec3 operator/(f32 scalar) const;
-
-    Vec3& operator+=(const Vec3& other);
-    Vec3& operator-=(const Vec3& other);
-    Vec3& operator*=(f32 scalar);
-    Vec3& operator/=(f32 scalar);
-
-    f32 length() const;
-    Vec3 normalized() const;
-    f32 dot(const Vec3& other) const;
-    Vec3 cross(const Vec3& other) const;
-    void print() const;
-};
 
 // Vec4
 struct alignas(16) Vec4 {

@@ -8,7 +8,7 @@ struct alignas(8) Vec2 {
     f32 y = 0.0f;
 
     Vec2() = default;
-    Vec2(f32 value);
+    Vec2(f32 f);
     Vec2(f32 x, f32 y);
 
     static Vec2 zero() { return Vec2{0.f}; }
