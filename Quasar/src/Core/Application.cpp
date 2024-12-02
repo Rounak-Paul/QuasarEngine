@@ -116,7 +116,7 @@ namespace Quasar {
             }
 
             render_packet packet;
-            packet.dt = 0.f;
+            packet.dt = 0.f; // TODO: calculate dt
             packet.app_suspended = suspended;
             QS_RENDERER.draw(&packet);
         }
