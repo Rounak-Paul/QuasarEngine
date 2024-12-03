@@ -66,6 +66,30 @@ Mat4 Mat4::orthographic(f32 left, f32 right, f32 bottom, f32 top, f32 near, f32 
     return result;
 }
 
+Mat4 Mat4::mat4_look_at(Vec3 position, Vec3 target, Vec3 up)
+{
+    Vec3 z_axis = (target - position).normalized();       // Forward vector
+    Vec3 x_axis = Vec3::cross(up, z_axis).normalized();          // Right vector
+    Vec3 y_axis = Vec3::cross(z_axis, x_axis);                   // Up vector
+
+    Mat4 result;
+
+    // Rotation part
+    result.mat[0] = {x_axis.x, y_axis.x, -z_axis.x, 0.0f};
+    result.mat[1] = {x_axis.y, y_axis.y, -z_axis.y, 0.0f};
+    result.mat[2] = {x_axis.z, y_axis.z, -z_axis.z, 0.0f};
+
+    // Translation part
+    result.mat[3] = {
+        -Vec3::dot(x_axis, position),
+        -Vec3::dot(y_axis, position),
+        Vec3::dot(z_axis, position),
+        1.0f
+    };
+
+    return result;
+}
+
 // Matrix-matrix multiplication.
 Mat4 Mat4::operator*(const Mat4& other) const {
     Mat4 result = {};

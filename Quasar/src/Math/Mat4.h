@@ -13,6 +13,8 @@ struct Mat4 {
     static Mat4 perspective(f32 fov, f32 aspect, f32 near, f32 far);
     static Mat4 orthographic(f32 left, f32 right, f32 bottom, f32 top, f32 near, f32 far);
 
+    Mat4 mat4_look_at(Vec3 position, Vec3 target, Vec3 up);
+
     Mat4 operator*(const Mat4& other) const;
     Vec4 operator*(const Vec4& vec) const;
 
