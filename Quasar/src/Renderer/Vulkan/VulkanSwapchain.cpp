@@ -101,10 +101,10 @@ b8 _create(vulkan_context* context, VkExtent2D swapchain_extent, vulkan_swapchai
     // VK_PRESENT_MODE_MAILBOX_KHR = 1,
     // VK_PRESENT_MODE_FIFO_KHR = 2,
     // VK_PRESENT_MODE_FIFO_RELAXED_KHR = 3,
-    VkPresentModeKHR present_mode = VK_PRESENT_MODE_FIFO_KHR;
+    VkPresentModeKHR present_mode = VK_PRESENT_MODE_IMMEDIATE_KHR;
     for (u32 i = 0; i < context->device.swapchain_support.present_mode_count; ++i) {
         VkPresentModeKHR mode = context->device.swapchain_support.present_modes[i];
-        if (mode == VK_PRESENT_MODE_MAILBOX_KHR) {
+        if (mode == VK_PRESENT_MODE_FIFO_RELAXED_KHR) {
             present_mode = mode;
             break;
         }
