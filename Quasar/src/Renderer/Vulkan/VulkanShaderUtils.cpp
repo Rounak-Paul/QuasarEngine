@@ -12,7 +12,7 @@ b8 create_shader_module(
     u32 stage_index,
     vulkan_shader_stage* shader_stages) {
     // Build file name.
-    String file_name = "../Shaders/" + name + "." + type_str + ".spv";
+    String file_name = "./Shaders/" + name + "." + type_str + ".spv";
     memset(&shader_stages[stage_index].create_info, 0, sizeof(VkShaderModuleCreateInfo));
     shader_stages[stage_index].create_info.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
     // Obtain file handle.
