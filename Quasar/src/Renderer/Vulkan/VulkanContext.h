@@ -17,6 +17,7 @@ struct VulkanContext {
     vk::UniqueDescriptorPool _descriptor_pool;
 
     vk::SampleCountFlagBits _msaa_samples;
+    static const auto _image_format = vk::Format::eB8G8R8A8Unorm;
     vk::UniqueRenderPass _render_pass;
     vk::UniquePipeline _graphics_pipeline;
     vk::UniqueCommandPool _command_pool;

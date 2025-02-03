@@ -26,6 +26,8 @@ b8 RendererAPI::draw(render_packet* packet)
         return true;
     }
 
+    backend.render();
+
     return true;
 }
 void RendererAPI::resize(u32 width, u32 height)

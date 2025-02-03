@@ -152,8 +152,6 @@ u32 VulkanContext::find_memory_type(u32 type_filter, vk::MemoryPropertyFlags pro
     throw std::runtime_error("failed to find suitable memory type!");
 }
 
-static const auto ImageFormat = vk::Format::eB8G8R8A8Unorm;
-
 vk::SampleCountFlagBits GetMaxUsableSampleCount(const vk::PhysicalDevice physical_device) {
     const auto props = physical_device.getProperties();
     const auto counts = props.limits.framebufferColorSampleCounts & props.limits.framebufferDepthSampleCounts;
@@ -189,8 +187,13 @@ vk::UniqueShaderModule CreateShaderModule(vk::Device device, const std::vector<u
 }
 
 b8 VulkanContext::CreateGraphicsPipeline() {
+    #ifdef QS_PLATFORM_APPLE
+    auto vertShaderCode = LoadShaderSpv("./Shaders/Builtin.World.vert.spv");
+    auto fragShaderCode = LoadShaderSpv("./Shaders/Builtin.World.frag.spv");
+    #else
     auto vertShaderCode = LoadShaderSpv("../Shaders/Builtin.World.vert.spv");
     auto fragShaderCode = LoadShaderSpv("../Shaders/Builtin.World.frag.spv");
+    #endif
 
     auto vertShaderModule = CreateShaderModule(_device.get(), vertShaderCode);
     auto fragShaderModule = CreateShaderModule(_device.get(), fragShaderCode);
@@ -204,9 +207,9 @@ b8 VulkanContext::CreateGraphicsPipeline() {
     _msaa_samples = GetMaxUsableSampleCount(_physical_device);
     const std::vector<vk::AttachmentDescription> attachments{
         // Multi-sampled offscreen image.
-        {{}, ImageFormat, _msaa_samples, vk::AttachmentLoadOp::eClear, vk::AttachmentStoreOp::eStore, {}, {}, vk::ImageLayout::eUndefined, vk::ImageLayout::eShaderReadOnlyOptimal},
+        {{}, _image_format, _msaa_samples, vk::AttachmentLoadOp::eClear, vk::AttachmentStoreOp::eStore, {}, {}, vk::ImageLayout::eUndefined, vk::ImageLayout::eShaderReadOnlyOptimal},
         // Single-sampled resolve.
-        {{}, ImageFormat, vk::SampleCountFlagBits::e1, {}, vk::AttachmentStoreOp::eStore, {}, {}, vk::ImageLayout::eColorAttachmentOptimal, vk::ImageLayout::eShaderReadOnlyOptimal},
+        {{}, _image_format, vk::SampleCountFlagBits::e1, {}, vk::AttachmentStoreOp::eStore, {}, {}, vk::ImageLayout::eColorAttachmentOptimal, vk::ImageLayout::eShaderReadOnlyOptimal},
     };
     const vk::AttachmentReference color_attachment_ref{0, vk::ImageLayout::eColorAttachmentOptimal};
     const vk::AttachmentReference resolve_attachment_ref{1, vk::ImageLayout::eColorAttachmentOptimal};
@@ -257,6 +260,7 @@ b8 VulkanContext::CreateGraphicsPipeline() {
     sampler_info.magFilter = vk::Filter::eLinear;
     sampler_info.minFilter = vk::Filter::eLinear;
     _texture_sampler = _device->createSamplerUnique(sampler_info);
+    
     return true;
 }
 

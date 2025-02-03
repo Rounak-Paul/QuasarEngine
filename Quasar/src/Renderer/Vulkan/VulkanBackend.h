@@ -16,6 +16,8 @@ namespace Quasar::Renderer
         void shutdown();
         void resize(u32 width, u32 height);
 
+        b8 render();
+
         b8 multithreading_enabled = false;
 
         private:
