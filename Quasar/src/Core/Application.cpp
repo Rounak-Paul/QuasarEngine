@@ -14,7 +14,7 @@ namespace Quasar {
         LOG_DEBUG("Initializing Log...")
         if (!Log::init()) {LOG_ERROR("Log failed to Initialize")}
 
-        VkExtent2D extent = window.get_extent();
+        Math::extent extent = window.get_extent();
         LOG_DEBUG("Created main window [%u, %u]", extent.width, extent.height)
 
         LOG_DEBUG("Initializing Memory System...")
