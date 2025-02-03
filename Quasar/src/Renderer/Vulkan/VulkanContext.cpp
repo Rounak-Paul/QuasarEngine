@@ -1,6 +1,34 @@
 #include "VulkanContext.h"
+#include <Platform/File.h>
 
 namespace Quasar::Renderer {
+
+static VKAPI_ATTR VkBool32 VKAPI_CALL debug_callback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity, VkDebugUtilsMessageTypeFlagsEXT messageType, const VkDebugUtilsMessengerCallbackDataEXT *pCallbackData, void *pUserData) {
+    switch (messageSeverity)
+    {
+        default:
+        case VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT:
+            LOG_ERROR(pCallbackData->pMessage);
+            break;
+        case VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT:
+            LOG_WARN(pCallbackData->pMessage);
+            break;
+        case VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT:
+            LOG_DEBUG(pCallbackData->pMessage);
+            break;
+        case VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT:
+            LOG_TRACE(pCallbackData->pMessage);
+            break;
+    }
+    return VK_FALSE;
+}
+
+inline static bool is_extention_available(const std::vector<vk::ExtensionProperties> &properties, const char *extension) {
+    for (const vk::ExtensionProperties &p : properties)
+        if (strcmp(p.extensionName, extension) == 0)
+            return true;
+    return false;
+}
 
 VulkanContext::VulkanContext(std::vector<const char *> extensions) {
     const auto instance_props = vk::enumerateInstanceExtensionProperties();
@@ -26,12 +54,12 @@ VulkanContext::VulkanContext(std::vector<const char *> extensions) {
         static_cast<uint32_t>(validation_layers.size()), validation_layers.empty() ? nullptr : validation_layers.data(),
         static_cast<uint32_t>(extensions.size()), extensions.data()
     };
-    Instance = vk::createInstanceUnique(instance_info);
+    _instance = vk::createInstanceUnique(instance_info);
 
 
     #ifdef QS_DEBUG
-    const vk::DispatchLoaderDynamic dldi{Instance.get(), vkGetInstanceProcAddr};
-    const auto messenger = Instance->createDebugUtilsMessengerEXTUnique(
+    const vk::DispatchLoaderDynamic dldi{_instance.get(), vkGetInstanceProcAddr};
+    const auto messenger = _instance->createDebugUtilsMessengerEXTUnique(
         vk::DebugUtilsMessengerCreateInfoEXT{
             {},
             vk::DebugUtilsMessageSeverityFlagBitsEXT::eError |
@@ -47,16 +75,16 @@ VulkanContext::VulkanContext(std::vector<const char *> extensions) {
     );
     #endif
 
-    PhysicalDevice = find_physical_device();
+    _physical_device = find_physical_device();
 
-    const auto queue_family_props = PhysicalDevice.getQueueFamilyProperties();
-    QueueFamily = std::distance(
+    const auto queue_family_props = _physical_device.getQueueFamilyProperties();
+    _queue_family = std::distance(
         queue_family_props.begin(),
         std::find_if(queue_family_props.begin(), queue_family_props.end(), [](const auto &qfp) {
             return qfp.queueFlags & vk::QueueFlagBits::eGraphics;
         })
     );
-    if (QueueFamily == static_cast<u32>(-1)) throw std::runtime_error("No graphics queue family found.");
+    if (_queue_family == static_cast<u32>(-1)) throw std::runtime_error("No graphics queue family found.");
 
     // Create logical device (with 1 queue).
     std::vector<const char *> device_extensions{VK_KHR_SWAPCHAIN_EXTENSION_NAME};
@@ -64,19 +92,22 @@ VulkanContext::VulkanContext(std::vector<const char *> extensions) {
     device_extensions.push_back("VK_KHR_portability_subset");
     #endif
     const std::array<float, 1> queue_priority = {1.0f};
-    const vk::DeviceQueueCreateInfo queue_info{{}, QueueFamily, 1, queue_priority.data()};
-    Device = PhysicalDevice.createDeviceUnique({{}, queue_info, {}, device_extensions});
-    Queue = Device->getQueue(QueueFamily, 0);
+    const vk::DeviceQueueCreateInfo queue_info{{}, _queue_family, 1, queue_priority.data()};
+    _device = _physical_device.createDeviceUnique({{}, queue_info, {}, device_extensions});
+    _queue = _device->getQueue(_queue_family, 0);
 
     // Create descriptor pool.
     const std::array<vk::DescriptorPoolSize, 1> pool_sizes = {
         vk::DescriptorPoolSize{vk::DescriptorType::eCombinedImageSampler, 2},
     };
-    DescriptorPool = Device->createDescriptorPoolUnique({vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet, 2, pool_sizes});
+    _descriptor_pool = _device->createDescriptorPoolUnique({vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet, 2, pool_sizes});
+
+    // Pipeline
+    CreateGraphicsPipeline();
 }
 
 vk::PhysicalDevice VulkanContext::find_physical_device() const {
-    const auto physical_devices = Instance->enumeratePhysicalDevices();
+    const auto physical_devices = _instance->enumeratePhysicalDevices();
     if (physical_devices.empty()) throw std::runtime_error("No Vulkan devices found.");
 
     vk::PhysicalDevice selected_device = physical_devices[0]; // Default to the first device
@@ -112,7 +143,7 @@ vk::PhysicalDevice VulkanContext::find_physical_device() const {
 }
 
 u32 VulkanContext::find_memory_type(u32 type_filter, vk::MemoryPropertyFlags prop_flags) const {
-    auto mem_props = PhysicalDevice.getMemoryProperties();
+    auto mem_props = _physical_device.getMemoryProperties();
     for (u32 i = 0; i < mem_props.memoryTypeCount; i++) {
         if ((type_filter & (1 << i)) && (mem_props.memoryTypes[i].propertyFlags & prop_flags) == prop_flags) {
             return i;
@@ -120,4 +151,57 @@ u32 VulkanContext::find_memory_type(u32 type_filter, vk::MemoryPropertyFlags pro
     }
     throw std::runtime_error("failed to find suitable memory type!");
 }
+
+static const auto ImageFormat = vk::Format::eB8G8R8A8Unorm;
+
+vk::SampleCountFlagBits GetMaxUsableSampleCount(const vk::PhysicalDevice physical_device) {
+    const auto props = physical_device.getProperties();
+    const auto counts = props.limits.framebufferColorSampleCounts & props.limits.framebufferDepthSampleCounts;
+    if (counts & vk::SampleCountFlagBits::e64) return vk::SampleCountFlagBits::e64;
+    if (counts & vk::SampleCountFlagBits::e32) return vk::SampleCountFlagBits::e32;
+    if (counts & vk::SampleCountFlagBits::e16) return vk::SampleCountFlagBits::e16;
+    if (counts & vk::SampleCountFlagBits::e8) return vk::SampleCountFlagBits::e8;
+    if (counts & vk::SampleCountFlagBits::e4) return vk::SampleCountFlagBits::e4;
+    if (counts & vk::SampleCountFlagBits::e2) return vk::SampleCountFlagBits::e2;
+
+    return vk::SampleCountFlagBits::e1;
+}
+
+std::vector<u8> LoadShaderSpv(const std::string& filename) {
+    File f;
+    if (!f.open(filename, File::Mode::READ, File::Type::BINARY)) {
+        throw std::runtime_error("Failed to open shader file: " + filename);
+    }
+    size_t fileSize = f.get_size();
+    std::vector<u8> buffer(fileSize / sizeof(u8));
+    f.read_all_binary(buffer.data());
+    f.close();
+
+    return buffer;
+}
+
+vk::UniqueShaderModule CreateShaderModule(vk::Device device, const std::vector<u8>& code) {
+    vk::ShaderModuleCreateInfo createInfo{};
+    createInfo.codeSize = code.size() * sizeof(u8);
+    createInfo.pCode = (u32*)code.data();
+
+    return device.createShaderModuleUnique(createInfo);
+}
+
+b8 VulkanContext::CreateGraphicsPipeline() {
+    auto vertShaderCode = LoadShaderSpv("../Shaders/Builtin.World.vert.spv");
+    auto fragShaderCode = LoadShaderSpv("../Shaders/Builtin.World.frag.spv");
+
+    auto vertShaderModule = CreateShaderModule(_device.get(), vertShaderCode);
+    auto fragShaderModule = CreateShaderModule(_device.get(), fragShaderCode);
+
+    std::vector<vk::PipelineShaderStageCreateInfo> shaderStages = {
+        {{}, vk::ShaderStageFlagBits::eVertex, *vertShaderModule, "main"},
+        {{}, vk::ShaderStageFlagBits::eFragment, *fragShaderModule, "main"}
+    };
+
+    // (Rest of your pipeline creation code using shaderStages...)
+    return true;
+}
+
 }
