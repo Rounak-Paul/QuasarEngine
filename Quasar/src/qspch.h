@@ -21,14 +21,6 @@
 #include <array>
 #pragma warning(pop)
 
-// Vendor
-#define GLFW_INCLUDE_VULKAN
-#include <GLFW/glfw3.h> // This includes vulkan already
-#include <vulkan/vulkan.h>
-#include <imgui.h>
-#include <backends/imgui_impl_glfw.h>
-#include <backends/imgui_impl_vulkan.h>
-
 #include <Defines.h>
 #include <Core/Log.h>
 
