@@ -47,7 +47,7 @@ VulkanContext::VulkanContext(std::vector<const char *> extensions) {
     );
     #endif
 
-    PhysicalDevice = FindPhysicalDevice();
+    PhysicalDevice = find_physical_device();
 
     const auto queue_family_props = PhysicalDevice.getQueueFamilyProperties();
     QueueFamily = std::distance(
@@ -75,17 +75,43 @@ VulkanContext::VulkanContext(std::vector<const char *> extensions) {
     DescriptorPool = Device->createDescriptorPoolUnique({vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet, 2, pool_sizes});
 }
 
-vk::PhysicalDevice VulkanContext::FindPhysicalDevice() const {
+vk::PhysicalDevice VulkanContext::find_physical_device() const {
     const auto physical_devices = Instance->enumeratePhysicalDevices();
     if (physical_devices.empty()) throw std::runtime_error("No Vulkan devices found.");
 
+    vk::PhysicalDevice selected_device = physical_devices[0]; // Default to the first device
+
     for (const auto &device : physical_devices) {
-        if (device.getProperties().deviceType == vk::PhysicalDeviceType::eDiscreteGpu) return device;
+        if (device.getProperties().deviceType == vk::PhysicalDeviceType::eDiscreteGpu) {
+            selected_device = device;
+            break;
+        }
     }
-    return physical_devices[0];
+
+    // Log the selected device
+    auto properties = selected_device.getProperties();
+    auto memory_properties = selected_device.getMemoryProperties();
+    auto features = selected_device.getFeatures();
+
+    LOG_TRACE("Selected Vulkan Device: %s", properties.deviceName);
+
+    LOG_TRACE("Device Type: %s", 
+        properties.deviceType == vk::PhysicalDeviceType::eIntegratedGpu ? "Integrated GPU" :
+        properties.deviceType == vk::PhysicalDeviceType::eDiscreteGpu ? "Discrete GPU" :
+        properties.deviceType == vk::PhysicalDeviceType::eVirtualGpu ? "Virtual GPU" :
+        properties.deviceType == vk::PhysicalDeviceType::eCpu ? "CPU" : "Other");
+
+    LOG_TRACE("Memory Heaps: %u", memory_properties.memoryHeapCount);
+    for (uint32_t i = 0; i < memory_properties.memoryHeapCount; i++) {
+        LOG_TRACE("Heap %d - Size: %llu MB - Flags: %s", i, 
+            memory_properties.memoryHeaps[i].size / (1024 * 1024),
+            (memory_properties.memoryHeaps[i].flags & vk::MemoryHeapFlagBits::eDeviceLocal) ? "Device Local" : "Host Visible");
+    }
+
+    return selected_device;
 }
 
-u32 VulkanContext::FindMemoryType(u32 type_filter, vk::MemoryPropertyFlags prop_flags) const {
+u32 VulkanContext::find_memory_type(u32 type_filter, vk::MemoryPropertyFlags prop_flags) const {
     auto mem_props = PhysicalDevice.getMemoryProperties();
     for (u32 i = 0; i < mem_props.memoryTypeCount; i++) {
         if ((type_filter & (1 << i)) && (mem_props.memoryTypes[i].propertyFlags & prop_flags) == prop_flags) {

@@ -44,8 +44,8 @@ struct VulkanContext {
     vk::UniqueDescriptorPool DescriptorPool;
 
     // Find a discrete GPU, or the first available (integrated) GPU.
-    vk::PhysicalDevice FindPhysicalDevice() const;
-    u32 FindMemoryType(u32 type_filter, vk::MemoryPropertyFlags) const;
+    vk::PhysicalDevice find_physical_device() const;
+    u32 find_memory_type(u32 type_filter, vk::MemoryPropertyFlags) const;
 };
 
 }
