@@ -1,6 +1,9 @@
 #pragma once
 #include <qspch.h>
 #include <Math/Math.h>
+#include <vulkan/vulkan.hpp>
+
+#include "VulkanContext.h"
 
 namespace Quasar::Renderer
 {
@@ -16,6 +19,6 @@ namespace Quasar::Renderer
         b8 multithreading_enabled = false;
 
         private:
-        
+        std::unique_ptr<VulkanContext> context;
     };
 } // namespace Vulkan
