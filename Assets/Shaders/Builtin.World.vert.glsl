@@ -1,18 +1,24 @@
 #version 450
 #extension GL_ARB_separate_shader_objects : enable
 
-layout(location = 0) in vec3 in_position;
+out gl_PerVertex {
+    vec4 gl_Position;
+};
 
-layout(set = 0, binding = 0) uniform global_uniform_object {
-    mat4 projection;
-	mat4 view;
-} global_ubo;
+layout(location = 0) out vec3 fragColor;
 
-layout(push_constant) uniform push_constants {
-	// Only guaranteed a total of 128 bytes.
-	mat4 model; // 64 bytes
-} u_push_constants;
+vec2 positions[3] = vec2[](
+    vec2(0.0, -0.5),
+    vec2(0.5, 0.5),
+    vec2(-0.5, 0.5)
+);
+vec3 colors[3] = vec3[](
+    vec3(1.0, 0.0, 0.0),
+    vec3(0.0, 1.0, 0.0),
+    vec3(0.0, 0.0, 1.0)
+);
 
 void main() {
-    gl_Position = global_ubo.projection * global_ubo.view * u_push_constants.model * vec4(in_position, 1.0);
+    gl_Position = vec4(positions[gl_VertexIndex], 0.0, 1.0);
+    fragColor = colors[gl_VertexIndex];
 }
