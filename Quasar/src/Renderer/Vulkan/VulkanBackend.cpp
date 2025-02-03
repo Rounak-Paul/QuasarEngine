@@ -108,6 +108,10 @@ namespace Quasar::Renderer
         return true;
     }
 
+// -----------------------------------------------------------------//
+//                       Helper Functions                           //
+// -----------------------------------------------------------------//
+
     std::vector<const char*> get_required_extensions() {
         uint32_t glfwExtensionCount = 0;
         const char** glfwExtensions;
