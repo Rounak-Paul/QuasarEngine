@@ -200,7 +200,8 @@ b8 VulkanContext::CreateGraphicsPipeline() {
         {{}, vk::ShaderStageFlagBits::eFragment, *fragShaderModule, "main"}
     };
 
-    // (Rest of your pipeline creation code using shaderStages...)
+    // Render multisampled into the offscreen image, then resolve into a single-sampled resolve image.
+    _msaa_samples = GetMaxUsableSampleCount(_physical_device);
     return true;
 }
 
