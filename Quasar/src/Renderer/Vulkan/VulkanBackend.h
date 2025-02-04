@@ -34,7 +34,7 @@ namespace Quasar::Renderer
         void resize(u32 width, u32 height);
 
         void update();
-        b8 render(uint width, uint height, const vk::ClearColorValue &bg_color);
+        b8 render(u32 width, u32 height, const vk::ClearColorValue &bg_color);
 
         b8 multithreading_enabled = false;
 

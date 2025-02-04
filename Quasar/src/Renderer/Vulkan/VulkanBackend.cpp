@@ -12,7 +12,7 @@ namespace Quasar::Renderer
     // #define IMGUI_UNLIMITED_FRAME_RATE
 
     static ImGui_ImplVulkanH_Window MainWindowData;
-    static uint MinImageCount = 2;
+    static u32 MinImageCount = 2;
     static bool SwapChainRebuild = false;
 
     b8 Backend::init(String &app_name, Window *main_window)
