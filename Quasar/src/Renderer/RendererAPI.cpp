@@ -1,5 +1,4 @@
 #include "RendererAPI.h"
-#include <Math/Math.h>
 
 namespace Quasar
 {
@@ -26,7 +25,7 @@ b8 RendererAPI::draw(render_packet* packet)
         return true;
     }
 
-    backend.render();
+    backend.update();
 
     return true;
 }
@@ -34,4 +33,5 @@ void RendererAPI::resize(u32 width, u32 height)
 {
     backend.resize(width, height);
 }
+
 } // namespace Quasar
