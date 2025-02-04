@@ -135,6 +135,9 @@ namespace Quasar::Renderer
 
     b8 Backend::render(u32 width, u32 height, const vk::ClearColorValue &bg_color)
     {
+        if (context->_extent.width == width && context->_extent == height) {
+            return false;
+        }
         context->_extent = vk::Extent2D{width, height};
         context->_device->waitIdle();
 
