@@ -12,8 +12,7 @@ namespace Quasar
     static vk::ClearColorValue ImVec4ToClearColor(const ImVec4 &v) { return {v.x, v.y, v.z, v.w}; }
 
     static ImGui_ImplVulkanH_Window main_window_data;
-    static u32 min_image_count = 2;
-    static bool swapchain_rebuild = false;
+    static u32 min_image_count = 3;
 
     b8 Backend::init(String &app_name, Window *main_window)
     {
@@ -35,7 +34,7 @@ namespace Quasar
         io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard; // Enable Keyboard Controls
         io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad; // Enable Gamepad Controls
         io.ConfigFlags |= ImGuiConfigFlags_DockingEnable; // Enable Docking
-        io.ConfigFlags |= ImGuiDockNodeFlags_PassthruCentralNode;
+        // io.ConfigFlags |= ImGuiDockNodeFlags_PassthruCentralNode;
         // io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable; // Enable Multi-Viewport / Platform Windows
 
         // io.IniFilename = nullptr; // Disable ImGui's .ini file saving
@@ -91,7 +90,6 @@ namespace Quasar
         ImGui_ImplVulkan_SetMinImageCount(min_image_count);
         ImGui_ImplVulkanH_CreateOrResizeWindow(context->_instance.get(), context->_physical_device, context->_device.get(), &main_window_data, context->_queue_family, nullptr, width, height, min_image_count);
         main_window_data.FrameIndex = 0;
-        swapchain_rebuild = false;
     }
 
     void Backend::update()
@@ -297,7 +295,6 @@ namespace Quasar
         VkSemaphore render_complete_semaphore = wd->FrameSemaphores[wd->SemaphoreIndex].RenderCompleteSemaphore;
         const VkResult err = vkAcquireNextImageKHR(context->_device.get(), wd->Swapchain, UINT64_MAX, image_acquired_semaphore, VK_NULL_HANDLE, &wd->FrameIndex);
         if (err == VK_ERROR_OUT_OF_DATE_KHR || err == VK_SUBOPTIMAL_KHR) {
-            swapchain_rebuild = true;
             return;
         }
         VK_CHECK_CALL(err);
@@ -349,8 +346,6 @@ namespace Quasar
     }
 
     void Backend::FramePresent(ImGui_ImplVulkanH_Window *wd) {
-        if (swapchain_rebuild) return;
-
         VkSemaphore render_complete_semaphore = wd->FrameSemaphores[wd->SemaphoreIndex].RenderCompleteSemaphore;
         VkPresentInfoKHR info = {};
         info.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
@@ -361,7 +356,6 @@ namespace Quasar
         info.pImageIndices = &wd->FrameIndex;
         VkResult err = vkQueuePresentKHR(context->_queue, &info);
         if (err == VK_ERROR_OUT_OF_DATE_KHR || err == VK_SUBOPTIMAL_KHR) {
-            swapchain_rebuild = true;
             return;
         }
         VK_CHECK_CALL(err);
