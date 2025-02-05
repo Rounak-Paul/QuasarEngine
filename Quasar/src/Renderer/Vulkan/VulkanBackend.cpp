@@ -168,7 +168,7 @@ namespace Quasar
             vk::Extent3D{width, height, 1},
             1,
             1,
-            vk::SampleCountFlagBits::e1, // Single-sampled resolve image.
+            vk::SampleCountFlagBits::e1, // Single-sampled resolve image. https://vulkan.lunarg.com/doc/view/1.3.296.0/windows/1.3-extensions/vkspec.html#VUID-RuntimeSpirv-samples-08725
             vk::ImageTiling::eOptimal,
             vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eColorAttachment,
             vk::SharingMode::eExclusive,
