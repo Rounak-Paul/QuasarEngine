@@ -30,6 +30,6 @@ class RendererAPI : public System {
     void resize(u32 width, u32 height);
 
     private:
-    Renderer::Backend backend;
+    Backend backend;
 };
 }

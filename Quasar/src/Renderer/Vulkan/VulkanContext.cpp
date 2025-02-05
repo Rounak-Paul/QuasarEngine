@@ -1,7 +1,7 @@
 #include "VulkanContext.h"
 #include <Platform/File.h>
 
-namespace Quasar::Renderer {
+namespace Quasar {
 
 vk::SampleCountFlagBits GetMaxUsableSampleCount(const vk::PhysicalDevice physical_device);
 

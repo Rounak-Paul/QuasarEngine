@@ -3,7 +3,7 @@
 #include <qspch.h>
 #include "VulkanPipeline.h"
 
-namespace Quasar::Renderer {
+namespace Quasar {
 
 struct VulkanContext {
     VulkanContext(std::vector<const char *> extensions);

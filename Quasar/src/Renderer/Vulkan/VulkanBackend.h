@@ -9,7 +9,7 @@
 #include <backends/imgui_impl_glfw.h>
 #include <backends/imgui_impl_vulkan.h>
 
-namespace Quasar::Renderer
+namespace Quasar
 {
     // TODO: temp
     struct ImGuiWindow {

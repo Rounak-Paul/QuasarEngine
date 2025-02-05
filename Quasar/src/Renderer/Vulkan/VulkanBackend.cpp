@@ -2,14 +2,14 @@
 #include "VulkanCheckReslt.h"
 #include <Math/Math.h>
 
-namespace Quasar::Renderer
+#define IMGUI_UNLIMITED_FRAME_RATE
+
+namespace Quasar
 {
     std::vector<const char*> get_required_extensions();
 
     using namespace ImGui;
     static vk::ClearColorValue ImVec4ToClearColor(const ImVec4 &v) { return {v.x, v.y, v.z, v.w}; }
-
-    // #define IMGUI_UNLIMITED_FRAME_RATE
 
     static ImGui_ImplVulkanH_Window main_window_data;
     static u32 min_image_count = 2;

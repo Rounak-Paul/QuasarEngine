@@ -6,7 +6,7 @@
 #include <vector>
 #include <iostream>
 
-namespace Quasar::Renderer {
+namespace Quasar {
 
 static std::unordered_map<VkResult, std::string> ErrorDescriptions = {
     {VK_SUCCESS, "Command successfully completed"},
@@ -50,7 +50,7 @@ static std::unordered_map<VkResult, std::string> ErrorDescriptions = {
 
 #define VK_CALL(x)  VK_CHECK_CALL(x)
 
-#define VK_CHECK_CALL(x) Renderer::VulkanCheckErrorStatus(x, __FILE__, __LINE__)
+#define VK_CHECK_CALL(x) VulkanCheckErrorStatus(x, __FILE__, __LINE__)
 
 static bool VulkanCheckErrorStatus(VkResult x, const char* file, int line)
 {
