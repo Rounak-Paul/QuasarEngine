@@ -3,6 +3,8 @@
 
 namespace Quasar::Renderer {
 
+vk::SampleCountFlagBits GetMaxUsableSampleCount(const vk::PhysicalDevice physical_device);
+
 static VKAPI_ATTR VkBool32 VKAPI_CALL debug_callback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity, VkDebugUtilsMessageTypeFlagsEXT messageType, const VkDebugUtilsMessengerCallbackDataEXT *pCallbackData, void *pUserData) {
     switch (messageSeverity)
     {
@@ -102,8 +104,32 @@ VulkanContext::VulkanContext(std::vector<const char *> extensions) {
     };
     _descriptor_pool = _device->createDescriptorPoolUnique({vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet, 2, pool_sizes});
 
+    // Renderpass
+    // Render multisampled into the offscreen image, then resolve into a single-sampled resolve image.
+    _msaa_samples = GetMaxUsableSampleCount(_physical_device);
+    const std::vector<vk::AttachmentDescription> attachments{
+        // Multi-sampled offscreen image.
+        {{}, _image_format, _msaa_samples, vk::AttachmentLoadOp::eClear, vk::AttachmentStoreOp::eStore, {}, {}, vk::ImageLayout::eUndefined, vk::ImageLayout::eShaderReadOnlyOptimal},
+        // Single-sampled resolve.
+        {{}, _image_format, vk::SampleCountFlagBits::e1, {}, vk::AttachmentStoreOp::eStore, {}, {}, vk::ImageLayout::eColorAttachmentOptimal, vk::ImageLayout::eShaderReadOnlyOptimal},
+    };
+    const vk::AttachmentReference color_attachment_ref{0, vk::ImageLayout::eColorAttachmentOptimal};
+    const vk::AttachmentReference resolve_attachment_ref{1, vk::ImageLayout::eColorAttachmentOptimal};
+    const vk::SubpassDescription subpass{{}, vk::PipelineBindPoint::eGraphics, 0, nullptr, 1, &color_attachment_ref, &resolve_attachment_ref};
+    _render_pass = _device->createRenderPassUnique({{}, attachments, subpass});
+
     // Pipeline
-    CreateGraphicsPipeline();
+    _pipeline = std::make_unique<VulkanPipeline>(_device, _physical_device, _render_pass, _msaa_samples);
+
+    static const u32 framebuffer_count = 1;
+    _command_pool = _device->createCommandPoolUnique({vk::CommandPoolCreateFlagBits::eResetCommandBuffer, _queue_family});
+    _command_buffers = _device->allocateCommandBuffersUnique({_command_pool.get(), vk::CommandBufferLevel::ePrimary, framebuffer_count});
+
+    // Sampler
+    vk::SamplerCreateInfo sampler_info;
+    sampler_info.magFilter = vk::Filter::eLinear;
+    sampler_info.minFilter = vk::Filter::eLinear;
+    _texture_sampler = _device->createSamplerUnique(sampler_info);
 }
 
 vk::PhysicalDevice VulkanContext::find_physical_device() const {
@@ -163,105 +189,6 @@ vk::SampleCountFlagBits GetMaxUsableSampleCount(const vk::PhysicalDevice physica
     if (counts & vk::SampleCountFlagBits::e2) return vk::SampleCountFlagBits::e2;
 
     return vk::SampleCountFlagBits::e1;
-}
-
-std::vector<u8> LoadShaderSpv(const std::string& filename) {
-    File f;
-    if (!f.open(filename, File::Mode::READ, File::Type::BINARY)) {
-        throw std::runtime_error("Failed to open shader file: " + filename);
-    }
-    size_t fileSize = f.get_size();
-    std::vector<u8> buffer(fileSize / sizeof(u8));
-    f.read_all_binary(buffer.data());
-    f.close();
-
-    return buffer;
-}
-
-vk::UniqueShaderModule CreateShaderModule(vk::Device device, const std::vector<u8>& code) {
-    vk::ShaderModuleCreateInfo createInfo{};
-    createInfo.codeSize = code.size() * sizeof(u8);
-    createInfo.pCode = (u32*)code.data();
-
-    return device.createShaderModuleUnique(createInfo);
-}
-
-b8 VulkanContext::CreateGraphicsPipeline() {
-    #ifdef QS_PLATFORM_APPLE
-    auto vertShaderCode = LoadShaderSpv("./Shaders/Builtin.World.vert.spv");
-    auto fragShaderCode = LoadShaderSpv("./Shaders/Builtin.World.frag.spv");
-    #else
-    auto vertShaderCode = LoadShaderSpv("../Shaders/Builtin.World.vert.spv");
-    auto fragShaderCode = LoadShaderSpv("../Shaders/Builtin.World.frag.spv");
-    #endif
-
-    auto vertShaderModule = CreateShaderModule(_device.get(), vertShaderCode);
-    auto fragShaderModule = CreateShaderModule(_device.get(), fragShaderCode);
-
-    std::vector<vk::PipelineShaderStageCreateInfo> shader_stages = {
-        {{}, vk::ShaderStageFlagBits::eVertex, *vertShaderModule, "main"},
-        {{}, vk::ShaderStageFlagBits::eFragment, *fragShaderModule, "main"}
-    };
-
-    // Render multisampled into the offscreen image, then resolve into a single-sampled resolve image.
-    _msaa_samples = GetMaxUsableSampleCount(_physical_device);
-    const std::vector<vk::AttachmentDescription> attachments{
-        // Multi-sampled offscreen image.
-        {{}, _image_format, _msaa_samples, vk::AttachmentLoadOp::eClear, vk::AttachmentStoreOp::eStore, {}, {}, vk::ImageLayout::eUndefined, vk::ImageLayout::eShaderReadOnlyOptimal},
-        // Single-sampled resolve.
-        {{}, _image_format, vk::SampleCountFlagBits::e1, {}, vk::AttachmentStoreOp::eStore, {}, {}, vk::ImageLayout::eColorAttachmentOptimal, vk::ImageLayout::eShaderReadOnlyOptimal},
-    };
-    const vk::AttachmentReference color_attachment_ref{0, vk::ImageLayout::eColorAttachmentOptimal};
-    const vk::AttachmentReference resolve_attachment_ref{1, vk::ImageLayout::eColorAttachmentOptimal};
-    const vk::SubpassDescription subpass{{}, vk::PipelineBindPoint::eGraphics, 0, nullptr, 1, &color_attachment_ref, &resolve_attachment_ref};
-    _render_pass = _device->createRenderPassUnique({{}, attachments, subpass});
-
-    const vk::PipelineVertexInputStateCreateInfo vertex_input_info{{}, 0u, nullptr, 0u, nullptr};
-    const vk::PipelineInputAssemblyStateCreateInfo input_assemply{{}, vk::PrimitiveTopology::eTriangleList, false};
-    const vk::PipelineViewportStateCreateInfo viewport_state{{}, 1, nullptr, 1, nullptr};
-    const vk::PipelineRasterizationStateCreateInfo rasterizer{{}, false, false, vk::PolygonMode::eFill, {}, vk::FrontFace::eCounterClockwise, {}, {}, {}, {}, 1.0f};
-    const vk::PipelineMultisampleStateCreateInfo multisampling{{}, _msaa_samples, false};
-    const vk::PipelineColorBlendAttachmentState color_blend_attachment{
-        {},
-        /*srcCol*/ vk::BlendFactor::eOne,
-        /*dstCol*/ vk::BlendFactor::eZero,
-        /*colBlend*/ vk::BlendOp::eAdd,
-        /*srcAlpha*/ vk::BlendFactor::eOne,
-        /*dstAlpha*/ vk::BlendFactor::eZero,
-        /*alphaBlend*/ vk::BlendOp::eAdd,
-        vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG | vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA};
-    const vk::PipelineColorBlendStateCreateInfo color_blending{{}, false, vk::LogicOp::eCopy, 1, &color_blend_attachment};
-    const std::array dynamic_states = {vk::DynamicState::eViewport, vk::DynamicState::eScissor};
-    vk::PipelineDynamicStateCreateInfo dynamic_state_info{{}, dynamic_states};
-
-    auto pipeline_layout = _device->createPipelineLayoutUnique({}, nullptr);
-    const vk::GraphicsPipelineCreateInfo pipeline_info{
-        {},
-        shader_stages,
-        &vertex_input_info,
-        &input_assemply,
-        nullptr,
-        &viewport_state,
-        &rasterizer,
-        &multisampling,
-        nullptr,
-        &color_blending,
-        &dynamic_state_info,
-        *pipeline_layout,
-        *_render_pass,
-    };
-    _graphics_pipeline = _device->createGraphicsPipelineUnique({}, pipeline_info).value;
-
-    static const u32 framebuffer_count = 1;
-    _command_pool = _device->createCommandPoolUnique({vk::CommandPoolCreateFlagBits::eResetCommandBuffer, _queue_family});
-    _command_buffers = _device->allocateCommandBuffersUnique({_command_pool.get(), vk::CommandBufferLevel::ePrimary, framebuffer_count});
-
-    vk::SamplerCreateInfo sampler_info;
-    sampler_info.magFilter = vk::Filter::eLinear;
-    sampler_info.minFilter = vk::Filter::eLinear;
-    _texture_sampler = _device->createSamplerUnique(sampler_info);
-    
-    return true;
 }
 
 }

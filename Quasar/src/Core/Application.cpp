@@ -110,10 +110,6 @@ namespace Quasar {
             }
 
             window.poll_events(); 
-            
-            if (QS_INPUT.get_key_state(KeyCode::QS_KEY_SPACE)) {
-                LOG_TRACE("Space clicked");
-            }
 
             render_packet packet;
             packet.dt = 0.f; // TODO: calculate dt

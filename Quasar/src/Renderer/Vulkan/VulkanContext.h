@@ -1,12 +1,13 @@
 #pragma once
 
 #include <qspch.h>
+#include "VulkanPipeline.h"
 
 namespace Quasar::Renderer {
 
 struct VulkanContext {
     VulkanContext(std::vector<const char *> extensions);
-    ~VulkanContext() = default; // Using unique handles, so no need to manually destroy anything.
+    ~VulkanContext() = default;
 
     vk::UniqueInstance _instance;
     vk::PhysicalDevice _physical_device;
@@ -16,14 +17,14 @@ struct VulkanContext {
     vk::UniquePipelineCache _pipeline_cache;
     vk::UniqueDescriptorPool _descriptor_pool;
 
+    vk::Extent2D _extent;
     vk::SampleCountFlagBits _msaa_samples;
     static const auto _image_format = vk::Format::eB8G8R8A8Unorm;
     vk::UniqueRenderPass _render_pass;
-    vk::UniquePipeline _graphics_pipeline;
+    std::unique_ptr<VulkanPipeline> _pipeline;
     vk::UniqueCommandPool _command_pool;
     std::vector<vk::UniqueCommandBuffer> _command_buffers;
     vk::UniqueSampler _texture_sampler;
-    vk::Extent2D _extent;
 
     // The scene is rendered to an offscreen image and then resolved to this image using MSAA.
     vk::UniqueImage ResolveImage;
@@ -33,8 +34,6 @@ struct VulkanContext {
     // Find a discrete GPU, or the first available (integrated) GPU.
     vk::PhysicalDevice find_physical_device() const;
     u32 find_memory_type(u32 type_filter, vk::MemoryPropertyFlags) const;
-
-    b8 CreateGraphicsPipeline();
 };
 
 }

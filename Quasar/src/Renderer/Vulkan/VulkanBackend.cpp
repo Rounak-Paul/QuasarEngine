@@ -11,9 +11,9 @@ namespace Quasar::Renderer
 
     // #define IMGUI_UNLIMITED_FRAME_RATE
 
-    static ImGui_ImplVulkanH_Window MainWindowData;
-    static u32 MinImageCount = 2;
-    static bool SwapChainRebuild = false;
+    static ImGui_ImplVulkanH_Window main_window_data;
+    static u32 min_image_count = 2;
+    static bool swapchain_rebuild = false;
 
     b8 Backend::init(String &app_name, Window *main_window)
     {
@@ -24,7 +24,7 @@ namespace Quasar::Renderer
         }
 
         auto extent = main_window->get_extent();
-        ImGui_ImplVulkanH_Window *wd = &MainWindowData;
+        ImGui_ImplVulkanH_Window *wd = &main_window_data;
         SetupVulkanWindow(wd, surface, extent.width, extent.height);
 
         // Setup ImGui context.
@@ -55,7 +55,7 @@ namespace Quasar::Renderer
         init_info.DescriptorPool = context->_descriptor_pool.get();
         init_info.RenderPass = wd->RenderPass;
         init_info.Subpass = 0;
-        init_info.MinImageCount = MinImageCount;
+        init_info.MinImageCount = min_image_count;
         init_info.ImageCount = wd->ImageCount;
         init_info.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
         init_info.Allocator = nullptr;
@@ -87,11 +87,16 @@ namespace Quasar::Renderer
 
     void Backend::resize(u32 width, u32 height)
     {
+        context->_device->waitIdle();
+        ImGui_ImplVulkan_SetMinImageCount(min_image_count);
+        ImGui_ImplVulkanH_CreateOrResizeWindow(context->_instance.get(), context->_physical_device, context->_device.get(), &main_window_data, context->_queue_family, nullptr, width, height, min_image_count);
+        main_window_data.FrameIndex = 0;
+        swapchain_rebuild = false;
     }
 
     void Backend::update()
     {
-        ImGui_ImplVulkanH_Window *wd = &MainWindowData;
+        ImGui_ImplVulkanH_Window *wd = &main_window_data;
 
         // Start the Dear ImGui frame
         ImGui_ImplVulkan_NewFrame();
@@ -208,7 +213,7 @@ namespace Quasar::Renderer
 
         const vk::ClearValue clear_value{bg_color};
         command_buffer->beginRenderPass({context->_render_pass.get(), framebuffer.get(), vk::Rect2D{{0, 0}, context->_extent}, 1, &clear_value}, vk::SubpassContents::eInline);
-        command_buffer->bindPipeline(vk::PipelineBindPoint::eGraphics, *context->_graphics_pipeline);
+        command_buffer->bindPipeline(vk::PipelineBindPoint::eGraphics, *context->_pipeline->_graphics_pipeline);
         command_buffer->draw(3, 1, 0, 0);
         command_buffer->endRenderPass();
         command_buffer->end();
@@ -279,12 +284,12 @@ namespace Quasar::Renderer
         // printf("[vulkan] Selected PresentMode = %d\n", wd->PresentMode);
 
         // Create SwapChain, RenderPass, Framebuffer, etc.
-        IM_ASSERT(MinImageCount >= 2);
-        ImGui_ImplVulkanH_CreateOrResizeWindow(context->_instance.get(), context->_physical_device, context->_device.get(), wd, context->_queue_family, nullptr, width, height, MinImageCount);
+        IM_ASSERT(min_image_count >= 2);
+        ImGui_ImplVulkanH_CreateOrResizeWindow(context->_instance.get(), context->_physical_device, context->_device.get(), wd, context->_queue_family, nullptr, width, height, min_image_count);
     }
 
     void Backend::CleanupVulkanWindow() {
-        ImGui_ImplVulkanH_DestroyWindow(context->_instance.get(), context->_device.get(), &MainWindowData, nullptr);
+        ImGui_ImplVulkanH_DestroyWindow(context->_instance.get(), context->_device.get(), &main_window_data, nullptr);
     }
 
     void Backend::FrameRender(ImGui_ImplVulkanH_Window *wd, ImDrawData *draw_data) {
@@ -292,7 +297,7 @@ namespace Quasar::Renderer
         VkSemaphore render_complete_semaphore = wd->FrameSemaphores[wd->SemaphoreIndex].RenderCompleteSemaphore;
         const VkResult err = vkAcquireNextImageKHR(context->_device.get(), wd->Swapchain, UINT64_MAX, image_acquired_semaphore, VK_NULL_HANDLE, &wd->FrameIndex);
         if (err == VK_ERROR_OUT_OF_DATE_KHR || err == VK_SUBOPTIMAL_KHR) {
-            SwapChainRebuild = true;
+            swapchain_rebuild = true;
             return;
         }
         VK_CHECK_CALL(err);
@@ -344,7 +349,7 @@ namespace Quasar::Renderer
     }
 
     void Backend::FramePresent(ImGui_ImplVulkanH_Window *wd) {
-        if (SwapChainRebuild) return;
+        if (swapchain_rebuild) return;
 
         VkSemaphore render_complete_semaphore = wd->FrameSemaphores[wd->SemaphoreIndex].RenderCompleteSemaphore;
         VkPresentInfoKHR info = {};
@@ -356,7 +361,7 @@ namespace Quasar::Renderer
         info.pImageIndices = &wd->FrameIndex;
         VkResult err = vkQueuePresentKHR(context->_queue, &info);
         if (err == VK_ERROR_OUT_OF_DATE_KHR || err == VK_SUBOPTIMAL_KHR) {
-            SwapChainRebuild = true;
+            swapchain_rebuild = true;
             return;
         }
         VK_CHECK_CALL(err);
