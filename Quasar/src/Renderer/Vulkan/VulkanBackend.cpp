@@ -2,6 +2,9 @@
 #include "VulkanCheckReslt.h"
 #include <Math/Math.h>
 
+#include <Gui/GuiFonts.h>
+#include <Gui/GuiStyles.h>
+
 #define IMGUI_UNLIMITED_FRAME_RATE
 
 namespace Quasar
@@ -39,6 +42,7 @@ namespace Quasar
 
         StyleColorsDark();
         // StyleColorsLight();
+        customize_style();
 
         // Setup Platform/Renderer backends
         ImGui_ImplGlfw_InitForVulkan(main_window->get_GLFWwindow(), true);
@@ -74,6 +78,9 @@ namespace Quasar
         // io.Fonts->AddFontFromFileTTF("../../misc/fonts/Cousine-Regular.ttf", 15.0f);
         // ImFont* font = io.Fonts->AddFontFromFileTTF("c:\\Windows\\Fonts\\ArialUni.ttf", 18.0f, nullptr, io.Fonts->GetGlyphRangesJapanese());
         // IM_ASSERT(font != nullptr);
+        ImFontConfig font_cfg;
+        font_cfg.FontDataOwnedByAtlas = false;
+        io.Fonts->AddFontFromMemoryTTF(Roboto_Medium, Roboto_Medium_size, 12.0f, &font_cfg);
 
         return true;
     }
