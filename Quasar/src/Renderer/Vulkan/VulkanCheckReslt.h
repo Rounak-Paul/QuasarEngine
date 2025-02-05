@@ -1,5 +1,6 @@
 #pragma once
 
+#include <qspch.h>
 #include <vulkan/vulkan.hpp>
 #include <unordered_map>
 #include <vector>
@@ -55,7 +56,7 @@ static bool VulkanCheckErrorStatus(VkResult x, const char* file, int line)
 {
     if(x != VK_SUCCESS)
     {
-        std::cout << "\033[1;31;49m **Vulkan Function Call Error** Description : \033[0m" << ErrorDescriptions[x] << " \033[2;90;49m [at Line : " << line << " in File : " << file << "\033[0m]" << std::endl;
+        LOG_ERROR("Vulkan Function Call Error \nDescription : %s", ErrorDescriptions[x].c_str());
         return true;
     }
     else return false;
