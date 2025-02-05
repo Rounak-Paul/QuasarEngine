@@ -2,6 +2,7 @@
 #include <qspch.h>
 
 #include "Window.h"
+#include <Resources/Scene.h>
 
 namespace Quasar
 {

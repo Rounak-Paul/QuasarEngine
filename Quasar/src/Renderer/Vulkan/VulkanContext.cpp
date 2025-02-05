@@ -121,7 +121,7 @@ VulkanContext::VulkanContext(std::vector<const char *> extensions) {
     // Pipeline
     _pipeline = std::make_unique<VulkanPipeline>(_device, _physical_device, _render_pass, _msaa_samples);
 
-    static const u32 framebuffer_count = 1;
+    static const u32 framebuffer_count = MAX_FRAMES_IN_FLIGHT;
     _command_pool = _device->createCommandPoolUnique({vk::CommandPoolCreateFlagBits::eResetCommandBuffer, _queue_family});
     _command_buffers = _device->allocateCommandBuffersUnique({_command_pool.get(), vk::CommandBufferLevel::ePrimary, framebuffer_count});
 

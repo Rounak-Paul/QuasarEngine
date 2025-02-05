@@ -1,6 +1,7 @@
 #include "Application.h"
 
 #include <Gui/Windows/Dockspace.h>
+#include <Gui/Windows/Scenespace.h>
 
 namespace Quasar {
     Application* Application::instance = nullptr;
@@ -93,6 +94,9 @@ namespace Quasar {
         LOG_DEBUG("Initializing GUI System...")
         GuiSystem* gui_system = new (QSMEM.allocate(sizeof(GuiSystem))) GuiSystem;
         QS_SYSTEM_MANAGER.Register(SYSTEM_GUI, gui_system, nullptr);
+
+        QS_GUI_SYSTEM.register_window(new Dockspace{});
+        QS_GUI_SYSTEM.register_window(new Scenespace{});
     }
 
     Application::~Application() {
@@ -101,7 +105,7 @@ namespace Quasar {
 
     void Application::run() {
         LOG_DEBUG("Running...");
-        QS_GUI_SYSTEM.register_window(new Dockspace{});
+        Scene loaded_scene;
         while (!window.should_close() && running)
         {
             if (suspended) { 
@@ -114,6 +118,7 @@ namespace Quasar {
             render_packet packet;
             packet.dt = 0.f; // TODO: calculate dt
             packet.app_suspended = suspended;
+            packet.scene = &loaded_scene;
             QS_RENDERER.draw(&packet);
         }
 

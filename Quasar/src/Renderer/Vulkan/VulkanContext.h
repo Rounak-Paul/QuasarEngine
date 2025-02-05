@@ -5,6 +5,8 @@
 
 namespace Quasar {
 
+#define MAX_FRAMES_IN_FLIGHT 3
+
 struct VulkanContext {
     VulkanContext(std::vector<const char *> extensions);
     ~VulkanContext() = default;
@@ -25,11 +27,6 @@ struct VulkanContext {
     vk::UniqueCommandPool _command_pool;
     std::vector<vk::UniqueCommandBuffer> _command_buffers;
     vk::UniqueSampler _texture_sampler;
-
-    // The scene is rendered to an offscreen image and then resolved to this image using MSAA.
-    vk::UniqueImage ResolveImage;
-    vk::UniqueImageView ResolveImageView;
-    vk::UniqueDeviceMemory ResolveImageMemory;
 
     // Find a discrete GPU, or the first available (integrated) GPU.
     vk::PhysicalDevice find_physical_device() const;

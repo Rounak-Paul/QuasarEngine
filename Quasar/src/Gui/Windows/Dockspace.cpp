@@ -14,7 +14,7 @@ void Dockspace::shutdown() {
 
 }
 
-void Dockspace::update() {
+void Dockspace::update(render_packet* packet) {
     static bool opt_fullscreen = true;
     static bool opt_padding = false;
     static ImGuiDockNodeFlags dockspace_flags = ImGuiDockNodeFlags_PassthruCentralNode | ImGuiDockNodeFlags_AutoHideTabBar;
@@ -68,7 +68,7 @@ void Dockspace::update() {
     {
         if (ImGui::BeginMenu("Options"))
         {
-            if (ImGui::MenuItem("Close", NULL, false, p_open != NULL))
+            if (ImGui::MenuItem("Close", NULL, false, p_open != false))
                 p_open = false;
             ImGui::EndMenu();
         }

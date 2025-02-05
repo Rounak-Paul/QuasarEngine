@@ -11,19 +11,6 @@
 
 namespace Quasar
 {
-    // TODO: temp
-    struct ImGuiWindow {
-        const char *Name{""};
-        bool Visible{true};
-    };
-
-    struct WindowsState {
-        ImGuiWindow SceneControls{"Scene controls"};
-        ImGuiWindow Scene{"Scene"};
-        ImGuiWindow ImGuiDemo{"Dear ImGui Demo", true};
-    };
-    // TODO: end temp
-    
     class Backend {
         public:
         Backend() {};
@@ -33,7 +20,8 @@ namespace Quasar
         void shutdown();
         void resize(u32 width, u32 height);
 
-        void update();
+        b8 frame_begin();
+        b8 frame_end();
         b8 render(u32 width, u32 height, const vk::ClearColorValue &bg_color);
 
         b8 multithreading_enabled = false;
@@ -42,8 +30,6 @@ namespace Quasar
         VkSurfaceKHR surface;
 
         // ImGui
-        WindowsState Windows;
-        vk::DescriptorSet MainSceneDescriptorSet;
         b8 create_vulkan_surface(GLFWwindow* window);
         void SetupVulkanWindow(ImGui_ImplVulkanH_Window *wd, vk::SurfaceKHR surface, int width, int height);
         void CleanupVulkanWindow();
