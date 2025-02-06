@@ -22,16 +22,13 @@ namespace Quasar
 
         b8 frame_begin();
         b8 frame_end();
-        b8 render(u32 width, u32 height, const vk::ClearColorValue &bg_color);
 
         b8 multithreading_enabled = false;
 
         std::unique_ptr<VulkanContext> context;
-        VkSurfaceKHR surface;
 
         // ImGui
-        b8 create_vulkan_surface(GLFWwindow* window);
-        void SetupVulkanWindow(ImGui_ImplVulkanH_Window *wd, vk::SurfaceKHR surface, int width, int height);
+        void SetupVulkanWindow(ImGui_ImplVulkanH_Window *wd, VkSurfaceKHR surface, int width, int height);
         void CleanupVulkanWindow();
         void FrameRender(ImGui_ImplVulkanH_Window *wd, ImDrawData *draw_data);
         void FramePresent(ImGui_ImplVulkanH_Window *wd);

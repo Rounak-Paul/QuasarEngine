@@ -1,7 +1,7 @@
 #pragma once
 
 #include <qspch.h>
-#include <vulkan/vulkan.hpp>
+#include <vulkan/vulkan.h>
 #include <unordered_map>
 #include <vector>
 #include <iostream>

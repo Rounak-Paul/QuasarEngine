@@ -18,7 +18,7 @@ b8 RendererAPI::init(void* config) {
     return true;
 }
 void RendererAPI::shutdown() {
-    backend.context->_device->waitIdle();
+    vkDeviceWaitIdle(backend.context->_device.logical_device);
     backend.shutdown();
 }
 b8 RendererAPI::draw(render_packet* packet)

@@ -6,9 +6,13 @@ namespace Quasar
 {
     class VulkanPipeline {
         public:
-        VulkanPipeline(const vk::UniqueDevice& device, const vk::PhysicalDevice& physical_device, const vk::UniqueRenderPass& render_pass, const vk::SampleCountFlagBits& msaa_samples);
+        VulkanPipeline() {};
         ~VulkanPipeline() = default;
 
-        vk::UniquePipeline _graphics_pipeline;
+        b8 create(VkDevice device, VkRenderPass render_pass, VkSampleCountFlagBits msaa_samples);
+        void destroy(VkDevice device);
+
+        VkPipeline _graphics_pipeline;
+        VkPipelineLayout _pipeline_layout;
     };
 } // namespace Quasar

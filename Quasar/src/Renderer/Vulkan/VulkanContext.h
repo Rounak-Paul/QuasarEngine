@@ -1,6 +1,7 @@
 #pragma once
 
 #include <qspch.h>
+#include "VulkanDevice.h"
 #include "VulkanPipeline.h"
 
 namespace Quasar {
@@ -8,29 +9,40 @@ namespace Quasar {
 #define MAX_FRAMES_IN_FLIGHT 3
 
 struct VulkanContext {
-    VulkanContext(std::vector<const char *> extensions);
-    ~VulkanContext() = default;
+    VulkanContext(GLFWwindow* window);
+    ~VulkanContext();
 
-    vk::UniqueInstance _instance;
-    vk::PhysicalDevice _physical_device;
-    vk::UniqueDevice _device;
-    u32 _queue_family = (u32)-1;
-    vk::Queue _queue;
-    vk::UniquePipelineCache _pipeline_cache;
-    vk::UniqueDescriptorPool _descriptor_pool;
+    VkInstance _instance;
+    VkAllocationCallbacks* _allocator;
+    VkSurfaceKHR _surface;
+    VulkanDevice _device;
 
-    vk::Extent2D _extent;
-    vk::SampleCountFlagBits _msaa_samples;
-    static const auto _image_format = vk::Format::eB8G8R8A8Unorm;
-    vk::UniqueRenderPass _render_pass;
-    std::unique_ptr<VulkanPipeline> _pipeline;
-    vk::UniqueCommandPool _command_pool;
-    std::vector<vk::UniqueCommandBuffer> _command_buffers;
-    vk::UniqueSampler _texture_sampler;
+    b8 _multithreading_enabled;
 
-    // Find a discrete GPU, or the first available (integrated) GPU.
-    vk::PhysicalDevice find_physical_device() const;
-    u32 find_memory_type(u32 type_filter, vk::MemoryPropertyFlags) const;
+    VkDescriptorPool _descriptor_pool;
+    VkRenderPass _render_pass;
+    VulkanPipeline _pipeline;
+    VkCommandPool _command_pool;
+    VkSampler _texture_sampler;
+
+    VkExtent2D _extent;
+    VkSampleCountFlagBits _msaa_samples;
+    static const VkFormat _image_format = VK_FORMAT_B8G8R8A8_UNORM;
+    
+    std::vector<VkCommandBuffer> _command_buffers;
+
+    PFN_vkCmdSetPrimitiveTopologyEXT vkCmdSetPrimitiveTopologyEXT;
+
+    // Optional
+    VkPipelineCache _pipeline_cache;
+
+    u32 find_memory_type(u32 type_filter, u32 prop_flags) const;
+
+    private:
+    b8 check_validation_layer_support();
+    std::vector<const char*> get_required_extensions();
+    b8 create_vulkan_surface(GLFWwindow* window);
+    void populate_debug_messenger_create_info(VkDebugUtilsMessengerCreateInfoEXT& createInfo);
 };
 
 }
