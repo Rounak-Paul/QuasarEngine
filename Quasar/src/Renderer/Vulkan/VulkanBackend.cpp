@@ -113,7 +113,7 @@ namespace Quasar
         ImDrawData *draw_data = GetDrawData();
         const bool is_minimized = (draw_data->DisplaySize.x <= 0.0f || draw_data->DisplaySize.y <= 0.0f);
         if (!is_minimized) {
-            static const ImVec4 clear_color{0.45f, 0.55f, 0.60f, 1.f};
+            static const ImVec4 clear_color{0.0f, 0.0f, 0.0f, 1.f};
             wd->ClearValue.color.float32[0] = clear_color.x * clear_color.w;
             wd->ClearValue.color.float32[1] = clear_color.y * clear_color.w;
             wd->ClearValue.color.float32[2] = clear_color.z * clear_color.w;
