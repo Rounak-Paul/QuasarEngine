@@ -5,25 +5,66 @@
 namespace Quasar {
 VkSampleCountFlagBits GetMaxUsableSampleCount(VkPhysicalDevice physical_device);
 
-static VKAPI_ATTR VkBool32 VKAPI_CALL debug_callback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity, VkDebugUtilsMessageTypeFlagsEXT messageType, const VkDebugUtilsMessengerCallbackDataEXT *pCallbackData, void *pUserData) {
-    switch (messageSeverity)
-    {
-        default:
-        case VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT:
-            LOG_ERROR(pCallbackData->pMessage);
-            break;
-        case VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT:
-            LOG_WARN(pCallbackData->pMessage);
-            break;
-        case VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT:
-            LOG_DEBUG(pCallbackData->pMessage);
-            break;
-        case VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT:
-            LOG_TRACE(pCallbackData->pMessage);
-            break;
-    }
+VkDebugUtilsMessengerEXT _debug_messenger;
+
+static VKAPI_ATTR VkBool32 VKAPI_CALL vk_debug_callback(
+    VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
+    VkDebugUtilsMessageTypeFlagsEXT messageType,
+    const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData,
+    void* pUserData) {
+        switch (messageSeverity)
+        {
+            default:
+            case VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT:
+                LOG_ERROR(pCallbackData->pMessage);
+                break;
+            case VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT:
+                LOG_WARN(pCallbackData->pMessage);
+                break;
+            case VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT:
+                LOG_INFO(pCallbackData->pMessage);
+                break;
+            case VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT:
+                LOG_TRACE(pCallbackData->pMessage);
+                break;
+        }
     return VK_FALSE;
 }
+
+VkResult CreateDebugUtilsMessengerEXT(
+    VkInstance instance,
+    const VkDebugUtilsMessengerCreateInfoEXT* pCreateInfo,
+    const VkAllocationCallbacks* pAllocator,
+    VkDebugUtilsMessengerEXT* p_debug_messenger) {
+    auto func = (PFN_vkCreateDebugUtilsMessengerEXT) 
+        vkGetInstanceProcAddr(instance, "vkCreateDebugUtilsMessengerEXT");
+    if (func != nullptr) {
+        return func(instance, pCreateInfo, pAllocator, p_debug_messenger);
+    } else {
+        return VK_ERROR_EXTENSION_NOT_PRESENT;
+    }
+}
+
+void Setup_debug_messenger(VkInstance instance) {
+    VkDebugUtilsMessengerCreateInfoEXT createInfo{};
+    createInfo.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
+    createInfo.messageSeverity =
+        VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT |
+        VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT |
+        VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
+    createInfo.messageType =
+        VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT |
+        VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT |
+        VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
+    createInfo.pfnUserCallback = vk_debug_callback;
+    createInfo.pUserData = nullptr; // Optional
+
+    if (CreateDebugUtilsMessengerEXT(instance, &createInfo, nullptr, &_debug_messenger) != VK_SUCCESS) {
+        throw std::runtime_error("failed to set up debug messenger!");
+    }
+}
+
+
 
 inline static bool is_extention_available(const std::vector<vk::ExtensionProperties> &properties, const char *extension) {
     for (const vk::ExtensionProperties &p : properties)
@@ -37,7 +78,7 @@ const std::vector<const char*> validationLayers = {
     // ,"VK_LAYER_LUNARG_api_dump" // For all vulkan calls
 };
 
-VulkanContext::VulkanContext(GLFWwindow* window) {
+b8 VulkanContext::create(GLFWwindow* window) {
     _allocator = nullptr;
 
     #ifdef QS_DEBUG 
@@ -73,12 +114,8 @@ VulkanContext::VulkanContext(GLFWwindow* window) {
     createInfo.ppEnabledExtensionNames = extensions.data();
 
     #ifdef QS_DEBUG
-    VkDebugUtilsMessengerCreateInfoEXT debugCreateInfo;
     createInfo.enabledLayerCount = static_cast<uint32_t>(validationLayers.size());
     createInfo.ppEnabledLayerNames = validationLayers.data();
-
-    populate_debug_messenger_create_info(debugCreateInfo);
-    createInfo.pNext = (VkDebugUtilsMessengerCreateInfoEXT*)&debugCreateInfo;
     #else
     createInfo.enabledLayerCount = 0;
     createInfo.ppEnabledLayerNames = 0;
@@ -87,6 +124,8 @@ VulkanContext::VulkanContext(GLFWwindow* window) {
     LOG_INFO("Creating Vulkan instance...");
     VK_CALL(vkCreateInstance(&createInfo, _allocator, &_instance));
 
+    Setup_debug_messenger(_instance);
+
     // TODO: implement multi-threading.
     _multithreading_enabled = false;
 
@@ -94,11 +133,13 @@ VulkanContext::VulkanContext(GLFWwindow* window) {
     LOG_INFO("Creating Vulkan surface...");
     if (!create_vulkan_surface(window)) {
         LOG_FATAL("Failed to create platform surface!");
+        return false;
     }
 
     // Device creation
-    if (!VulkanDevice::create(this)) {
+    if (!_device.create(this)) {
         LOG_ERROR("Failed to create device!");
+        return false;
     }
 
     // TODO: move to shader 
@@ -176,6 +217,7 @@ VulkanContext::VulkanContext(GLFWwindow* window) {
     // Pipeline
     if (!_pipeline.create(_device.logical_device, _render_pass, _msaa_samples)) {
         LOG_ERROR("Failed to create pipeline.")
+        return false;
     }
 
     VkCommandPoolCreateInfo command_pool_info{};
@@ -213,11 +255,56 @@ VulkanContext::VulkanContext(GLFWwindow* window) {
 
     VK_CALL(vkCreateSampler(_device.logical_device, &sampler_info, nullptr, &_texture_sampler));
 
+    return true;
 }
 
-VulkanContext::~VulkanContext()
+void VulkanContext::destroy()
 {
-    
+    if (_texture_sampler) {
+        vkDestroySampler(_device.logical_device, _texture_sampler, _allocator);
+        _texture_sampler = VK_NULL_HANDLE;
+    }
+
+    if (_command_pool) {
+        vkDestroyCommandPool(_device.logical_device, _command_pool, _allocator);
+        _command_pool = VK_NULL_HANDLE;
+    }
+
+    if (_pipeline._graphics_pipeline) {
+        _pipeline.destroy(_device.logical_device);
+    }
+
+    if (_render_pass) {
+        vkDestroyRenderPass(_device.logical_device, _render_pass, _allocator);
+        _render_pass = VK_NULL_HANDLE;
+    }
+
+    if (_descriptor_pool) {
+        vkDestroyDescriptorPool(_device.logical_device, _descriptor_pool, _allocator);
+        _descriptor_pool = VK_NULL_HANDLE;
+    }
+
+    _device.destroy(this);
+
+    if (_surface) {
+        vkDestroySurfaceKHR(_instance, _surface, _allocator);
+        _surface = VK_NULL_HANDLE;
+    }
+
+#ifdef QS_DEBUG
+    if (_debug_messenger) {
+        auto func = (PFN_vkDestroyDebugUtilsMessengerEXT)vkGetInstanceProcAddr(_instance, "vkDestroyDebugUtilsMessengerEXT");
+        if (func) {
+            func(_instance, _debug_messenger, _allocator);
+        }
+        _debug_messenger = VK_NULL_HANDLE;
+    }
+#endif
+
+    if (_instance) {
+        vkDestroyInstance(_instance, _allocator);
+        _instance = VK_NULL_HANDLE;
+    }
 }
 
 b8 VulkanContext::create_vulkan_surface(GLFWwindow* window)
@@ -266,43 +353,6 @@ b8 VulkanContext::check_validation_layer_support() {
         }
     }
     return true;
-}
-
-static VKAPI_ATTR VkBool32 VKAPI_CALL vk_debug_callback(
-    VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
-    VkDebugUtilsMessageTypeFlagsEXT messageType,
-    const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData,
-    void* pUserData) {
-        switch (messageSeverity)
-        {
-            default:
-            case VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT:
-                LOG_ERROR(pCallbackData->pMessage);
-                break;
-            case VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT:
-                LOG_WARN(pCallbackData->pMessage);
-                break;
-            case VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT:
-                LOG_INFO(pCallbackData->pMessage);
-                break;
-            case VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT:
-                LOG_TRACE(pCallbackData->pMessage);
-                break;
-        }
-    return VK_FALSE;
-}
-
-void VulkanContext::populate_debug_messenger_create_info(
-    VkDebugUtilsMessengerCreateInfoEXT& createInfo) {
-    createInfo = {};
-    createInfo.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
-    createInfo.messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT |
-        VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
-    createInfo.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT |
-        VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT |
-        VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
-    createInfo.pfnUserCallback = vk_debug_callback;
-    createInfo.pUserData = nullptr;  // Optional
 }
 
 VkSampleCountFlagBits GetMaxUsableSampleCount(VkPhysicalDevice physical_device) {

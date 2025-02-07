@@ -9,8 +9,11 @@ namespace Quasar {
 #define MAX_FRAMES_IN_FLIGHT 3
 
 struct VulkanContext {
-    VulkanContext(GLFWwindow* window);
-    ~VulkanContext();
+    VulkanContext() {};
+    ~VulkanContext() = default;
+
+    b8 create(GLFWwindow* window);
+    void destroy();
 
     VkInstance _instance;
     VkAllocationCallbacks* _allocator;
@@ -42,7 +45,6 @@ struct VulkanContext {
     b8 check_validation_layer_support();
     std::vector<const char*> get_required_extensions();
     b8 create_vulkan_surface(GLFWwindow* window);
-    void populate_debug_messenger_create_info(VkDebugUtilsMessengerCreateInfoEXT& createInfo);
 };
 
 }

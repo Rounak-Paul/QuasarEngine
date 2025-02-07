@@ -16,11 +16,11 @@ namespace Quasar
 
     b8 Backend::init(String &app_name, Window *main_window)
     {
-        context = std::make_unique<VulkanContext>(main_window->get_GLFWwindow());
+        context.create(main_window->get_GLFWwindow());
 
         auto extent = main_window->get_extent();
         ImGui_ImplVulkanH_Window *wd = &main_window_data;
-        SetupVulkanWindow(wd, context->_surface, extent.width, extent.height);
+        SetupVulkanWindow(wd, context._surface, extent.width, extent.height);
 
         // Setup ImGui context.
         IMGUI_CHECKVERSION();
@@ -41,13 +41,13 @@ namespace Quasar
         // Setup Platform/Renderer backends
         ImGui_ImplGlfw_InitForVulkan(main_window->get_GLFWwindow(), true);
         ImGui_ImplVulkan_InitInfo init_info = {};
-        init_info.Instance = context->_instance;
-        init_info.PhysicalDevice = context->_device.physical_device;
-        init_info.Device = context->_device.logical_device;
-        init_info.QueueFamily = context->_device.graphics_queue_index;
-        init_info.Queue = context->_device.graphics_queue;
-        init_info.PipelineCache = context->_pipeline_cache;
-        init_info.DescriptorPool = context->_descriptor_pool;
+        init_info.Instance = context._instance;
+        init_info.PhysicalDevice = context._device.physical_device;
+        init_info.Device = context._device.logical_device;
+        init_info.QueueFamily = context._device.graphics_queue_index;
+        init_info.Queue = context._device.graphics_queue;
+        init_info.PipelineCache = context._pipeline_cache;
+        init_info.DescriptorPool = context._descriptor_pool;
         init_info.RenderPass = wd->RenderPass;
         init_info.Subpass = 0;
         init_info.MinImageCount = min_image_count;
@@ -81,14 +81,14 @@ namespace Quasar
 
     void Backend::shutdown()
     {
-        
+        context.destroy();
     }
 
     void Backend::resize(u32 width, u32 height)
     {
-        vkDeviceWaitIdle(context->_device.logical_device);
+        vkDeviceWaitIdle(context._device.logical_device);
         ImGui_ImplVulkan_SetMinImageCount(min_image_count);
-        ImGui_ImplVulkanH_CreateOrResizeWindow(context->_instance, context->_device.physical_device, context->_device.logical_device, &main_window_data, context->_device.graphics_queue_index, nullptr, width, height, min_image_count);
+        ImGui_ImplVulkanH_CreateOrResizeWindow(context._instance, context._device.physical_device, context._device.logical_device, &main_window_data, context._device.graphics_queue_index, nullptr, width, height, min_image_count);
         main_window_data.FrameIndex = 0;
     }
 
@@ -136,8 +136,8 @@ namespace Quasar
         // Check for WSI support
         VkBool32 supported = VK_FALSE;
         VkResult res = vkGetPhysicalDeviceSurfaceSupportKHR(
-            context->_device.physical_device,
-            context->_device.graphics_queue_index,
+            context._device.physical_device,
+            context._device.graphics_queue_index,
             wd->Surface,
             &supported
         );
@@ -146,7 +146,7 @@ namespace Quasar
         // Select surface format.
         const VkFormat requestSurfaceImageFormat[] = {VK_FORMAT_B8G8R8A8_UNORM, VK_FORMAT_R8G8B8A8_UNORM, VK_FORMAT_B8G8R8_UNORM, VK_FORMAT_R8G8B8_UNORM};
         const VkColorSpaceKHR requestSurfaceColorSpace = VK_COLORSPACE_SRGB_NONLINEAR_KHR;
-        wd->SurfaceFormat = ImGui_ImplVulkanH_SelectSurfaceFormat(context->_device.physical_device, wd->Surface, requestSurfaceImageFormat, (size_t)IM_ARRAYSIZE(requestSurfaceImageFormat), requestSurfaceColorSpace);
+        wd->SurfaceFormat = ImGui_ImplVulkanH_SelectSurfaceFormat(context._device.physical_device, wd->Surface, requestSurfaceImageFormat, (size_t)IM_ARRAYSIZE(requestSurfaceImageFormat), requestSurfaceColorSpace);
 
         // Select present mode.
     #ifdef IMGUI_UNLIMITED_FRAME_RATE
@@ -154,22 +154,22 @@ namespace Quasar
     #else
         VkPresentModeKHR present_modes[] = {VK_PRESENT_MODE_FIFO_KHR};
     #endif
-        wd->PresentMode = ImGui_ImplVulkanH_SelectPresentMode(context->_device.physical_device, wd->Surface, &present_modes[0], IM_ARRAYSIZE(present_modes));
+        wd->PresentMode = ImGui_ImplVulkanH_SelectPresentMode(context._device.physical_device, wd->Surface, &present_modes[0], IM_ARRAYSIZE(present_modes));
         // printf("[vulkan] Selected PresentMode = %d\n", wd->PresentMode);
 
         // Create SwapChain, RenderPass, Framebuffer, etc.
         IM_ASSERT(min_image_count >= 2);
-        ImGui_ImplVulkanH_CreateOrResizeWindow(context->_instance, context->_device.physical_device, context->_device.logical_device, wd, context->_device.graphics_queue_index, nullptr, width, height, min_image_count);
+        ImGui_ImplVulkanH_CreateOrResizeWindow(context._instance, context._device.physical_device, context._device.logical_device, wd, context._device.graphics_queue_index, nullptr, width, height, min_image_count);
     }
 
     void Backend::CleanupVulkanWindow() {
-        ImGui_ImplVulkanH_DestroyWindow(context->_instance, context->_device.logical_device, &main_window_data, nullptr);
+        ImGui_ImplVulkanH_DestroyWindow(context._instance, context._device.logical_device, &main_window_data, nullptr);
     }
 
     void Backend::FrameRender(ImGui_ImplVulkanH_Window *wd, ImDrawData *draw_data) {
         VkSemaphore image_acquired_semaphore = wd->FrameSemaphores[wd->SemaphoreIndex].ImageAcquiredSemaphore;
         VkSemaphore render_complete_semaphore = wd->FrameSemaphores[wd->SemaphoreIndex].RenderCompleteSemaphore;
-        const VkResult err = vkAcquireNextImageKHR(context->_device.logical_device, wd->Swapchain, UINT64_MAX, image_acquired_semaphore, VK_NULL_HANDLE, &wd->FrameIndex);
+        const VkResult err = vkAcquireNextImageKHR(context._device.logical_device, wd->Swapchain, UINT64_MAX, image_acquired_semaphore, VK_NULL_HANDLE, &wd->FrameIndex);
         if (err == VK_ERROR_OUT_OF_DATE_KHR || err == VK_SUBOPTIMAL_KHR) {
             return;
         }
@@ -177,11 +177,11 @@ namespace Quasar
 
         ImGui_ImplVulkanH_Frame *fd = &wd->Frames[wd->FrameIndex];
         {
-            VK_CALL(vkWaitForFences(context->_device.logical_device, 1, &fd->Fence, VK_TRUE, UINT64_MAX)); // wait indefinitely instead of periodically checking
-            VK_CALL(vkResetFences(context->_device.logical_device, 1, &fd->Fence));
+            VK_CALL(vkWaitForFences(context._device.logical_device, 1, &fd->Fence, VK_TRUE, UINT64_MAX)); // wait indefinitely instead of periodically checking
+            VK_CALL(vkResetFences(context._device.logical_device, 1, &fd->Fence));
         }
         {
-            VK_CALL(vkResetCommandPool(context->_device.logical_device, fd->CommandPool, 0));
+            VK_CALL(vkResetCommandPool(context._device.logical_device, fd->CommandPool, 0));
             VkCommandBufferBeginInfo info = {};
             info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
             info.flags |= VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
@@ -217,7 +217,7 @@ namespace Quasar
             info.pSignalSemaphores = &render_complete_semaphore;
 
             VK_CALL(vkEndCommandBuffer(fd->CommandBuffer));
-            VK_CALL(vkQueueSubmit(context->_device.graphics_queue, 1, &info, fd->Fence));
+            VK_CALL(vkQueueSubmit(context._device.graphics_queue, 1, &info, fd->Fence));
         }
     }
 
@@ -230,7 +230,7 @@ namespace Quasar
         info.swapchainCount = 1;
         info.pSwapchains = &wd->Swapchain;
         info.pImageIndices = &wd->FrameIndex;
-        VkResult err = vkQueuePresentKHR(context->_device.graphics_queue, &info);
+        VkResult err = vkQueuePresentKHR(context._device.graphics_queue, &info);
         if (err == VK_ERROR_OUT_OF_DATE_KHR || err == VK_SUBOPTIMAL_KHR) {
             return;
         }

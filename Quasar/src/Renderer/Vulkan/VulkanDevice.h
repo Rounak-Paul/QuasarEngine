@@ -29,9 +29,8 @@ class VulkanDevice {
     VulkanDevice() {};
     ~VulkanDevice() = default;
     
-    static b8 create(struct VulkanContext* context);
-
-    static void destroy(struct VulkanContext* context);
+    b8 create(struct VulkanContext* context);
+    void destroy(struct VulkanContext* context);
 
     static void query_swapchain_support(
         VkPhysicalDevice physical_device,

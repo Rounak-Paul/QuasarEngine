@@ -25,7 +25,7 @@ namespace Quasar
 
         b8 multithreading_enabled = false;
 
-        std::unique_ptr<VulkanContext> context;
+        VulkanContext context;
 
         // ImGui
         void SetupVulkanWindow(ImGui_ImplVulkanH_Window *wd, VkSurfaceKHR surface, int width, int height);

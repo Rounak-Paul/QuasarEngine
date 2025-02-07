@@ -31,7 +31,7 @@ class RendererAPI : public System {
     b8 draw(render_packet* packet);
     void resize(u32 width, u32 height);
 
-    VulkanContext* get_vkcontext() {return &*backend.context;}
+    VulkanContext* get_vkcontext() {return &backend.context;}
 
     private:
     Backend backend;
