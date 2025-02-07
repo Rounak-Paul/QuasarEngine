@@ -28,7 +28,7 @@ void Scenespace::update(render_packet* packet) {
         if (main_scene_descriptor_set) {
             ImGui_ImplVulkan_RemoveTexture(main_scene_descriptor_set);
         }
-        main_scene_descriptor_set = ImGui_ImplVulkan_AddTexture(QS_RENDERER.get_vkcontext()->_texture_sampler, scene->resolveImageView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+        main_scene_descriptor_set = ImGui_ImplVulkan_AddTexture(QS_RENDERER.get_vkcontext()->_texture_sampler, scene->resolve_image_view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
     }
     ImTextureID textureID = (ImTextureID) static_cast<VkDescriptorSet>(main_scene_descriptor_set);
     ImGui::Image(textureID, ImGui::GetContentRegionAvail());

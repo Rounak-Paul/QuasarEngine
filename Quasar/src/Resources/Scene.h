@@ -12,9 +12,9 @@ public:
 private:
     // Render target
     // The scene is rendered to an offscreen image and then resolved to this image using MSAA.
-    VkImage resolveImage;
-    VkImageView resolveImageView;
-    VkDeviceMemory resolveImageMemory;
+    VkImage resolve_image;
+    VkImageView resolve_image_view;
+    VkDeviceMemory resolve_image_memory;
 
     u32 frame_index = 0;
 

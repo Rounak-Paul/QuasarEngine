@@ -53,24 +53,24 @@ b8 Scene::render(u32 width, u32 height, const VkClearColorValue &bg_color)
 
     // Create Resolve Image (for MSAA)
     imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
-    vkCreateImage(context->_device.logical_device, &imageInfo, nullptr, &resolveImage);
-    vkGetImageMemoryRequirements(context->_device.logical_device, resolveImage, &memReqs);
+    vkCreateImage(context->_device.logical_device, &imageInfo, nullptr, &resolve_image);
+    vkGetImageMemoryRequirements(context->_device.logical_device, resolve_image, &memReqs);
     allocInfo.allocationSize = memReqs.size;
-    vkAllocateMemory(context->_device.logical_device, &allocInfo, nullptr, &resolveImageMemory);
-    vkBindImageMemory(context->_device.logical_device, resolveImage, resolveImageMemory, 0);
+    vkAllocateMemory(context->_device.logical_device, &allocInfo, nullptr, &resolve_image_memory);
+    vkBindImageMemory(context->_device.logical_device, resolve_image, resolve_image_memory, 0);
 
     // Create Image View
     VkImageViewCreateInfo resolve_view_info = {VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
-    resolve_view_info.image = resolveImage;
+    resolve_view_info.image = resolve_image;
     resolve_view_info.viewType = VK_IMAGE_VIEW_TYPE_2D;
     resolve_view_info.format = context->_image_format;
     resolve_view_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
     resolve_view_info.subresourceRange.levelCount = 1;
     resolve_view_info.subresourceRange.layerCount = 1;
-    vkCreateImageView(context->_device.logical_device, &resolve_view_info, nullptr, &resolveImageView);
+    vkCreateImageView(context->_device.logical_device, &resolve_view_info, nullptr, &resolve_image_view);
 
     // Create Framebuffer
-    VkImageView attachments[] = { offscreenImageView, resolveImageView };
+    VkImageView attachments[] = { offscreenImageView, resolve_image_view };
     VkFramebuffer framebuffer;
     VkFramebufferCreateInfo framebufferInfo = {VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO};
     framebufferInfo.renderPass = context->_render_pass;
@@ -97,7 +97,7 @@ b8 Scene::render(u32 width, u32 height, const VkClearColorValue &bg_color)
     VkImageMemoryBarrier barrier = {VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
     barrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
     barrier.newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-    barrier.image = resolveImage;
+    barrier.image = resolve_image;
     barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
     barrier.subresourceRange.levelCount = 1;
     barrier.subresourceRange.layerCount = 1;
