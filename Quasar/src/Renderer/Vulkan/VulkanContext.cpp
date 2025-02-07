@@ -124,7 +124,9 @@ b8 VulkanContext::create(GLFWwindow* window) {
     LOG_INFO("Creating Vulkan instance...");
     VK_CALL(vkCreateInstance(&createInfo, _allocator, &_instance));
 
+    #ifdef QS_DEBUG
     Setup_debug_messenger(_instance);
+    #endif
 
     // TODO: implement multi-threading.
     _multithreading_enabled = false;
