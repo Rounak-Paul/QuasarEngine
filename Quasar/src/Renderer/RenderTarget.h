@@ -20,13 +20,13 @@ public:
 
     b8 render(Math::extent extent, const VkClearColorValue &bg_color);
 
-    VkImageView get_resolve_image_view() { return resolve_images[_frame_index]._image_view; }
+    VkImageView get_resolve_image_view() { return _resolve_images[_frame_index]._image_view; }
 
 private:
-    DynamicArray<VulkanImage> resolve_images;
-    DynamicArray<VulkanImage> offscreen_images;
+    DynamicArray<VulkanImage> _resolve_images;
+    DynamicArray<VulkanImage> _offscreen_images;
     DynamicArray<VulkanCommandBuffer> _command_buffers;
-    DynamicArray<VkFramebuffer> framebuffer;
+    DynamicArray<VkFramebuffer> _framebuffer;
 
 
 

@@ -6,8 +6,8 @@ namespace Quasar
     {
         auto context = QS_RENDERER.get_vkcontext();
         // Create Offscreen Image
-        offscreen_images.resize(MAX_FRAMES_IN_FLIGHT);
-        for (auto& offscreen_image : offscreen_images) {
+        _offscreen_images.resize(MAX_FRAMES_IN_FLIGHT);
+        for (auto& offscreen_image : _offscreen_images) {
             offscreen_image.create(
                 context,
                 { context->_extent.width, context->_extent.height },
@@ -21,8 +21,8 @@ namespace Quasar
         }
 
         // Create Resolve Image (for MSAA)
-        resolve_images.resize(MAX_FRAMES_IN_FLIGHT);
-        for (auto& resolve_image : resolve_images) {
+        _resolve_images.resize(MAX_FRAMES_IN_FLIGHT);
+        for (auto& resolve_image : _resolve_images) {
             resolve_image.create(
                 context,
                 { context->_extent.width, context->_extent.height },
@@ -39,7 +39,7 @@ namespace Quasar
         VulkanCommandBuffer commandBuffer;
         commandBuffer.allocate_and_begin_single_use(context, context->_command_pool);
 
-        for (auto& offscreen_image : offscreen_images) {
+        for (auto& offscreen_image : _offscreen_images) {
             offscreen_image.transition_layout(
                 context, 
                 commandBuffer._handle,
@@ -48,7 +48,7 @@ namespace Quasar
             );
         }
 
-        for (auto& resolve_image : resolve_images) {
+        for (auto& resolve_image : _resolve_images) {
             resolve_image.transition_layout(
                 context, 
                 commandBuffer._handle,
@@ -64,9 +64,9 @@ namespace Quasar
             command_buffer.allocate(context, context->_command_pool, true);
         }
 
-        framebuffer.resize(MAX_FRAMES_IN_FLIGHT);
+        _framebuffer.resize(MAX_FRAMES_IN_FLIGHT);
         for (u8 i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
-            VkImageView attachments[] = { offscreen_images[i]._image_view, resolve_images[i]._image_view };
+            VkImageView attachments[] = { _offscreen_images[i]._image_view, _resolve_images[i]._image_view };
 
             VkFramebufferCreateInfo framebufferInfo = {VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO};
             framebufferInfo.renderPass = context->_render_pass;
@@ -75,7 +75,7 @@ namespace Quasar
             framebufferInfo.width = context->_extent.width;
             framebufferInfo.height = context->_extent.height;
             framebufferInfo.layers = 1;
-            vkCreateFramebuffer(context->_device.logical_device, &framebufferInfo, nullptr, &framebuffer[i]);
+            vkCreateFramebuffer(context->_device.logical_device, &framebufferInfo, nullptr, &_framebuffer[i]);
         }
 
         return true;
@@ -89,15 +89,15 @@ namespace Quasar
             command_buffer.free(context, context->_command_pool);
         }
 
-        for (auto& framebuffer : framebuffer) {
+        for (auto& framebuffer : _framebuffer) {
             vkDestroyFramebuffer(context->_device.logical_device, framebuffer, nullptr);
         }
 
-        for (auto& resolve_image : resolve_images) {
+        for (auto& resolve_image : _resolve_images) {
             resolve_image.destroy(context);
         }
 
-        for (auto& offscreen_image : offscreen_images) {
+        for (auto& offscreen_image : _offscreen_images) {
             offscreen_image.destroy(context);
         }
     }
@@ -134,7 +134,7 @@ namespace Quasar
         clearValue.color = { bg_color.float32[0], bg_color.float32[1], bg_color.float32[2], bg_color.float32[3] };
         VkRenderPassBeginInfo renderPassInfo = {VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO};
         renderPassInfo.renderPass = context->_render_pass;
-        renderPassInfo.framebuffer = framebuffer[_frame_index];
+        renderPassInfo.framebuffer = _framebuffer[_frame_index];
         renderPassInfo.renderArea.extent = { extent.width, extent.height };
         renderPassInfo.clearValueCount = 1;
         renderPassInfo.pClearValues = &clearValue;
@@ -145,7 +145,7 @@ namespace Quasar
         vkCmdDraw(commandBuffer->_handle, 3, 1, 0, 0);
         vkCmdEndRenderPass(commandBuffer->_handle);
 
-        resolve_images[_frame_index].transition_layout(
+        _resolve_images[_frame_index].transition_layout(
             context, 
             commandBuffer->_handle, 
             context->_image_format,
