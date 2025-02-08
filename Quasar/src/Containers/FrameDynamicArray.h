@@ -32,6 +32,11 @@ public:
         }
     }
 
+    T* begin() { return data; }
+    T* end() { return data + size; }
+    const T* begin() const { return data; }
+    const T* end() const { return data + size; }
+
     void push_back(const T& value) {
         if (data == nullptr) {
             create();

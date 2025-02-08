@@ -30,7 +30,7 @@
 #include <Containers/DynamicArray.h>
 #include <Containers/FrameDynamicArray.h>
 #include <Containers/Hashmap.h>
-#include <Containers/XMLPaser.h>
+#include <Containers/XML.h>
 
 // Custom 
 #include <Memory/Memory.h>
