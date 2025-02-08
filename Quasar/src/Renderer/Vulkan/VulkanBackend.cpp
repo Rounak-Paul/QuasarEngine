@@ -1,5 +1,5 @@
 #include "VulkanBackend.h"
-#include "VulkanCheckReslt.h"
+#include "VulkanCheckResult.h"
 #include <Math/Math.h>
 
 #include <Gui/GuiFonts.h>
@@ -19,6 +19,7 @@ namespace Quasar
         context.create(main_window->get_GLFWwindow());
 
         auto extent = main_window->get_extent();
+        context._extent = {extent.width, extent.height};
         ImGui_ImplVulkanH_Window *wd = &main_window_data;
         SetupVulkanWindow(wd, context._surface, extent.width, extent.height);
 

@@ -12,14 +12,36 @@ namespace Quasar
         VulkanImage() {};
         ~VulkanImage() = default;
 
-        b8 create(const VulkanContext* context);
-        void destroy();
+        b8 create(
+            const VulkanContext *context,
+            Math::extent extent,
+            VkFormat format,
+            VkImageTiling tiling,
+            VkImageUsageFlags usage,
+            VkSampleCountFlagBits samples,
+            VkMemoryPropertyFlags properties,
+            VkImageAspectFlags aspect
+        );
+
+        void destroy(const VulkanContext* context);
+
+        /**
+         * Transitions the provided image from old_layout to new_layout.
+         */
+        void transition_layout(
+            const VulkanContext *context,
+            VkCommandBuffer command_buffer,
+            VkFormat format,
+            VkImageLayout new_layout);
 
     private:
         VkImage _image = nullptr;
         VkDeviceMemory _image_memory = nullptr;
         VkImageView _image_view = nullptr;
         Math::extent _extent;
+        VkImageLayout current_layout = VK_IMAGE_LAYOUT_UNDEFINED;
+
+        friend class RenderTarget;
     };
 } // namespace Quasar
 

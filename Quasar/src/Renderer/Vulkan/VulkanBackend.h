@@ -1,7 +1,7 @@
 #pragma once
 #include <qspch.h>
 #include <Math/Math.h>
-#include <vulkan/vulkan.hpp>
+#include <vulkan/vulkan.h>
 
 #include "VulkanContext.h"
 

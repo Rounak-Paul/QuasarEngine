@@ -1,6 +1,6 @@
 #include "VulkanContext.h"
 #include <Platform/File.h>
-#include "VulkanCheckReslt.h"
+#include "VulkanCheckResult.h"
 
 namespace Quasar {
 VkSampleCountFlagBits GetMaxUsableSampleCount(VkPhysicalDevice physical_device);
@@ -66,8 +66,8 @@ void Setup_debug_messenger(VkInstance instance) {
 
 
 
-inline static bool is_extention_available(const std::vector<vk::ExtensionProperties> &properties, const char *extension) {
-    for (const vk::ExtensionProperties &p : properties)
+inline static bool is_extention_available(const std::vector<VkExtensionProperties> &properties, const char *extension) {
+    for (const auto &p : properties)
         if (strcmp(p.extensionName, extension) == 0)
             return true;
     return false;
@@ -164,7 +164,7 @@ b8 VulkanContext::create(GLFWwindow* window) {
     // Renderpass
     // Render multisampled into the offscreen image, then resolve into a single-sampled resolve image.
     _msaa_samples = GetMaxUsableSampleCount(_device.physical_device);
-        // Define attachments.
+    // Define attachments.
     VkAttachmentDescription attachments[2] = {};
 
     // Multi-sampled offscreen image attachment.
@@ -172,11 +172,11 @@ b8 VulkanContext::create(GLFWwindow* window) {
     attachments[0].format = _image_format;
     attachments[0].samples = _msaa_samples;
     attachments[0].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-    attachments[0].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+    attachments[0].storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE; // No need to store MSAA image
     attachments[0].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
     attachments[0].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
     attachments[0].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    attachments[0].finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    attachments[0].finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL; // Corrected
 
     // Single-sampled resolve attachment.
     attachments[1].flags = 0;
@@ -186,7 +186,7 @@ b8 VulkanContext::create(GLFWwindow* window) {
     attachments[1].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
     attachments[1].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
     attachments[1].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-    attachments[1].initialLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    attachments[1].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
     attachments[1].finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 
     // Define attachment references.
@@ -213,6 +213,18 @@ b8 VulkanContext::create(GLFWwindow* window) {
     render_pass_info.subpassCount = 1;
     render_pass_info.pSubpasses = &subpass;
 
+    // VkSubpassDependency dependency = {};
+    // dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
+    // dependency.dstSubpass = 0;
+    // dependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    // dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    // dependency.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+    // dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+    // dependency.dependencyFlags = 0;
+
+    // render_pass_info.dependencyCount = 1;
+    // render_pass_info.pDependencies = &dependency;
+
     // Create render pass.
     VK_CALL(vkCreateRenderPass(_device.logical_device, &render_pass_info, nullptr, &_render_pass));
 
@@ -229,15 +241,10 @@ b8 VulkanContext::create(GLFWwindow* window) {
 
     VK_CALL(vkCreateCommandPool(_device.logical_device, &command_pool_info, nullptr, &_command_pool));
 
-    std::vector<VkCommandBuffer> command_buffers(MAX_FRAMES_IN_FLIGHT);
-    VkCommandBufferAllocateInfo alloc_info{};
-    alloc_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-    alloc_info.commandPool = _command_pool;
-    alloc_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-    alloc_info.commandBufferCount = MAX_FRAMES_IN_FLIGHT;
-
-    VK_CALL(vkAllocateCommandBuffers(_device.logical_device, &alloc_info, command_buffers.data()));
-    _command_buffers = std::move(command_buffers);
+    _command_buffers.resize(MAX_FRAMES_IN_FLIGHT);
+    for (auto& command_buffer : _command_buffers) {
+        command_buffer.allocate(this, _command_pool, true);
+    }
 
     // Create sampler
     VkSamplerCreateInfo sampler_info{};
@@ -265,6 +272,10 @@ void VulkanContext::destroy()
     if (_texture_sampler) {
         vkDestroySampler(_device.logical_device, _texture_sampler, _allocator);
         _texture_sampler = VK_NULL_HANDLE;
+    }
+
+    for (auto& command_buffer : _command_buffers) {
+        command_buffer.free(this, _command_pool);
     }
 
     if (_command_pool) {

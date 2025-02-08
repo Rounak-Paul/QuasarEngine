@@ -106,6 +106,7 @@ namespace Quasar {
     void Application::run() {
         LOG_DEBUG("Running...");
         Scene loaded_scene;
+        loaded_scene.create();
         while (!window.should_close() && running)
         {
             if (suspended) { 

@@ -3,6 +3,7 @@
 #include <qspch.h>
 #include "VulkanDevice.h"
 #include "VulkanPipeline.h"
+#include "VulkanCommmandBuffer.h"
 
 namespace Quasar {
 
@@ -32,7 +33,7 @@ struct VulkanContext {
     VkSampleCountFlagBits _msaa_samples;
     static const VkFormat _image_format = VK_FORMAT_B8G8R8A8_UNORM;
     
-    std::vector<VkCommandBuffer> _command_buffers;
+    std::vector<VulkanCommandBuffer> _command_buffers;
 
     PFN_vkCmdSetPrimitiveTopologyEXT vkCmdSetPrimitiveTopologyEXT;
 
