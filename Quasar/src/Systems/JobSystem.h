@@ -78,6 +78,7 @@ class QS_API JobSystem : public System {
     public:
     JobSystem() {};
     ~JobSystem() = default;
+    
     virtual b8 init(void* config) override;
     virtual void shutdown() override;
 

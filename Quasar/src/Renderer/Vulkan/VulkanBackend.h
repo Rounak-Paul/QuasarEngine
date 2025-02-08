@@ -1,8 +1,15 @@
 #pragma once
 #include <qspch.h>
-#include "VulkanTypes.h"
+#include <Math/Math.h>
+#include <vulkan/vulkan.h>
 
-namespace Quasar::Renderer
+#include "VulkanContext.h"
+
+#include <imgui.h>
+#include <backends/imgui_impl_glfw.h>
+#include <backends/imgui_impl_vulkan.h>
+
+namespace Quasar
 {
     class Backend {
         public:
@@ -13,23 +20,20 @@ namespace Quasar::Renderer
         void shutdown();
         void resize(u32 width, u32 height);
 
-        b8 begin_frame(f32 dt);
-        b8 end_frame(f32 dt);
+        b8 frame_begin();
+        b8 frame_end();
 
         b8 multithreading_enabled = false;
 
-        private:
-        vulkan_context context;
+        VulkanContext context;
 
-        b8 check_validation_layer_support();
-        std::vector<const char*> get_required_extensions();
-        void populate_debug_messenger_create_info(VkDebugUtilsMessengerCreateInfoEXT& createInfo);
-        VkResult create_debug_messenger();
-        b8 create_vulkan_surface(Window* window);
-        void create_command_buffers();
-        void regenerate_framebuffers(vulkan_swapchain* swapchain, vulkan_renderpass* renderpass);
-        b8 recreate_swapchain();
-        b8 create_buffers();
-        void upload_data_range(VkCommandPool pool, VkFence fence, VkQueue queue, vulkan_buffer* buffer, u64 offset, u64 size, void* data);
+        // ImGui
+        void SetupVulkanWindow(ImGui_ImplVulkanH_Window *wd, VkSurfaceKHR surface, int width, int height);
+        void CleanupVulkanWindow();
+        void FrameRender(ImGui_ImplVulkanH_Window *wd, ImDrawData *draw_data);
+        void FramePresent(ImGui_ImplVulkanH_Window *wd);
+        inline static void CheckVk(VkResult err) {
+            if (err != 0) throw std::runtime_error(std::format("Vulkan error: {}", int(err)));
+        }
     };
 } // namespace Vulkan

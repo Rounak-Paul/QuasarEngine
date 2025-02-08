@@ -1,5 +1,8 @@
 #pragma once
-#include "qspch.h"
+#include <qspch.h>
+#include <Math/MathTypes.h>
+#define GLFW_INCLUDE_VULKAN
+#include <GLFW/glfw3.h> // This includes vulkan already
 
 namespace Quasar 
 {
@@ -14,8 +17,8 @@ namespace Quasar
 		Window& operator=(const Window&) = delete;
 
 		QS_INLINE b8 should_close() { return glfwWindowShouldClose(window); }
-		VkExtent2D get_extent() { 
-			return { static_cast<uint32_t>(width), static_cast<uint32_t>(height) }; 
+		Math::extent get_extent() { 
+			return { static_cast<u32>(width), static_cast<u32>(height), static_cast<u32>(0) }; 
 			}
         QS_INLINE void poll_events() {glfwPollEvents();}
 		QS_INLINE void wait_events() {glfwWaitEvents();}

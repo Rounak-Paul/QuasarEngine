@@ -29,9 +29,9 @@ namespace Quasar
         ~SystemManager() = default;
         static b8 init();
         void shutdown();
-        static inline SystemManager& get_instance() {return *instance;}
+        static QS_INLINE SystemManager& get_instance() {return *instance;}
 
-        inline System* get_system(qs_system s_id) {return registered_systems[s_id];}
+        QS_INLINE System* get_system(qs_system s_id) {return registered_systems[s_id];}
 
         /**
          * @brief Register a system to the system manager, calls init() of the System, this SystemManager becomes owner of the system instance
@@ -62,9 +62,9 @@ namespace Quasar
     };
 
     #define QS_SYSTEM_MANAGER SystemManager::get_instance()
-    #define QS_EVENT (*(Event*)QS_SYSTEM_MANAGER.get_system(SYSTEM_EVENT))
-    #define QS_INPUT (*(Input*)QS_SYSTEM_MANAGER.get_system(SYSTEM_INPUT))
-    #define QS_JOB_SYSTEM (*(JobSystem*)QS_SYSTEM_MANAGER.get_system(SYSTEM_JOB))
-    #define QS_RENDERER (*(RendererAPI*)QS_SYSTEM_MANAGER.get_system(SYSTEM_RENDERER))
-    #define QS_GUI_SYSTEM (*(GuiSystem*)QS_SYSTEM_MANAGER.get_system(SYSTEM_GUI))
+    #define QS_EVENT (*(Event*)SystemManager::get_instance().get_system(SYSTEM_EVENT))
+    #define QS_INPUT (*(Input*)SystemManager::get_instance().get_system(SYSTEM_INPUT))
+    #define QS_JOB_SYSTEM (*(JobSystem*)SystemManager::get_instance().get_system(SYSTEM_JOB))
+    #define QS_RENDERER (*(RendererAPI*)SystemManager::get_instance().get_system(SYSTEM_RENDERER))
+    #define QS_GUI_SYSTEM (*(GuiSystem*)SystemManager::get_instance().get_system(SYSTEM_GUI))
 } // namespace Quasar

@@ -1,5 +1,8 @@
 #pragma once
 #include <qspch.h>
+#include <imgui.h>
+#include <backends/imgui_impl_glfw.h>
+#include <backends/imgui_impl_vulkan.h>
 
 namespace Quasar {
 
@@ -11,7 +14,7 @@ namespace Quasar {
 
 		virtual void init() {}
 		virtual void shutdown() {}
-		virtual void update() {}
+		virtual void update(render_packet* packet) {}
 
 		const String& get_name() const { return window_name; }
 	protected:

@@ -1,26 +1,47 @@
 #pragma once
 
-#include "VulkanTypes.h"
+#include <qspch.h>
+#include "VulkanContext.h"
+#include <Math/Math.h>
 
-namespace Quasar::Renderer {
-void vulkan_image_create(
-    vulkan_context* context,
-    VkImageType image_type,
-    u32 width,
-    u32 height,
-    VkFormat format,
-    VkImageTiling tiling,
-    VkImageUsageFlags usage,
-    VkMemoryPropertyFlags memory_flags,
-    b32 create_view,
-    VkImageAspectFlags view_aspect_flags,
-    vulkan_image* out_image);
+namespace Quasar
+{
+    class VulkanImage
+    {
+    public:
+        VulkanImage() {};
+        ~VulkanImage() = default;
 
-void vulkan_image_view_create(
-    vulkan_context* context,
-    VkFormat format,
-    vulkan_image* image,
-    VkImageAspectFlags aspect_flags);
-    
-void vulkan_image_destroy(vulkan_context* context, vulkan_image* image);
-}
+        b8 create(
+            const VulkanContext *context,
+            Math::extent extent,
+            VkFormat format,
+            VkImageTiling tiling,
+            VkImageUsageFlags usage,
+            VkSampleCountFlagBits samples,
+            VkMemoryPropertyFlags properties,
+            VkImageAspectFlags aspect
+        );
+
+        void destroy(const VulkanContext* context);
+
+        /**
+         * Transitions the provided image from old_layout to new_layout.
+         */
+        void transition_layout(
+            const VulkanContext *context,
+            VkCommandBuffer command_buffer,
+            VkFormat format,
+            VkImageLayout new_layout);
+
+    private:
+        VkImage _image = nullptr;
+        VkDeviceMemory _image_memory = nullptr;
+        VkImageView _image_view = nullptr;
+        Math::extent _extent;
+        VkImageLayout current_layout = VK_IMAGE_LAYOUT_UNDEFINED;
+
+        friend class RenderTarget;
+    };
+} // namespace Quasar
+
