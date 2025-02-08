@@ -2,6 +2,7 @@
 #include <qspch.h>
 
 #include "Window.h"
+#include <Resources/Scene.h>
 
 namespace Quasar
 {
@@ -17,7 +18,7 @@ namespace Quasar
      * The Application class can be inherited and instantiated by the user as shown below:
      * 
      * @code
-     * // Function to create the application instance.
+     * // Example Function to create the application instance.
      * Quasar::Application* Quasar::CreateApplication()
      * {
      *     Quasar::app_create_info info;

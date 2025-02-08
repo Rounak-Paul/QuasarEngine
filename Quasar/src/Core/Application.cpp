@@ -1,5 +1,8 @@
 #include "Application.h"
 
+#include <Gui/Windows/Dockspace.h>
+#include <Gui/Windows/Scenespace.h>
+
 namespace Quasar {
     Application* Application::instance = nullptr;
 
@@ -12,7 +15,7 @@ namespace Quasar {
         LOG_DEBUG("Initializing Log...")
         if (!Log::init()) {LOG_ERROR("Log failed to Initialize")}
 
-        VkExtent2D extent = window.get_extent();
+        Math::extent extent = window.get_extent();
         LOG_DEBUG("Created main window [%u, %u]", extent.width, extent.height)
 
         LOG_DEBUG("Initializing Memory System...")
@@ -88,6 +91,12 @@ namespace Quasar {
         JobSystem* job_system = new (QSMEM.allocate(sizeof(JobSystem))) JobSystem;
         QS_SYSTEM_MANAGER.Register(SYSTEM_JOB, job_system, &job_sys_config);
 
+        LOG_DEBUG("Initializing GUI System...")
+        GuiSystem* gui_system = new (QSMEM.allocate(sizeof(GuiSystem))) GuiSystem;
+        QS_SYSTEM_MANAGER.Register(SYSTEM_GUI, gui_system, nullptr);
+
+        QS_GUI_SYSTEM.register_window(new Dockspace{});
+        QS_GUI_SYSTEM.register_window(new Scenespace{});
     }
 
     Application::~Application() {
@@ -96,6 +105,8 @@ namespace Quasar {
 
     void Application::run() {
         LOG_DEBUG("Running...");
+        Scene loaded_scene;
+        loaded_scene.create();
         while (!window.should_close() && running)
         {
             if (suspended) { 
@@ -104,12 +115,12 @@ namespace Quasar {
             }
 
             window.poll_events(); 
-            
-            if (QS_INPUT.get_key_state(KeyCode::QS_KEY_SPACE)) {
-                LOG_TRACE("Space clicked");
-            }
 
-            QS_RENDERER.draw();
+            render_packet packet;
+            packet.dt = 0.f; // TODO: calculate dt
+            packet.app_suspended = suspended;
+            packet.scene = &loaded_scene;
+            QS_RENDERER.draw(&packet);
         }
 
         // Shutdown routine
@@ -117,8 +128,10 @@ namespace Quasar {
             event_context context{};
             QS_EVENT.Execute(EVENT_CODE_APPLICATION_QUIT, this, context);
         }
+        loaded_scene.destroy();
         QS_EVENT.Unregister(EVENT_CODE_RESIZED, this, application_on_resized);
         
+        QS_SYSTEM_MANAGER.Unregister(SYSTEM_GUI);
         QS_SYSTEM_MANAGER.Unregister(SYSTEM_JOB);
         QS_SYSTEM_MANAGER.Unregister(SYSTEM_RENDERER);
         QS_SYSTEM_MANAGER.Unregister(SYSTEM_INPUT);
@@ -140,10 +153,8 @@ namespace Quasar {
             }
             else {
                 app->suspended = false;
-                LOG_INFO("Application Resized [%u, %u]", width, height)
                 QS_RENDERER.resize(width, height);
             }
-
             return true;
         }
         return false;

@@ -1,11 +1,16 @@
 #version 450
+#extension GL_ARB_separate_shader_objects : enable
+
+out gl_PerVertex {
+    vec4 gl_Position;
+};
 
 layout(location = 0) out vec3 fragColor;
 
 vec2 positions[3] = vec2[](
-    vec2(0.0, -0.5),
-    vec2(0.5, 0.5),
-    vec2(-0.5, 0.5)
+    vec2(0.5, -0.5),     // Bottom right
+    vec2(-0.5, -0.5),    // Bottom left
+    vec2(0.0, 0.5)       // Top center
 );
 
 vec3 colors[3] = vec3[](

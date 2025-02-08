@@ -1,4 +1,5 @@
 #include "RendererAPI.h"
+#include <Core/SystemManager.h>
 
 namespace Quasar
 {
@@ -17,14 +18,31 @@ b8 RendererAPI::init(void* config) {
     return true;
 }
 void RendererAPI::shutdown() {
+    vkDeviceWaitIdle(backend._context._device.logical_device);
     backend.shutdown();
 }
-void RendererAPI::draw()
+b8 RendererAPI::draw(render_packet* packet)
 {
-    backend.draw();
+    if (packet->app_suspended) {
+        return true;
+    }
+
+    if(backend.frame_begin()) {
+        // auto dockspace_id = DockSpaceOverViewport();
+        auto gui_render_data = QS_GUI_SYSTEM.get_render_data();
+        for (u32 i=0; i<MAX_GUI_WINDOWS; i++) {
+            if (gui_render_data[i]) {
+                gui_render_data[i]->update(packet);
+            }
+        }
+        backend.frame_end();
+    }
+
+    return true;
 }
 void RendererAPI::resize(u32 width, u32 height)
 {
     backend.resize(width, height);
 }
+
 } // namespace Quasar
