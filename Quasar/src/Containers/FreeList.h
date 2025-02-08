@@ -95,7 +95,7 @@ class FreeList {
             }
         } else if (new_size < buffer_size) {
             // If new_size is smaller than current size, update the free list accordingly
-            QS_CORE_ERROR("NOT IMPLEMENTED - Class FreeList::resize()")
+            LOG_ERROR("NOT IMPLEMENTED - Class FreeList::resize()")
         }
         buffer_size = new_size;
     }
