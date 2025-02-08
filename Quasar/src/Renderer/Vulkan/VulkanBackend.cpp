@@ -77,6 +77,7 @@ namespace Quasar
 
     void Backend::resize(u32 width, u32 height)
     {
+        _context._extent = {width, height};
         vkDeviceWaitIdle(_context._device.logical_device);
         ImGui_ImplVulkan_SetMinImageCount(min_image_count);
         ImGui_ImplVulkanH_CreateOrResizeWindow(_context._instance, _context._device.physical_device, _context._device.logical_device, &main_window_data, _context._device.graphics_queue_index, nullptr, width, height, min_image_count);

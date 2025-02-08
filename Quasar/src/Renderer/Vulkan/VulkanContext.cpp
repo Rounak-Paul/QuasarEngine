@@ -159,8 +159,6 @@ b8 VulkanContext::create(GLFWwindow* window) {
 
     VK_CALL(vkCreateDescriptorPool(_device.logical_device, &descriptor_pool_info, nullptr, &_descriptor_pool));
 
-
-
     // Renderpass
     // Render multisampled into the offscreen image, then resolve into a single-sampled resolve image.
     _msaa_samples = GetMaxUsableSampleCount(_device.physical_device);

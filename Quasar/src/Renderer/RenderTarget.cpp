@@ -103,8 +103,8 @@ namespace Quasar
     b8 RenderTarget::render(Math::extent extent, const VkClearColorValue &bg_color, u8 frame_index)
     {
         auto context = QS_RENDERER.get_vkcontext();
-        if (context->_extent.width != extent.width || context->_extent.height != extent.height) {
-            context->_extent = VkExtent2D{extent.width, extent.height};
+        if (_extent.width != extent.width || _extent.height != extent.height) {
+            _extent = extent;
             resize(extent);
             return false;
         }

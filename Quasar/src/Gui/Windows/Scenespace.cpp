@@ -20,6 +20,7 @@ void Scenespace::shutdown() {
 
 void Scenespace::update(render_packet* packet) {
     _scene = packet->scene;
+    QS_RENDERER.get_vkcontext()->_extent = {(u32)_content_region.x, (u32)_content_region.y};
     scene_updated = _scene->update(_content_region.x, _content_region.y, ImVec4ToClearColor(ImGui::GetStyleColorVec4(ImGuiCol_WindowBg)), QS_RENDERER.get_vkcontext()->_frame_index); 
 }
 void Scenespace::render()

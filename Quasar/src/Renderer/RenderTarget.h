@@ -21,6 +21,7 @@ public:
     VkImageView get_resolve_image_view() { return _resolve_images[_frame_index]._image_view; }
 
 private:
+    Math::extent _extent;
     DynamicArray<VulkanImage> _resolve_images;
     DynamicArray<VulkanImage> _offscreen_images;
     DynamicArray<VkFramebuffer> _framebuffer;

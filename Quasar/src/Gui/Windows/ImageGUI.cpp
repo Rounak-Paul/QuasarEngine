@@ -20,6 +20,7 @@ void ImageGUI::shutdown() {
 
 
 void ImageGUI::update(render_packet* packet) {
+    QS_RENDERER.get_vkcontext()->_extent = {(u32)_content_region.x, (u32)_content_region.y};
     scene_updated = image_scene.update(_content_region.x, _content_region.y, ImVec4ToClearColor(ImGui::GetStyleColorVec4(ImGuiCol_WindowBg)), QS_RENDERER.get_vkcontext()->_frame_index); 
 }
 
