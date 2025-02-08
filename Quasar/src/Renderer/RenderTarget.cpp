@@ -59,11 +59,6 @@ namespace Quasar
 
         commandBuffer.end_single_use(context, context->_command_pool, context->_device.graphics_queue);
 
-        _command_buffers.resize(MAX_FRAMES_IN_FLIGHT);
-        for (auto& command_buffer : _command_buffers) {
-            command_buffer.allocate(context, context->_command_pool, true);
-        }
-
         _framebuffer.resize(MAX_FRAMES_IN_FLIGHT);
         for (u8 i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
             VkImageView attachments[] = { _offscreen_images[i]._image_view, _resolve_images[i]._image_view };
@@ -85,10 +80,6 @@ namespace Quasar
         auto context = QS_RENDERER.get_vkcontext();
         vkDeviceWaitIdle(context->_device.logical_device);
 
-        for (auto& command_buffer : _command_buffers) {
-            command_buffer.free(context, context->_command_pool);
-        }
-
         for (auto& framebuffer : _framebuffer) {
             vkDestroyFramebuffer(context->_device.logical_device, framebuffer, nullptr);
         }
@@ -109,7 +100,7 @@ namespace Quasar
         destroy();
         create();
     }
-    b8 RenderTarget::render(Math::extent extent, const VkClearColorValue &bg_color)
+    b8 RenderTarget::render(Math::extent extent, const VkClearColorValue &bg_color, u8 frame_index)
     {
         auto context = QS_RENDERER.get_vkcontext();
         if (context->_extent.width != extent.width || context->_extent.height != extent.height) {
@@ -118,10 +109,7 @@ namespace Quasar
             return false;
         }
 
-        // Begin Command Buffer
-        VulkanCommandBuffer *commandBuffer = &_command_buffers[_frame_index];
-        commandBuffer->reset();
-        commandBuffer->begin(false, false, false);
+        VulkanCommandBuffer *commandBuffer = &context->_command_buffers[frame_index];
 
         // Set Viewport and Scissor
         VkViewport viewport = { 0, 0, float(extent.width), float(extent.height), 0.0f, 1.0f };
@@ -134,7 +122,7 @@ namespace Quasar
         clearValue.color = { bg_color.float32[0], bg_color.float32[1], bg_color.float32[2], bg_color.float32[3] };
         VkRenderPassBeginInfo renderPassInfo = {VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO};
         renderPassInfo.renderPass = context->_render_pass;
-        renderPassInfo.framebuffer = _framebuffer[_frame_index];
+        renderPassInfo.framebuffer = _framebuffer[frame_index];
         renderPassInfo.renderArea.extent = { extent.width, extent.height };
         renderPassInfo.clearValueCount = 1;
         renderPassInfo.pClearValues = &clearValue;
@@ -145,25 +133,12 @@ namespace Quasar
         vkCmdDraw(commandBuffer->_handle, 3, 1, 0, 0);
         vkCmdEndRenderPass(commandBuffer->_handle);
 
-        _resolve_images[_frame_index].transition_layout(
+        _resolve_images[frame_index].transition_layout(
             context, 
             commandBuffer->_handle, 
             context->_image_format,
             VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
         );
-
-        commandBuffer->end();
-
-        // Submit Command Buffer
-        VkSubmitInfo submitInfo = {VK_STRUCTURE_TYPE_SUBMIT_INFO};
-        submitInfo.commandBufferCount = 1;
-        submitInfo.pCommandBuffers = &commandBuffer->_handle;
-        vkQueueSubmit(context->_device.graphics_queue, 1, &submitInfo, VK_NULL_HANDLE);
-
-        vkDeviceWaitIdle(context->_device.logical_device);
-
-        _frame_index = (_frame_index + 1) % MAX_FRAMES_IN_FLIGHT;
-
 
         return true;
     }

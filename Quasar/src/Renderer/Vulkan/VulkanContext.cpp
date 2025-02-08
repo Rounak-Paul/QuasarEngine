@@ -146,19 +146,19 @@ b8 VulkanContext::create(GLFWwindow* window) {
 
     // TODO: move to shader 
     // Create descriptor pool.
-    VkDescriptorPoolSize pool_sizes[1] = {};
-    pool_sizes[0].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-    pool_sizes[0].descriptorCount = 2;
+    VkDescriptorPoolSize pool_sizes[] = {
+        { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 100 }  // Increased to 100
+    };
 
     VkDescriptorPoolCreateInfo descriptor_pool_info = {};
     descriptor_pool_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-    descriptor_pool_info.pNext = nullptr;
     descriptor_pool_info.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
-    descriptor_pool_info.maxSets = 2;
+    descriptor_pool_info.maxSets = 100;  // Match descriptor count
     descriptor_pool_info.poolSizeCount = 1;
     descriptor_pool_info.pPoolSizes = pool_sizes;
 
     VK_CALL(vkCreateDescriptorPool(_device.logical_device, &descriptor_pool_info, nullptr, &_descriptor_pool));
+
 
 
     // Renderpass
@@ -250,6 +250,11 @@ b8 VulkanContext::create(GLFWwindow* window) {
 
     VK_CALL(vkCreateCommandPool(_device.logical_device, &command_pool_info, nullptr, &_command_pool));
 
+    _command_buffers.resize(MAX_FRAMES_IN_FLIGHT);
+    for (auto& command_buffer : _command_buffers) {
+        command_buffer.allocate(this, _command_pool, true);
+    }
+
     // Create sampler
     VkSamplerCreateInfo sampler_info{};
     sampler_info.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
@@ -278,6 +283,10 @@ void VulkanContext::destroy()
     if (_texture_sampler) {
         vkDestroySampler(_device.logical_device, _texture_sampler, _allocator);
         _texture_sampler = VK_NULL_HANDLE;
+    }
+
+    for (auto& command_buffer : _command_buffers) {
+        command_buffer.free(this, _command_pool);
     }
 
     if (_command_pool) {

@@ -12,6 +12,7 @@ namespace Quasar
         virtual void init() override;
         virtual void shutdown() override;
         virtual void update(render_packet* packet) override;
+        virtual void render() override;
 
         b8 p_open = true;
         private:

@@ -85,19 +85,44 @@ namespace Quasar
 
     b8 Backend::frame_begin()
     {
+        // Begin Command Buffer
+        VulkanCommandBuffer *commandBuffer = &_context._command_buffers[_context._frame_index];
+        commandBuffer->reset();
+        commandBuffer->begin(false, false, false);
+
+        return true;
+    }
+
+    b8 Backend::frame_end() {
+        _context._command_buffers[_context._frame_index].end();
+
+        // Submit Command Buffer
+        VkSubmitInfo submitInfo = {VK_STRUCTURE_TYPE_SUBMIT_INFO};
+        submitInfo.commandBufferCount = 1;
+        submitInfo.pCommandBuffers = &_context._command_buffers[_context._frame_index]._handle;
+        vkQueueSubmit(_context._device.graphics_queue, 1, &submitInfo, VK_NULL_HANDLE);
+
+        vkDeviceWaitIdle(_context._device.logical_device);
+        return true;
+    }
+
+    b8 Backend::imgui_frame_begin()
+    {
         ImGui_ImplVulkanH_Window *wd = &main_window_data;
         // Start the Dear ImGui frame
         ImGui_ImplVulkan_NewFrame();
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
+
         return true;
     }
 
-    b8 Backend::frame_end() {
+    b8 Backend::imgui_frame_end()
+    {
         // FIXME: remove demo window
         static b8 demo_is_visible = true;
         if (demo_is_visible) ShowDemoWindow(&demo_is_visible);
-
+        
         ImGui_ImplVulkanH_Window *wd = &main_window_data;
         // Rendering
         ImGui::Render();
@@ -115,6 +140,7 @@ namespace Quasar
 
         ImGui::UpdatePlatformWindows();
         ImGui::RenderPlatformWindowsDefault();
+
         return true;
     }
 

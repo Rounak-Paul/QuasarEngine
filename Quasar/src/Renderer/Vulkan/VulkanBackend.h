@@ -23,6 +23,9 @@ namespace Quasar
 
         b8 frame_begin();
         b8 frame_end();
+        b8 imgui_frame_begin();
+        b8 imgui_frame_end();
+
 
         b8 _multithreading_enabled = false;
 

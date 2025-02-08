@@ -98,7 +98,7 @@ namespace Quasar {
 
         QS_GUI_SYSTEM.register_window(new Dockspace{});
         QS_GUI_SYSTEM.register_window(new Scenespace{});
-        // QS_GUI_SYSTEM.register_window(new ImageGUI{});
+        QS_GUI_SYSTEM.register_window(new ImageGUI{});
     }
 
     Application::~Application() {

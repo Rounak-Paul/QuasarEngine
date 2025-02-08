@@ -27,16 +27,26 @@ b8 RendererAPI::draw(render_packet* packet)
         return true;
     }
 
-    if(backend.frame_begin()) {
+    if(backend.imgui_frame_begin() && backend.frame_begin()) {
         // auto dockspace_id = DockSpaceOverViewport();
         auto gui_render_data = QS_GUI_SYSTEM.get_render_data();
         for (u32 i=0; i<MAX_GUI_WINDOWS; i++) {
+
             if (gui_render_data[i]) {
                 gui_render_data[i]->update(packet);
             }
         }
         backend.frame_end();
+        // Render data to GUI after creating the frame
+        for (u32 i=0; i<MAX_GUI_WINDOWS; i++) {
+            if (gui_render_data[i]) {
+                gui_render_data[i]->render();
+            }
+        }
+        backend.imgui_frame_end();
     }
+
+    backend._context._frame_index = (backend._context._frame_index + 1) % MAX_FRAMES_IN_FLIGHT;
 
     return true;
 }

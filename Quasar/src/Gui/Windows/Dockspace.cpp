@@ -15,6 +15,10 @@ void Dockspace::shutdown() {
 }
 
 void Dockspace::update(render_packet* packet) {
+    
+}
+void Dockspace::render()
+{
     static bool opt_fullscreen = true;
     static bool opt_padding = false;
     static ImGuiDockNodeFlags dockspace_flags = ImGuiDockNodeFlags_PassthruCentralNode | ImGuiDockNodeFlags_AutoHideTabBar;

@@ -5,6 +5,8 @@
 #include "VulkanPipeline.h"
 #include "VulkanCommmandBuffer.h"
 
+#define MAX_FRAMES_IN_FLIGHT 3
+
 namespace Quasar {
 
 struct VulkanContext {
@@ -14,6 +16,7 @@ struct VulkanContext {
     b8 create(GLFWwindow* window);
     void destroy();
 
+    u8 _frame_index = 0;
     VkInstance _instance;
     VkAllocationCallbacks* _allocator;
     VkSurfaceKHR _surface;
@@ -26,6 +29,8 @@ struct VulkanContext {
     VulkanPipeline _pipeline;
     VkCommandPool _command_pool;
     VkSampler _texture_sampler;
+
+    DynamicArray<VulkanCommandBuffer> _command_buffers;
 
     VkExtent2D _extent;
     VkSampleCountFlagBits _msaa_samples;
