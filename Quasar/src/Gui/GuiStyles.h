@@ -8,8 +8,8 @@ void customize_style() {
     ImVec4* colors = style.Colors;
 
     // OLED Theme - High Contrast
-    ImVec4 background_color_0 = ImVec4(0.00f, 0.00f, 0.00f, 1.00f);
-    ImVec4 background_color_1 = ImVec4(0.02f, 0.02f, 0.02f, 1.00f);
+    ImVec4 background_color_0 = ImVec4(0.08f, 0.08f, 0.08f, 1.00f);
+    ImVec4 background_color_1 = ImVec4(0.12f, 0.12f, 0.12f, 1.00f);
     ImVec4 panel_color = ImVec4(0.08f, 0.08f, 0.08f, 1.00f);
 
     // Accent Colors
@@ -33,6 +33,9 @@ void customize_style() {
     colors[ImGuiCol_TitleBg]                = primary_accent;
     colors[ImGuiCol_TitleBgActive]          = secondary_accent;
     colors[ImGuiCol_TitleBgCollapsed]       = primary_accent;
+
+    // Menu Bar
+    colors[ImGuiCol_MenuBarBg] = ImVec4(0.06, 0.06f, 0.06f, 1.00f); // Dark gray
     
     // Buttons
     colors[ImGuiCol_Button]                 = primary_accent;
