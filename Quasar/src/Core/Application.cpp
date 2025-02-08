@@ -128,6 +128,7 @@ namespace Quasar {
             event_context context{};
             QS_EVENT.Execute(EVENT_CODE_APPLICATION_QUIT, this, context);
         }
+        loaded_scene.destroy();
         QS_EVENT.Unregister(EVENT_CODE_RESIZED, this, application_on_resized);
         
         QS_SYSTEM_MANAGER.Unregister(SYSTEM_GUI);

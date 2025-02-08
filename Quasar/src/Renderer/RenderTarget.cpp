@@ -45,6 +45,7 @@ namespace Quasar
     void RenderTarget::destroy()
     {
         auto context = QS_RENDERER.get_vkcontext();
+        vkDeviceWaitIdle(context->_device.logical_device);
         vkDestroyFramebuffer(context->_device.logical_device, framebuffer, nullptr);
         resolve_image.destroy(context);
         offscreen_image.destroy(context);

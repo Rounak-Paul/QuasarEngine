@@ -278,6 +278,8 @@ b8 VulkanContext::create(GLFWwindow* window) {
 
 void VulkanContext::destroy()
 {
+    vkDeviceWaitIdle(_device.logical_device);
+
     if (_texture_sampler) {
         vkDestroySampler(_device.logical_device, _texture_sampler, _allocator);
         _texture_sampler = VK_NULL_HANDLE;
@@ -306,14 +308,7 @@ void VulkanContext::destroy()
         _descriptor_pool = VK_NULL_HANDLE;
     }
 
-    _device.destroy(this);
-
-    if (_surface) {
-        vkDestroySurfaceKHR(_instance, _surface, _allocator);
-        _surface = VK_NULL_HANDLE;
-    }
-
-#ifdef QS_DEBUG
+    #ifdef QS_DEBUG
     if (_debug_messenger) {
         auto func = (PFN_vkDestroyDebugUtilsMessengerEXT)vkGetInstanceProcAddr(_instance, "vkDestroyDebugUtilsMessengerEXT");
         if (func) {
@@ -322,6 +317,8 @@ void VulkanContext::destroy()
         _debug_messenger = VK_NULL_HANDLE;
     }
 #endif
+
+    _device.destroy(this);
 
     if (_instance) {
         vkDestroyInstance(_instance, _allocator);

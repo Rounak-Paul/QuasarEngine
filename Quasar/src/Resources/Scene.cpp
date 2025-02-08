@@ -16,4 +16,9 @@ b8 Scene::update(u32 width, u32 height, const VkClearColorValue &bg_color)
 {
     return _render_target.render({width, height}, bg_color);
 }
+void Scene::destroy()
+{
+    _render_target.destroy();
+    
+}
 }

@@ -11,6 +11,7 @@ public:
     
     b8 create();
     b8 update(u32 width, u32 height, const VkClearColorValue &bg_color);
+    void destroy();
 private:
     // Render target
     // The scene is rendered to an offscreen image and then resolved to this image using MSAA.
