@@ -7,8 +7,8 @@ void customize_style() {
     ImGuiStyle& style = ImGui::GetStyle();
     ImVec4* colors = style.Colors;
 
-    ImVec4 background_color_0 = ImVec4(0.20f, 0.20f, 0.20f, 0.8f);
-    ImVec4 background_color_1 = ImVec4(1.00f, 1.00f, 1.00f, 0.7f);
+    ImVec4 background_color_0 = ImVec4(0.20f, 0.20f, 0.20f, 1.0f);
+    ImVec4 background_color_1 = ImVec4(0.00f, 0.00f, 0.00f, 1.0f);
 
     ImVec4 btn_color = ImVec4(0.00f, 0.25f, 0.25f, 1.00f);
     ImVec4 btn_hover_color = ImVec4(0.00f, 0.50f, 0.50f, 1.00f);
