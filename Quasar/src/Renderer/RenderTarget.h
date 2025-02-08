@@ -25,5 +25,6 @@ private:
     VulkanImage offscreen_image;
     VkFramebuffer framebuffer;
 
+    u32 _frame_index = 0;
 };
 } // namespace Quasar

@@ -108,7 +108,9 @@ namespace Quasar
         vkQueueSubmit(context->_device.graphics_queue, 1, &submitInfo, VK_NULL_HANDLE);
 
         vkDeviceWaitIdle(context->_device.logical_device);
-        // frame_index = (frame_index + 1) % context->_command_buffers.size();
+
+        _frame_index = (_frame_index + 1) % context->_command_buffers.size();
+
 
         return true;
     }

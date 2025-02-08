@@ -17,8 +17,8 @@ b8 VulkanImage::create(
     current_layout = VK_IMAGE_LAYOUT_UNDEFINED;
     VkImageCreateInfo image_create_info = {VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO};
     image_create_info.imageType = VK_IMAGE_TYPE_2D;
-    image_create_info.extent.width = extent.width;
-    image_create_info.extent.height = extent.height;
+    image_create_info.extent.width = extent.width == 0 ? 800 : extent.width;
+    image_create_info.extent.height = extent.height == 0 ? 600 : extent.height;
     image_create_info.extent.depth = 1;
     image_create_info.mipLevels = 1;
     image_create_info.arrayLayers = 1; // TODO: Add support for multiple layers

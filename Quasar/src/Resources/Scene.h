@@ -15,9 +15,8 @@ public:
 private:
     // Render target
     // The scene is rendered to an offscreen image and then resolved to this image using MSAA.
-    RenderTarget _render_target;
 
-    u32 frame_index = 0;
+    RenderTarget _render_target;
 
     friend class Scenespace;
 
