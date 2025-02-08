@@ -53,8 +53,8 @@ class VulkanCommandBuffer {
         VkCommandPool pool,
         VkQueue queue);
 
-    VkCommandBuffer handle;
+    VkCommandBuffer _handle;
     // Command buffer state.
-    CommandBufferState state;
+    CommandBufferState _state;
 };
 }

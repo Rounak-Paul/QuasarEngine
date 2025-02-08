@@ -72,9 +72,9 @@ namespace Quasar
 
         // Set Viewport and Scissor
         VkViewport viewport = { 0, 0, float(extent.width), float(extent.height), 0.0f, 1.0f };
-        vkCmdSetViewport(commandBuffer->handle, 0, 1, &viewport);
+        vkCmdSetViewport(commandBuffer->_handle, 0, 1, &viewport);
         VkRect2D scissor = { {0, 0}, { extent.width, extent.height } };
-        vkCmdSetScissor(commandBuffer->handle, 0, 1, &scissor);
+        vkCmdSetScissor(commandBuffer->_handle, 0, 1, &scissor);
 
         // Begin Render Pass
         VkClearValue clearValue;
@@ -85,16 +85,16 @@ namespace Quasar
         renderPassInfo.renderArea.extent = { extent.width, extent.height };
         renderPassInfo.clearValueCount = 1;
         renderPassInfo.pClearValues = &clearValue;
-        vkCmdBeginRenderPass(commandBuffer->handle, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
+        vkCmdBeginRenderPass(commandBuffer->_handle, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
 
         // Bind Pipeline and Draw
-        vkCmdBindPipeline(commandBuffer->handle, VK_PIPELINE_BIND_POINT_GRAPHICS, context->_pipeline._graphics_pipeline);
-        vkCmdDraw(commandBuffer->handle, 3, 1, 0, 0);
-        vkCmdEndRenderPass(commandBuffer->handle);
+        vkCmdBindPipeline(commandBuffer->_handle, VK_PIPELINE_BIND_POINT_GRAPHICS, context->_pipeline._graphics_pipeline);
+        vkCmdDraw(commandBuffer->_handle, 3, 1, 0, 0);
+        vkCmdEndRenderPass(commandBuffer->_handle);
 
         resolve_image.transition_layout
             (context, 
-            commandBuffer->handle, 
+            commandBuffer->_handle, 
             context->_image_format,
             VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
         );
@@ -104,7 +104,7 @@ namespace Quasar
         // Submit Command Buffer
         VkSubmitInfo submitInfo = {VK_STRUCTURE_TYPE_SUBMIT_INFO};
         submitInfo.commandBufferCount = 1;
-        submitInfo.pCommandBuffers = &commandBuffer->handle;
+        submitInfo.pCommandBuffers = &commandBuffer->_handle;
         vkQueueSubmit(context->_device.graphics_queue, 1, &submitInfo, VK_NULL_HANDLE);
 
         vkDeviceWaitIdle(context->_device.logical_device);

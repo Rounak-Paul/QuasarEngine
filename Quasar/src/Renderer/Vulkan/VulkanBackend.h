@@ -8,6 +8,7 @@
 #include <imgui.h>
 #include <backends/imgui_impl_glfw.h>
 #include <backends/imgui_impl_vulkan.h>
+#include "VulkanCheckResult.h"
 
 namespace Quasar
 {
@@ -23,17 +24,18 @@ namespace Quasar
         b8 frame_begin();
         b8 frame_end();
 
-        b8 multithreading_enabled = false;
+        b8 _multithreading_enabled = false;
 
-        VulkanContext context;
+        VulkanContext _context;
 
+        private:
         // ImGui
-        void SetupVulkanWindow(ImGui_ImplVulkanH_Window *wd, VkSurfaceKHR surface, int width, int height);
-        void CleanupVulkanWindow();
-        void FrameRender(ImGui_ImplVulkanH_Window *wd, ImDrawData *draw_data);
-        void FramePresent(ImGui_ImplVulkanH_Window *wd);
-        inline static void CheckVk(VkResult err) {
-            if (err != 0) throw std::runtime_error(std::format("Vulkan error: {}", int(err)));
+        void vulkan_window_setup(ImGui_ImplVulkanH_Window *wd, VkSurfaceKHR surface, int width, int height);
+        void vulkan_window_cleanup();
+        void frame_render(ImGui_ImplVulkanH_Window *wd, ImDrawData *draw_data);
+        void frame_present(ImGui_ImplVulkanH_Window *wd);
+        inline static void check_vk_imgui(VkResult err) {
+            VK_CALL(err);
         }
     };
 } // namespace Vulkan

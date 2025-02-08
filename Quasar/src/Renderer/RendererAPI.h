@@ -26,12 +26,12 @@ class RendererAPI : public System {
     virtual b8 init(void* config) override;
     virtual void shutdown() override;
 
-    QS_INLINE b8 is_multithreaded() {return backend.multithreading_enabled;}
+    QS_INLINE b8 is_multithreaded() {return backend._multithreading_enabled;}
 
     b8 draw(render_packet* packet);
     void resize(u32 width, u32 height);
 
-    VulkanContext* get_vkcontext() {return &backend.context;}
+    VulkanContext* get_vkcontext() {return &backend._context;}
 
     private:
     Backend backend;

@@ -1,11 +1,10 @@
 #include "VulkanBackend.h"
-#include "VulkanCheckResult.h"
 #include <Math/Math.h>
 
 #include <Gui/GuiFonts.h>
 #include <Gui/GuiStyles.h>
 
-#define IMGUI_UNLIMITED_FRAME_RATE
+// #define IMGUI_UNLIMITED_FRAME_RATE
 
 namespace Quasar
 {
@@ -16,12 +15,12 @@ namespace Quasar
 
     b8 Backend::init(String &app_name, Window *main_window)
     {
-        context.create(main_window->get_GLFWwindow());
+        _context.create(main_window->get_GLFWwindow());
 
         auto extent = main_window->get_extent();
-        context._extent = {extent.width, extent.height};
+        _context._extent = {extent.width, extent.height};
         ImGui_ImplVulkanH_Window *wd = &main_window_data;
-        SetupVulkanWindow(wd, context._surface, extent.width, extent.height);
+        vulkan_window_setup(wd, _context._surface, extent.width, extent.height);
 
         // Setup ImGui context.
         IMGUI_CHECKVERSION();
@@ -31,7 +30,7 @@ namespace Quasar
         io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard; // Enable Keyboard Controls
         io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad; // Enable Gamepad Controls
         io.ConfigFlags |= ImGuiConfigFlags_DockingEnable; // Enable Docking
-        // io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable; // Enable Multi-Viewport / Platform Windows
+        io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable; // Enable Multi-Viewport / Platform Windows
 
         // io.IniFilename = nullptr; // Disable ImGui's .ini file saving
 
@@ -42,37 +41,23 @@ namespace Quasar
         // Setup Platform/Renderer backends
         ImGui_ImplGlfw_InitForVulkan(main_window->get_GLFWwindow(), true);
         ImGui_ImplVulkan_InitInfo init_info = {};
-        init_info.Instance = context._instance;
-        init_info.PhysicalDevice = context._device.physical_device;
-        init_info.Device = context._device.logical_device;
-        init_info.QueueFamily = context._device.graphics_queue_index;
-        init_info.Queue = context._device.graphics_queue;
-        init_info.PipelineCache = context._pipeline_cache;
-        init_info.DescriptorPool = context._descriptor_pool;
+        init_info.Instance = _context._instance;
+        init_info.PhysicalDevice = _context._device.physical_device;
+        init_info.Device = _context._device.logical_device;
+        init_info.QueueFamily = _context._device.graphics_queue_index;
+        init_info.Queue = _context._device.graphics_queue;
+        init_info.PipelineCache = _context._pipeline_cache;
+        init_info.DescriptorPool = _context._descriptor_pool;
         init_info.RenderPass = wd->RenderPass;
         init_info.Subpass = 0;
         init_info.MinImageCount = min_image_count;
         init_info.ImageCount = wd->ImageCount;
         init_info.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
         init_info.Allocator = nullptr;
-        init_info.CheckVkResultFn = CheckVk;
+        init_info.CheckVkResultFn = check_vk_imgui;
         ImGui_ImplVulkan_Init(&init_info);
 
-        // Load fonts.
-        // - If no fonts are loaded, dear imgui will use the default font. You can also load multiple fonts and use PushFont()/PopFont() to select them.
-        // - AddFontFromFileTTF() will return the ImFont* so you can store it if you need to select the font among multiple.
-        // - If the file cannot be loaded, the function will return a nullptr. Please handle those errors in your application (e.g. use an assertion, or display an error and quit).
-        // - The fonts will be rasterized at a given size (w/ oversampling) and stored into a texture when calling ImFontAtlas::Build()/GetTexDataAsXXXX(), which ImGui_ImplXXXX_NewFrame below will call.
-        // - Use '#define IMGUI_ENABLE_FREETYPE' in your imconfig file to use Freetype for higher quality font rendering.
-        // - Read 'docs/FONTS.md' for more instructions and details.
-        // - Remember that in C/C++ if you want to include a backslash \ in a string literal you need to write a double backslash \\ !
-        // io.Fonts->AddFontDefault();
-        // io.Fonts->AddFontFromFileTTF("c:\\Windows\\Fonts\\segoeui.ttf", 18.0f);
-        // io.Fonts->AddFontFromFileTTF("../../misc/fonts/DroidSans.ttf", 16.0f);
-        // io.Fonts->AddFontFromFileTTF("../../misc/fonts/Roboto-Medium.ttf", 16.0f);
-        // io.Fonts->AddFontFromFileTTF("../../misc/fonts/Cousine-Regular.ttf", 15.0f);
-        // ImFont* font = io.Fonts->AddFontFromFileTTF("c:\\Windows\\Fonts\\ArialUni.ttf", 18.0f, nullptr, io.Fonts->GetGlyphRangesJapanese());
-        // IM_ASSERT(font != nullptr);
+        // Load Fonts
         ImFontConfig font_cfg;
         font_cfg.FontDataOwnedByAtlas = false;
         io.Fonts->AddFontFromMemoryTTF(Roboto_Medium, Roboto_Medium_size, 12.0f, &font_cfg);
@@ -86,15 +71,15 @@ namespace Quasar
         ImGui_ImplGlfw_Shutdown();
         ImGui::DestroyContext();
 
-        CleanupVulkanWindow();
-        context.destroy();
+        vulkan_window_cleanup();
+        _context.destroy();
     }
 
     void Backend::resize(u32 width, u32 height)
     {
-        vkDeviceWaitIdle(context._device.logical_device);
+        vkDeviceWaitIdle(_context._device.logical_device);
         ImGui_ImplVulkan_SetMinImageCount(min_image_count);
-        ImGui_ImplVulkanH_CreateOrResizeWindow(context._instance, context._device.physical_device, context._device.logical_device, &main_window_data, context._device.graphics_queue_index, nullptr, width, height, min_image_count);
+        ImGui_ImplVulkanH_CreateOrResizeWindow(_context._instance, _context._device.physical_device, _context._device.logical_device, &main_window_data, _context._device.graphics_queue_index, nullptr, width, height, min_image_count);
         main_window_data.FrameIndex = 0;
     }
 
@@ -124,9 +109,12 @@ namespace Quasar
             wd->ClearValue.color.float32[1] = clear_color.y * clear_color.w;
             wd->ClearValue.color.float32[2] = clear_color.z * clear_color.w;
             wd->ClearValue.color.float32[3] = clear_color.w;
-            FrameRender(wd, draw_data);
-            FramePresent(wd);
+            frame_render(wd, draw_data);
+            frame_present(wd);
         }
+
+        ImGui::UpdatePlatformWindows();
+        ImGui::RenderPlatformWindowsDefault();
         return true;
     }
 
@@ -136,14 +124,14 @@ namespace Quasar
 
     // All the ImGui_ImplVulkanH_XXX structures/functions are optional helpers used by the demo.
     // Your real engine/app may not use them.
-    void Backend::SetupVulkanWindow(ImGui_ImplVulkanH_Window *wd, VkSurfaceKHR surface, int width, int height) {
+    void Backend::vulkan_window_setup(ImGui_ImplVulkanH_Window *wd, VkSurfaceKHR surface, int width, int height) {
         wd->Surface = surface;
 
         // Check for WSI support
         VkBool32 supported = VK_FALSE;
         VkResult res = vkGetPhysicalDeviceSurfaceSupportKHR(
-            context._device.physical_device,
-            context._device.graphics_queue_index,
+            _context._device.physical_device,
+            _context._device.graphics_queue_index,
             wd->Surface,
             &supported
         );
@@ -152,7 +140,7 @@ namespace Quasar
         // Select surface format.
         const VkFormat requestSurfaceImageFormat[] = {VK_FORMAT_B8G8R8A8_UNORM, VK_FORMAT_R8G8B8A8_UNORM, VK_FORMAT_B8G8R8_UNORM, VK_FORMAT_R8G8B8_UNORM};
         const VkColorSpaceKHR requestSurfaceColorSpace = VK_COLORSPACE_SRGB_NONLINEAR_KHR;
-        wd->SurfaceFormat = ImGui_ImplVulkanH_SelectSurfaceFormat(context._device.physical_device, wd->Surface, requestSurfaceImageFormat, (size_t)IM_ARRAYSIZE(requestSurfaceImageFormat), requestSurfaceColorSpace);
+        wd->SurfaceFormat = ImGui_ImplVulkanH_SelectSurfaceFormat(_context._device.physical_device, wd->Surface, requestSurfaceImageFormat, (size_t)IM_ARRAYSIZE(requestSurfaceImageFormat), requestSurfaceColorSpace);
 
         // Select present mode.
     #ifdef IMGUI_UNLIMITED_FRAME_RATE
@@ -160,22 +148,22 @@ namespace Quasar
     #else
         VkPresentModeKHR present_modes[] = {VK_PRESENT_MODE_FIFO_KHR};
     #endif
-        wd->PresentMode = ImGui_ImplVulkanH_SelectPresentMode(context._device.physical_device, wd->Surface, &present_modes[0], IM_ARRAYSIZE(present_modes));
+        wd->PresentMode = ImGui_ImplVulkanH_SelectPresentMode(_context._device.physical_device, wd->Surface, &present_modes[0], IM_ARRAYSIZE(present_modes));
         // printf("[vulkan] Selected PresentMode = %d\n", wd->PresentMode);
 
         // Create SwapChain, RenderPass, Framebuffer, etc.
         IM_ASSERT(min_image_count >= 2);
-        ImGui_ImplVulkanH_CreateOrResizeWindow(context._instance, context._device.physical_device, context._device.logical_device, wd, context._device.graphics_queue_index, nullptr, width, height, min_image_count);
+        ImGui_ImplVulkanH_CreateOrResizeWindow(_context._instance, _context._device.physical_device, _context._device.logical_device, wd, _context._device.graphics_queue_index, nullptr, width, height, min_image_count);
     }
 
-    void Backend::CleanupVulkanWindow() {
-        ImGui_ImplVulkanH_DestroyWindow(context._instance, context._device.logical_device, &main_window_data, nullptr);
+    void Backend::vulkan_window_cleanup() {
+        ImGui_ImplVulkanH_DestroyWindow(_context._instance, _context._device.logical_device, &main_window_data, nullptr);
     }
 
-    void Backend::FrameRender(ImGui_ImplVulkanH_Window *wd, ImDrawData *draw_data) {
+    void Backend::frame_render(ImGui_ImplVulkanH_Window *wd, ImDrawData *draw_data) {
         VkSemaphore image_acquired_semaphore = wd->FrameSemaphores[wd->SemaphoreIndex].ImageAcquiredSemaphore;
         VkSemaphore render_complete_semaphore = wd->FrameSemaphores[wd->SemaphoreIndex].RenderCompleteSemaphore;
-        const VkResult err = vkAcquireNextImageKHR(context._device.logical_device, wd->Swapchain, UINT64_MAX, image_acquired_semaphore, VK_NULL_HANDLE, &wd->FrameIndex);
+        const VkResult err = vkAcquireNextImageKHR(_context._device.logical_device, wd->Swapchain, UINT64_MAX, image_acquired_semaphore, VK_NULL_HANDLE, &wd->FrameIndex);
         if (err == VK_ERROR_OUT_OF_DATE_KHR || err == VK_SUBOPTIMAL_KHR) {
             return;
         }
@@ -183,11 +171,11 @@ namespace Quasar
 
         ImGui_ImplVulkanH_Frame *fd = &wd->Frames[wd->FrameIndex];
         {
-            VK_CALL(vkWaitForFences(context._device.logical_device, 1, &fd->Fence, VK_TRUE, UINT64_MAX)); // wait indefinitely instead of periodically checking
-            VK_CALL(vkResetFences(context._device.logical_device, 1, &fd->Fence));
+            VK_CALL(vkWaitForFences(_context._device.logical_device, 1, &fd->Fence, VK_TRUE, UINT64_MAX)); // wait indefinitely instead of periodically checking
+            VK_CALL(vkResetFences(_context._device.logical_device, 1, &fd->Fence));
         }
         {
-            VK_CALL(vkResetCommandPool(context._device.logical_device, fd->CommandPool, 0));
+            VK_CALL(vkResetCommandPool(_context._device.logical_device, fd->CommandPool, 0));
             VkCommandBufferBeginInfo info = {};
             info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
             info.flags |= VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
@@ -223,11 +211,11 @@ namespace Quasar
             info.pSignalSemaphores = &render_complete_semaphore;
 
             VK_CALL(vkEndCommandBuffer(fd->CommandBuffer));
-            VK_CALL(vkQueueSubmit(context._device.graphics_queue, 1, &info, fd->Fence));
+            VK_CALL(vkQueueSubmit(_context._device.graphics_queue, 1, &info, fd->Fence));
         }
     }
 
-    void Backend::FramePresent(ImGui_ImplVulkanH_Window *wd) {
+    void Backend::frame_present(ImGui_ImplVulkanH_Window *wd) {
         VkSemaphore render_complete_semaphore = wd->FrameSemaphores[wd->SemaphoreIndex].RenderCompleteSemaphore;
         VkPresentInfoKHR info = {};
         info.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
@@ -236,7 +224,7 @@ namespace Quasar
         info.swapchainCount = 1;
         info.pSwapchains = &wd->Swapchain;
         info.pImageIndices = &wd->FrameIndex;
-        VkResult err = vkQueuePresentKHR(context._device.graphics_queue, &info);
+        VkResult err = vkQueuePresentKHR(_context._device.graphics_queue, &info);
         if (err == VK_ERROR_OUT_OF_DATE_KHR || err == VK_SUBOPTIMAL_KHR) {
             return;
         }
