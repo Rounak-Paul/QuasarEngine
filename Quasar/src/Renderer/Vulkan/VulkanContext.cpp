@@ -250,11 +250,6 @@ b8 VulkanContext::create(GLFWwindow* window) {
 
     VK_CALL(vkCreateCommandPool(_device.logical_device, &command_pool_info, nullptr, &_command_pool));
 
-    _command_buffers.resize(MAX_FRAMES_IN_FLIGHT);
-    for (auto& command_buffer : _command_buffers) {
-        command_buffer.allocate(this, _command_pool, true);
-    }
-
     // Create sampler
     VkSamplerCreateInfo sampler_info{};
     sampler_info.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
@@ -283,10 +278,6 @@ void VulkanContext::destroy()
     if (_texture_sampler) {
         vkDestroySampler(_device.logical_device, _texture_sampler, _allocator);
         _texture_sampler = VK_NULL_HANDLE;
-    }
-
-    for (auto& command_buffer : _command_buffers) {
-        command_buffer.free(this, _command_pool);
     }
 
     if (_command_pool) {

@@ -7,8 +7,6 @@
 
 namespace Quasar {
 
-#define MAX_FRAMES_IN_FLIGHT 3
-
 struct VulkanContext {
     VulkanContext() {};
     ~VulkanContext() = default;
@@ -32,8 +30,6 @@ struct VulkanContext {
     VkExtent2D _extent;
     VkSampleCountFlagBits _msaa_samples;
     static const VkFormat _image_format = VK_FORMAT_B8G8R8A8_UNORM;
-    
-    std::vector<VulkanCommandBuffer> _command_buffers;
 
     PFN_vkCmdSetPrimitiveTopologyEXT vkCmdSetPrimitiveTopologyEXT;
 

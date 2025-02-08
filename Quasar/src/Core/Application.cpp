@@ -2,6 +2,7 @@
 
 #include <Gui/Windows/Dockspace.h>
 #include <Gui/Windows/Scenespace.h>
+#include <Gui/Windows/ImageGUI.h>
 
 namespace Quasar {
     Application* Application::instance = nullptr;
@@ -97,6 +98,7 @@ namespace Quasar {
 
         QS_GUI_SYSTEM.register_window(new Dockspace{});
         QS_GUI_SYSTEM.register_window(new Scenespace{});
+        // QS_GUI_SYSTEM.register_window(new ImageGUI{});
     }
 
     Application::~Application() {

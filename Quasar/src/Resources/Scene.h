@@ -19,6 +19,7 @@ private:
     RenderTarget _render_target;
 
     friend class Scenespace;
+    friend class ImageGUI;
 
 };
 }

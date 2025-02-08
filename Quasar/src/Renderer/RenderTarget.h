@@ -4,6 +4,8 @@
 #include <Math/Math.h>
 #include <Renderer/Vulkan/VulkanImage.h>
 
+#define MAX_FRAMES_IN_FLIGHT 3
+
 namespace Quasar
 {
 class RenderTarget {
@@ -18,12 +20,15 @@ public:
 
     b8 render(Math::extent extent, const VkClearColorValue &bg_color);
 
-    VkImageView get_resolve_image_view() { return resolve_image._image_view; }
+    VkImageView get_resolve_image_view() { return resolve_images[_frame_index]._image_view; }
 
 private:
-    VulkanImage resolve_image;
-    VulkanImage offscreen_image;
-    VkFramebuffer framebuffer;
+    DynamicArray<VulkanImage> resolve_images;
+    DynamicArray<VulkanImage> offscreen_images;
+    DynamicArray<VulkanCommandBuffer> _command_buffers;
+    DynamicArray<VkFramebuffer> framebuffer;
+
+
 
     u32 _frame_index = 0;
 };
