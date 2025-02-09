@@ -17,7 +17,7 @@ namespace Quasar
         b8 p_open = true; // not used, disabled close of Scenespace
         
         private:
-        VkDescriptorSet descriptor_set;
+        DynamicArray<VkDescriptorSet> descriptor_sets;
         ImVec2 _content_region = {800, 600};
         Scene image_scene;
         b8 scene_updated = false;

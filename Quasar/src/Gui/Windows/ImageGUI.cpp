@@ -12,6 +12,7 @@ ImageGUI::ImageGUI() : GuiWindow("ImageGUI") {
 
 void ImageGUI::init() {
     image_scene.create();
+    descriptor_sets.resize(MAX_FRAMES_IN_FLIGHT);
 }
 
 void ImageGUI::shutdown() {
@@ -30,6 +31,7 @@ void ImageGUI::render()
     ImGui::Begin(window_name.c_str(), nullptr, ImGuiWindowFlags_NoCollapse);
     _content_region = ImGui::GetContentRegionAvail();
     if (scene_updated) {
+        auto& descriptor_set = descriptor_sets[QS_RENDERER.get_vkcontext()->_frame_index];
         if (descriptor_set != VK_NULL_HANDLE) {
             ImGui_ImplVulkan_RemoveTexture(descriptor_set);
         }

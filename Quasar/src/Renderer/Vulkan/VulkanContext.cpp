@@ -144,20 +144,23 @@ b8 VulkanContext::create(GLFWwindow* window) {
         return false;
     }
 
-    // TODO: move to shader 
+    // TODO: move to shader ??
+    // Render
     // Create descriptor pool.
-    VkDescriptorPoolSize pool_sizes[] = {
-        { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 100 }  // Increased to 100
-    };
+    {
+        VkDescriptorPoolSize pool_sizes[] = {
+            { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 100 }  // Increased to 100
+        };
 
-    VkDescriptorPoolCreateInfo descriptor_pool_info = {};
-    descriptor_pool_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-    descriptor_pool_info.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
-    descriptor_pool_info.maxSets = 100;  // Match descriptor count
-    descriptor_pool_info.poolSizeCount = 1;
-    descriptor_pool_info.pPoolSizes = pool_sizes;
+        VkDescriptorPoolCreateInfo descriptor_pool_info = {};
+        descriptor_pool_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+        descriptor_pool_info.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
+        descriptor_pool_info.maxSets = 100;  // Match descriptor count
+        descriptor_pool_info.poolSizeCount = 1;
+        descriptor_pool_info.pPoolSizes = pool_sizes;
 
-    VK_CALL(vkCreateDescriptorPool(_device.logical_device, &descriptor_pool_info, nullptr, &_descriptor_pool));
+        VK_CALL(vkCreateDescriptorPool(_device.logical_device, &descriptor_pool_info, nullptr, &_descriptor_pool));
+    }
 
     // Renderpass
     // Render multisampled into the offscreen image, then resolve into a single-sampled resolve image.
@@ -271,12 +274,36 @@ b8 VulkanContext::create(GLFWwindow* window) {
 
     VK_CALL(vkCreateSampler(_device.logical_device, &sampler_info, nullptr, &_texture_sampler));
 
+    renderFinishedSemaphores.resize(MAX_FRAMES_IN_FLIGHT);
+    inFlightFences.resize(MAX_FRAMES_IN_FLIGHT);
+
+    VkSemaphoreCreateInfo semaphoreInfo{};
+    semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+
+    VkFenceCreateInfo fenceInfo{};
+    fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+    fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
+
+    for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+        if (vkCreateSemaphore(_device.logical_device, &semaphoreInfo, nullptr, &renderFinishedSemaphores[i]) != VK_SUCCESS ||
+            vkCreateFence(_device.logical_device, &fenceInfo, nullptr, &inFlightFences[i]) != VK_SUCCESS) {
+
+            LOG_ERROR("failed to create synchronization objects for a frame!");
+            return false;
+        }
+    }
+
     return true;
 }
 
 void VulkanContext::destroy()
 {
     vkDeviceWaitIdle(_device.logical_device);
+
+    for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+        vkDestroySemaphore(_device.logical_device, renderFinishedSemaphores[i], nullptr);
+        vkDestroyFence(_device.logical_device, inFlightFences[i], nullptr);
+    }
 
     if (_texture_sampler) {
         vkDestroySampler(_device.logical_device, _texture_sampler, _allocator);

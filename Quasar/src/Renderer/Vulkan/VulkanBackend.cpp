@@ -11,7 +11,7 @@ namespace Quasar
     using namespace ImGui;
 
     static ImGui_ImplVulkanH_Window main_window_data;
-    static u32 min_image_count = 3;
+    static u32 min_image_count = MAX_FRAMES_IN_FLIGHT;
 
     b8 Backend::init(String &app_name, Window *main_window)
     {
@@ -81,11 +81,13 @@ namespace Quasar
         vkDeviceWaitIdle(_context._device.logical_device);
         ImGui_ImplVulkan_SetMinImageCount(min_image_count);
         ImGui_ImplVulkanH_CreateOrResizeWindow(_context._instance, _context._device.physical_device, _context._device.logical_device, &main_window_data, _context._device.graphics_queue_index, nullptr, width, height, min_image_count);
-        main_window_data.FrameIndex = 0;
+        main_window_data.FrameIndex = _context._frame_index;
     }
 
     b8 Backend::frame_begin()
     {
+        vkWaitForFences(_context._device.logical_device, 1, &_context.inFlightFences[_context._frame_index], VK_TRUE, UINT64_MAX);
+
         // Begin Command Buffer
         VulkanCommandBuffer *commandBuffer = &_context._command_buffers[_context._frame_index];
         commandBuffer->reset();
@@ -98,12 +100,20 @@ namespace Quasar
         _context._command_buffers[_context._frame_index].end();
 
         // Submit Command Buffer
-        VkSubmitInfo submitInfo = {VK_STRUCTURE_TYPE_SUBMIT_INFO};
+        VkSubmitInfo submitInfo{};
+        submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+
         submitInfo.commandBufferCount = 1;
         submitInfo.pCommandBuffers = &_context._command_buffers[_context._frame_index]._handle;
-        vkQueueSubmit(_context._device.graphics_queue, 1, &submitInfo, VK_NULL_HANDLE);
 
-        vkDeviceWaitIdle(_context._device.logical_device);
+        VkSemaphore signalSemaphores[] = {_context.renderFinishedSemaphores[_context._frame_index]};
+        submitInfo.signalSemaphoreCount = 1;
+        submitInfo.pSignalSemaphores = signalSemaphores;
+
+        vkResetFences(_context._device.logical_device, 1, &_context.inFlightFences[_context._frame_index]);
+        vkQueueSubmit(_context._device.graphics_queue, 1, &submitInfo, _context.inFlightFences[_context._frame_index]);
+
+        // vkDeviceWaitIdle(_context._device.logical_device);
         return true;
     }
 
@@ -190,17 +200,20 @@ namespace Quasar
     void Backend::frame_render(ImGui_ImplVulkanH_Window *wd, ImDrawData *draw_data) {
         VkSemaphore image_acquired_semaphore = wd->FrameSemaphores[wd->SemaphoreIndex].ImageAcquiredSemaphore;
         VkSemaphore render_complete_semaphore = wd->FrameSemaphores[wd->SemaphoreIndex].RenderCompleteSemaphore;
-        const VkResult err = vkAcquireNextImageKHR(_context._device.logical_device, wd->Swapchain, UINT64_MAX, image_acquired_semaphore, VK_NULL_HANDLE, &wd->FrameIndex);
-        if (err == VK_ERROR_OUT_OF_DATE_KHR || err == VK_SUBOPTIMAL_KHR) {
-            return;
-        }
-        VK_CALL(err);
+
+        VkSemaphore waitSemaphores[] = {_context.renderFinishedSemaphores[_context._frame_index], image_acquired_semaphore};
+        VkPipelineStageFlags waitStages[] = {VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
 
         ImGui_ImplVulkanH_Frame *fd = &wd->Frames[wd->FrameIndex];
         {
             VK_CALL(vkWaitForFences(_context._device.logical_device, 1, &fd->Fence, VK_TRUE, UINT64_MAX)); // wait indefinitely instead of periodically checking
             VK_CALL(vkResetFences(_context._device.logical_device, 1, &fd->Fence));
         }
+        const VkResult err = vkAcquireNextImageKHR(_context._device.logical_device, wd->Swapchain, UINT64_MAX, image_acquired_semaphore, VK_NULL_HANDLE, &wd->FrameIndex);
+        if (err == VK_ERROR_OUT_OF_DATE_KHR || err == VK_SUBOPTIMAL_KHR) {
+            return;
+        }
+        VK_CALL(err);
         {
             VK_CALL(vkResetCommandPool(_context._device.logical_device, fd->CommandPool, 0));
             VkCommandBufferBeginInfo info = {};
@@ -226,12 +239,11 @@ namespace Quasar
         // Submit command buffer
         vkCmdEndRenderPass(fd->CommandBuffer);
         {
-            VkPipelineStageFlags wait_stage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
             VkSubmitInfo info = {};
             info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-            info.waitSemaphoreCount = 1;
-            info.pWaitSemaphores = &image_acquired_semaphore;
-            info.pWaitDstStageMask = &wait_stage;
+            info.waitSemaphoreCount = 2;
+            info.pWaitSemaphores = waitSemaphores;
+            info.pWaitDstStageMask = waitStages;
             info.commandBufferCount = 1;
             info.pCommandBuffers = &fd->CommandBuffer;
             info.signalSemaphoreCount = 1;

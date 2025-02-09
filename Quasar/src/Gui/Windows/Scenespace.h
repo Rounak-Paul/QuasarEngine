@@ -18,7 +18,7 @@ namespace Quasar
 
         private:
         ImVec2 _content_region = {800, 600};
-        VkDescriptorSet descriptor_set;
+        DynamicArray<VkDescriptorSet> descriptor_sets;
         Scene* _scene;
         b8 scene_updated = false;
         };

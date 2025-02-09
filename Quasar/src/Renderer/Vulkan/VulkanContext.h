@@ -30,6 +30,9 @@ struct VulkanContext {
     VkCommandPool _command_pool;
     VkSampler _texture_sampler;
 
+    std::vector<VkSemaphore> renderFinishedSemaphores;
+    std::vector<VkFence> inFlightFences;
+
     DynamicArray<VulkanCommandBuffer> _command_buffers;
 
     VkExtent2D _extent;

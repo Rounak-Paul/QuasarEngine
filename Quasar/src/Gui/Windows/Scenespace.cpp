@@ -11,7 +11,7 @@ Scenespace::Scenespace() : GuiWindow("Scenespace") {
 }
 
 void Scenespace::init() {
-    
+    descriptor_sets.resize(MAX_FRAMES_IN_FLIGHT);
 }
 
 void Scenespace::shutdown() {
@@ -25,14 +25,18 @@ void Scenespace::update(render_packet* packet) {
 }
 void Scenespace::render()
 {
+    VulkanContext* context = QS_RENDERER.get_vkcontext();
+    vkWaitForFences(context->_device.logical_device, 1, &context->inFlightFences[context->_frame_index], VK_TRUE, UINT64_MAX);
+
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, {0, 0});
     ImGui::Begin(window_name.c_str(), nullptr, ImGuiWindowFlags_NoCollapse);
     _content_region = ImGui::GetContentRegionAvail();
     if (scene_updated) {
+        auto& descriptor_set = descriptor_sets[context->_frame_index];
         if (descriptor_set != VK_NULL_HANDLE) {
             ImGui_ImplVulkan_RemoveTexture(descriptor_set);
         }
-        descriptor_set = ImGui_ImplVulkan_AddTexture(QS_RENDERER.get_vkcontext()->_texture_sampler, _scene->_render_target.get_resolve_image_view(), VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+        descriptor_set = ImGui_ImplVulkan_AddTexture(context->_texture_sampler, _scene->_render_target.get_resolve_image_view(), VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
         ImTextureID textureID = (ImTextureID) static_cast<VkDescriptorSet>(descriptor_set);
         ImGui::Image(textureID, ImGui::GetContentRegionAvail());
         scene_updated = false;
