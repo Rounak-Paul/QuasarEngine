@@ -4,8 +4,6 @@
 #include <Gui/GuiFonts.h>
 #include <Gui/GuiStyles.h>
 
-// #define IMGUI_UNLIMITED_FRAME_RATE
-
 namespace Quasar
 {
     using namespace ImGui;

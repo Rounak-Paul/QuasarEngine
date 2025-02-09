@@ -6,6 +6,7 @@
 #include "VulkanCommmandBuffer.h"
 
 #define MAX_FRAMES_IN_FLIGHT 3
+#define IMGUI_UNLIMITED_FRAME_RATE
 
 namespace Quasar {
 
