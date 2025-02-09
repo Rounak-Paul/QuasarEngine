@@ -52,6 +52,7 @@ b8 RendererAPI::draw(render_packet* packet)
 }
 void RendererAPI::resize(u32 width, u32 height)
 {
+    backend._context._frame_index = 0;
     backend.resize(width, height);
 }
 
