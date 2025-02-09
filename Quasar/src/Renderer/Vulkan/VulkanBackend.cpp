@@ -204,6 +204,7 @@ namespace Quasar
         VkSemaphore waitSemaphores[] = {_context.renderFinishedSemaphores[_context._frame_index], image_acquired_semaphore};
         VkPipelineStageFlags waitStages[] = {VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
 
+        wd->FrameIndex = _context._frame_index;
         ImGui_ImplVulkanH_Frame *fd = &wd->Frames[wd->FrameIndex];
         {
             VK_CALL(vkWaitForFences(_context._device.logical_device, 1, &fd->Fence, VK_TRUE, UINT64_MAX)); // wait indefinitely instead of periodically checking
