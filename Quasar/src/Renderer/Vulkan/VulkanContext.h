@@ -40,12 +40,22 @@ struct VulkanContext {
     VkSampleCountFlagBits _msaa_samples;
     static const VkFormat _image_format = VK_FORMAT_B8G8R8A8_UNORM;
 
+    VkBuffer vertexBuffer;
+    VkDeviceMemory vertexBufferMemory;
+
     PFN_vkCmdSetPrimitiveTopologyEXT vkCmdSetPrimitiveTopologyEXT;
 
     // Optional
     VkPipelineCache _pipeline_cache;
 
     u32 find_memory_type(u32 type_filter, u32 prop_flags) const;
+
+    // TODO: temp
+    const std::vector<Math::Vertex> vertices = {
+        {{0.0f, -0.5f}, {1.0f, 0.0f, 0.0f}},
+        {{0.5f, 0.5f}, {0.0f, 1.0f, 0.0f}},
+        {{-0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}}
+    };
 
     private:
     b8 check_validation_layer_support();

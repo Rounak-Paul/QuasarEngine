@@ -5,7 +5,7 @@ namespace Quasar
 {
 b8 VulkanImage::create(
     const VulkanContext *context,
-    Math::extent extent,
+    Math::Extent extent,
     VkFormat format,
     VkImageTiling tiling,
     VkImageUsageFlags usage,

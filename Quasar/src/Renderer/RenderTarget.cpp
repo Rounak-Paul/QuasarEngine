@@ -92,7 +92,7 @@ namespace Quasar
             offscreen_image.destroy(context);
         }
     }
-    void RenderTarget::resize(Math::extent extent)
+    void RenderTarget::resize(Math::Extent extent)
 
     {
         auto context = QS_RENDERER.get_vkcontext();
@@ -100,7 +100,7 @@ namespace Quasar
         destroy();
         create();
     }
-    b8 RenderTarget::render(Math::extent extent, const VkClearColorValue &bg_color, u8 frame_index)
+    b8 RenderTarget::render(Math::Extent extent, const VkClearColorValue &bg_color, u8 frame_index)
     {
         auto context = QS_RENDERER.get_vkcontext();
         if (_extent.width != extent.width || _extent.height != extent.height) {
@@ -130,7 +130,10 @@ namespace Quasar
 
         // Bind Pipeline and Draw
         vkCmdBindPipeline(commandBuffer->_handle, VK_PIPELINE_BIND_POINT_GRAPHICS, context->_pipeline._graphics_pipeline);
-        vkCmdDraw(commandBuffer->_handle, 3, 1, 0, 0);
+        VkBuffer vertexBuffers[] = {context->vertexBuffer};
+        VkDeviceSize offsets[] = {0};
+        vkCmdBindVertexBuffers(commandBuffer->_handle, 0, 1, vertexBuffers, offsets);
+        vkCmdDraw(commandBuffer->_handle, static_cast<uint32_t>(context->vertices.size()), 1, 0, 0);
         vkCmdEndRenderPass(commandBuffer->_handle);
 
         _resolve_images[frame_index].transition_layout(

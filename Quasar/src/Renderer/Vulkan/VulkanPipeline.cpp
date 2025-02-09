@@ -1,5 +1,6 @@
 #include "VulkanPipeline.h"
 #include <Platform/File.h>
+#include <Math/Math.h>
 
 namespace Quasar
 {
@@ -59,12 +60,29 @@ b8 VulkanPipeline::create(VkDevice device, VkRenderPass render_pass, VkSampleCou
     shader_stages[1].pName = "main";
 
     // Vertex Input State
+    VkVertexInputBindingDescription bindingDescription{};
+    bindingDescription.binding = 0;
+    bindingDescription.stride = sizeof(Math::Vertex);
+    bindingDescription.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+
+    std::array<VkVertexInputAttributeDescription, 2> attributeDescriptions{};
+
+    attributeDescriptions[0].binding = 0;
+    attributeDescriptions[0].location = 0;
+    attributeDescriptions[0].format = VK_FORMAT_R32G32_SFLOAT;
+    attributeDescriptions[0].offset = offsetof(Math::Vertex, pos);
+
+    attributeDescriptions[1].binding = 0;
+    attributeDescriptions[1].location = 1;
+    attributeDescriptions[1].format = VK_FORMAT_R32G32B32_SFLOAT;
+    attributeDescriptions[1].offset = offsetof(Math::Vertex, color);
+
     VkPipelineVertexInputStateCreateInfo vertex_input_info = {};
     vertex_input_info.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
-    vertex_input_info.vertexBindingDescriptionCount = 0;
-    vertex_input_info.pVertexBindingDescriptions = nullptr;
-    vertex_input_info.vertexAttributeDescriptionCount = 0;
-    vertex_input_info.pVertexAttributeDescriptions = nullptr;
+    vertex_input_info.vertexBindingDescriptionCount = 1;
+        vertex_input_info.vertexAttributeDescriptionCount = static_cast<uint32_t>(attributeDescriptions.size());
+    vertex_input_info.pVertexBindingDescriptions = &bindingDescription;
+    vertex_input_info.pVertexAttributeDescriptions = attributeDescriptions.data();
 
     // Input Assembly
     VkPipelineInputAssemblyStateCreateInfo input_assembly = {};
@@ -88,7 +106,7 @@ b8 VulkanPipeline::create(VkDevice device, VkRenderPass render_pass, VkSampleCou
     rasterizer.polygonMode = VK_POLYGON_MODE_FILL;
     rasterizer.lineWidth = 1.0f;
     rasterizer.cullMode = VK_CULL_MODE_BACK_BIT;
-    rasterizer.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+    rasterizer.frontFace = VK_FRONT_FACE_CLOCKWISE;
     rasterizer.depthBiasEnable = VK_FALSE;
 
     // Multisampling

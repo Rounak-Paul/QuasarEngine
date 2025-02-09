@@ -17,7 +17,7 @@ namespace Quasar
 		Window& operator=(const Window&) = delete;
 
 		QS_INLINE b8 should_close() { return glfwWindowShouldClose(window); }
-		Math::extent get_extent() { 
+		Math::Extent get_extent() { 
 			return { static_cast<u32>(width), static_cast<u32>(height), static_cast<u32>(0) }; 
 			}
         QS_INLINE void poll_events() {glfwPollEvents();}

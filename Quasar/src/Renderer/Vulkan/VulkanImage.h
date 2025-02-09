@@ -14,7 +14,7 @@ namespace Quasar
 
         b8 create(
             const VulkanContext *context,
-            Math::extent extent,
+            Math::Extent extent,
             VkFormat format,
             VkImageTiling tiling,
             VkImageUsageFlags usage,
@@ -38,7 +38,7 @@ namespace Quasar
         VkImage _image = nullptr;
         VkDeviceMemory _image_memory = nullptr;
         VkImageView _image_view = nullptr;
-        Math::extent _extent;
+        Math::Extent _extent;
         VkImageLayout current_layout = VK_IMAGE_LAYOUT_UNDEFINED;
 
         friend class RenderTarget;

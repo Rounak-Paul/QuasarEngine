@@ -25,8 +25,9 @@ f32 sqrt(f32 value);
 // Absolute value
 f32 abs(f32 value);
 
-struct Vertex3d {
-    Vec3 position;
+struct Vertex {
+    Vec2 pos;
+    Vec3 color;
 };
 
 Vec3 lerp(const Vec3& start, const Vec3& end, f32 t);

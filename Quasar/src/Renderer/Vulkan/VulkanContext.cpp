@@ -274,6 +274,30 @@ b8 VulkanContext::create(GLFWwindow* window) {
 
     VK_CALL(vkCreateSampler(_device.logical_device, &sampler_info, nullptr, &_texture_sampler));
 
+    VkBufferCreateInfo bufferInfo{};
+    bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+    bufferInfo.size = sizeof(Math::Vertex) * 1024;
+    bufferInfo.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+    bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+    VK_CALL(vkCreateBuffer(_device.logical_device, &bufferInfo, nullptr, &vertexBuffer));
+
+    VkMemoryRequirements memRequirements;
+    vkGetBufferMemoryRequirements(_device.logical_device, vertexBuffer, &memRequirements);
+
+    VkMemoryAllocateInfo allocInfo{};
+    allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+    allocInfo.allocationSize = memRequirements.size;
+    allocInfo.memoryTypeIndex = find_memory_type(memRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+
+    VK_CALL(vkAllocateMemory(_device.logical_device, &allocInfo, nullptr, &vertexBufferMemory));
+    vkBindBufferMemory(_device.logical_device, vertexBuffer, vertexBufferMemory, 0);
+
+    void* data;
+    vkMapMemory(_device.logical_device, vertexBufferMemory, 0, bufferInfo.size, 0, &data);
+        memcpy(data, vertices.data(), (size_t) bufferInfo.size);
+    vkUnmapMemory(_device.logical_device, vertexBufferMemory);
+
     renderFinishedSemaphores.resize(MAX_FRAMES_IN_FLIGHT);
     inFlightFences.resize(MAX_FRAMES_IN_FLIGHT);
 
@@ -303,6 +327,12 @@ void VulkanContext::destroy()
     for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
         vkDestroySemaphore(_device.logical_device, renderFinishedSemaphores[i], nullptr);
         vkDestroyFence(_device.logical_device, inFlightFences[i], nullptr);
+    }
+
+    if (vertexBuffer) {
+        vkDestroyBuffer(_device.logical_device, vertexBuffer, nullptr);
+        vkFreeMemory(_device.logical_device, vertexBufferMemory, nullptr);
+        vertexBuffer = VK_NULL_HANDLE;
     }
 
     if (_texture_sampler) {
