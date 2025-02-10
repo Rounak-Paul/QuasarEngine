@@ -31,7 +31,7 @@ VkShaderModule CreateShaderModule(VkDevice device, const std::vector<uint8_t>& c
     return shaderModule;
 }
 
-b8 VulkanPipeline::create(VkDevice device, VkRenderPass render_pass, VkSampleCountFlagBits msaa_samples)
+b8 VulkanPipeline::create(VkDevice device, VkRenderPass render_pass, const VulkanPipelineConfig &config)
 {
     #ifdef QS_PLATFORM_APPLE
     auto vertShaderCode = LoadShaderSpv("./Shaders/Builtin.World.vert.spv");
@@ -87,7 +87,7 @@ b8 VulkanPipeline::create(VkDevice device, VkRenderPass render_pass, VkSampleCou
     // Input Assembly
     VkPipelineInputAssemblyStateCreateInfo input_assembly = {};
     input_assembly.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
-    input_assembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+    input_assembly.topology = config.topology;
     input_assembly.primitiveRestartEnable = VK_FALSE;
 
     // Viewport State
@@ -103,24 +103,24 @@ b8 VulkanPipeline::create(VkDevice device, VkRenderPass render_pass, VkSampleCou
     rasterizer.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
     rasterizer.depthClampEnable = VK_FALSE;
     rasterizer.rasterizerDiscardEnable = VK_FALSE;
-    rasterizer.polygonMode = VK_POLYGON_MODE_FILL;
+    rasterizer.polygonMode = config.polygonMode;
     rasterizer.lineWidth = 1.0f;
-    rasterizer.cullMode = VK_CULL_MODE_BACK_BIT;
-    rasterizer.frontFace = VK_FRONT_FACE_CLOCKWISE;
+    rasterizer.cullMode = config.cullMode;
+    rasterizer.frontFace = config.frontFace;
     rasterizer.depthBiasEnable = VK_FALSE;
 
     // Multisampling
     VkPipelineMultisampleStateCreateInfo multisampling = {};
     multisampling.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
-    multisampling.rasterizationSamples = msaa_samples;
+    multisampling.rasterizationSamples = config.msaaSamples;
     multisampling.sampleShadingEnable = VK_FALSE;
 
     // Color Blend Attachment
     VkPipelineColorBlendAttachmentState color_blend_attachment = {};
     color_blend_attachment.blendEnable = VK_FALSE;
-    color_blend_attachment.srcColorBlendFactor = VK_BLEND_FACTOR_ONE;
-    color_blend_attachment.dstColorBlendFactor = VK_BLEND_FACTOR_ZERO;
-    color_blend_attachment.colorBlendOp = VK_BLEND_OP_ADD;
+    color_blend_attachment.srcColorBlendFactor = config.srcColorBlendFactor;
+    color_blend_attachment.dstColorBlendFactor = config.dstColorBlendFactor;
+    color_blend_attachment.colorBlendOp = config.colorBlendOp;
     color_blend_attachment.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
     color_blend_attachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
     color_blend_attachment.alphaBlendOp = VK_BLEND_OP_ADD;

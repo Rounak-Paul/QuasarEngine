@@ -27,11 +27,11 @@ b8 VulkanBuffer::create(VulkanContext* context, VulkanBufferCreateInfo& create_i
     allocInfo.allocationSize = memRequirements.size;
     allocInfo.memoryTypeIndex = context->find_memory_type(memRequirements.memoryTypeBits, create_info.properties);
 
-    if (vkAllocateMemory(context->_device.logical_device, &allocInfo, context->_allocator, &_bufferMemory) != VK_SUCCESS) {
+    if (vkAllocateMemory(context->_device.logical_device, &allocInfo, context->_allocator, &_buffer_memory) != VK_SUCCESS) {
         throw std::runtime_error("failed to allocate buffer memory!");
     }
 
-    vkBindBufferMemory(context->_device.logical_device, _buffer, _bufferMemory, 0);
+    vkBindBufferMemory(context->_device.logical_device, _buffer, _buffer_memory, 0);
 
     return true;
 }
@@ -39,7 +39,7 @@ b8 VulkanBuffer::create(VulkanContext* context, VulkanBufferCreateInfo& create_i
 void VulkanBuffer::destroy()
 {
     vkDestroyBuffer(_context->_device.logical_device, _buffer, _context->_allocator);
-    vkFreeMemory(_context->_device.logical_device, _bufferMemory, _context->_allocator);
+    vkFreeMemory(_context->_device.logical_device, _buffer_memory, _context->_allocator);
 }
 
 b8 VulkanBuffer::copy(VulkanBuffer *srcBuffer, VulkanBuffer *dstBuffer, VkDeviceSize size)
@@ -76,9 +76,9 @@ b8 VulkanBuffer::upload_data(VulkanBuffer *buffer, DynamicArray<T> &renderdata) 
     }
 
     void* data;
-    vkMapMemory(buffer->_context->_device.logical_device, staging_buffer._bufferMemory, 0, buffer_size, 0, &data);
+    vkMapMemory(buffer->_context->_device.logical_device, staging_buffer._buffer_memory, 0, buffer_size, 0, &data);
         memcpy(data, renderdata.get_data(), (size_t) buffer_size);
-    vkUnmapMemory(buffer->_context->_device.logical_device, staging_buffer._bufferMemory);
+    vkUnmapMemory(buffer->_context->_device.logical_device, staging_buffer._buffer_memory);
 
     VulkanBuffer::copy(&staging_buffer, buffer, buffer_size);
 

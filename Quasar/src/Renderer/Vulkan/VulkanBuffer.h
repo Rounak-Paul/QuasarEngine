@@ -24,7 +24,7 @@ class VulkanBuffer {
 
 
     VkBuffer _buffer;
-    VkDeviceMemory _bufferMemory;
+    VkDeviceMemory _buffer_memory;
 
     private:
     struct VulkanContext* _context;

@@ -239,7 +239,14 @@ b8 VulkanContext::create(GLFWwindow* window) {
     VK_CALL(vkCreateRenderPass(_device.logical_device, &render_pass_info, nullptr, &_render_pass));
 
     // Pipeline
-    if (!_pipeline.create(_device.logical_device, _render_pass, _msaa_samples)) {
+    VulkanPipelineConfig config;
+    config.polygonMode = VK_POLYGON_MODE_FILL;
+    config.cullMode = VK_CULL_MODE_NONE;
+    config.depthTestEnable = VK_TRUE;
+    config.depthWriteEnable = VK_TRUE;
+    config.msaaSamples = _msaa_samples;
+
+    if (!_pipeline.create(_device.logical_device, _render_pass, config)) {
         LOG_ERROR("Failed to create pipeline.")
         return false;
     }
