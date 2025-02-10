@@ -27,5 +27,11 @@ private:
     DynamicArray<VkFramebuffer> _framebuffer;
 
     u8 _frame_index = 0;
+
+    // TODO: temp
+    DynamicArray<Math::Vertex> vertices;
+
+    b8 actual_create();
+    void actual_destroy();
 };
 } // namespace Quasar

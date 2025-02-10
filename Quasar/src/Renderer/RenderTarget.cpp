@@ -73,6 +73,13 @@ namespace Quasar
             vkCreateFramebuffer(context->_device.logical_device, &framebufferInfo, nullptr, &_framebuffer[i]);
         }
 
+        vertices.resize(3);
+        vertices[0] = {{0.0f, -0.5f}, {1.0f, 0.0f, 0.0f}};
+        vertices[1] = {{0.5f, 0.5f}, {0.0f, 1.0f, 0.0f}};
+        vertices[2] = {{-0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}};
+
+        VulkanBuffer::upload_vertices(&context->vertex_buffer, vertices);
+
         return true;
     }
     void RenderTarget::destroy()
@@ -127,13 +134,14 @@ namespace Quasar
         renderPassInfo.clearValueCount = 1;
         renderPassInfo.pClearValues = &clearValue;
         vkCmdBeginRenderPass(commandBuffer->_handle, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
-
-        // Bind Pipeline and Draw
-        vkCmdBindPipeline(commandBuffer->_handle, VK_PIPELINE_BIND_POINT_GRAPHICS, context->_pipeline._graphics_pipeline);
-        VkBuffer vertexBuffers[] = {context->vertexBuffer};
-        VkDeviceSize offsets[] = {0};
-        vkCmdBindVertexBuffers(commandBuffer->_handle, 0, 1, vertexBuffers, offsets);
-        vkCmdDraw(commandBuffer->_handle, static_cast<uint32_t>(context->vertices.size()), 1, 0, 0);
+        {
+            // Bind Pipeline and Draw
+            vkCmdBindPipeline(commandBuffer->_handle, VK_PIPELINE_BIND_POINT_GRAPHICS, context->_pipeline._graphics_pipeline);
+            VkBuffer vertexBuffers[] = {context->vertex_buffer.buffer};
+            VkDeviceSize offsets[] = {0};
+            vkCmdBindVertexBuffers(commandBuffer->_handle, 0, 1, vertexBuffers, offsets);
+            vkCmdDraw(commandBuffer->_handle, static_cast<uint32_t>(vertices.get_size()), 1, 0, 0);
+        }
         vkCmdEndRenderPass(commandBuffer->_handle);
 
         _resolve_images[frame_index].transition_layout(
