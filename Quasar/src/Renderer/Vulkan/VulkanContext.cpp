@@ -303,7 +303,7 @@ b8 VulkanContext::create(GLFWwindow* window) {
         vertex_buffer.create(this, buffer_info);
     }
     {
-        VkDeviceSize buffer_size = sizeof(Math::Vertex) * 1024;
+        VkDeviceSize buffer_size = sizeof(Math::Vertex) * 1024 * 3;
         VulkanBufferCreateInfo buffer_info = {
             buffer_size, // size
             VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, // usage

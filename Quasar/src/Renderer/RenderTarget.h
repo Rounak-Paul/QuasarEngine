@@ -30,6 +30,7 @@ private:
 
     // TODO: temp
     DynamicArray<Math::Vertex> vertices;
+    DynamicArray<u32> indices;
 
     b8 actual_create();
     void actual_destroy();

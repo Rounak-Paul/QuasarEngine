@@ -19,10 +19,12 @@ class VulkanBuffer {
 
     static b8 copy(VulkanBuffer* srcBuffer, VulkanBuffer* dstBuffer, VkDeviceSize size);
 
-    static b8 upload_vertices(VulkanBuffer* vertex_buffer, DynamicArray<Math::Vertex>& vertices);
+    template <typename T>
+    static b8 upload_data(VulkanBuffer *buffer, DynamicArray<T> &renderdata);
 
-    VkBuffer buffer;
-    VkDeviceMemory bufferMemory;
+
+    VkBuffer _buffer;
+    VkDeviceMemory _bufferMemory;
 
     private:
     struct VulkanContext* _context;

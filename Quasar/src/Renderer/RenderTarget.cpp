@@ -73,12 +73,21 @@ namespace Quasar
             vkCreateFramebuffer(context->_device.logical_device, &framebufferInfo, nullptr, &_framebuffer[i]);
         }
 
-        vertices.resize(3);
-        vertices[0] = {{0.0f, -0.5f}, {1.0f, 0.0f, 0.0f}};
-        vertices[1] = {{0.5f, 0.5f}, {0.0f, 1.0f, 0.0f}};
-        vertices[2] = {{-0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}};
+        vertices.resize(4);
+        vertices[0] = {{-0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}};
+        vertices[1] = {{0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}};
+        vertices[2] = {{0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}};
+        vertices[3] = {{-0.5f, 0.5f}, {1.0f, 1.0f, 1.0f}};
 
-        VulkanBuffer::upload_vertices(&context->vertex_buffer, vertices);
+        indices.push_back(0);
+        indices.push_back(1);
+        indices.push_back(2);
+        indices.push_back(2);
+        indices.push_back(3);
+        indices.push_back(0);
+
+        VulkanBuffer::upload_data<Math::Vertex>(&context->vertex_buffer, vertices);
+        VulkanBuffer::upload_data<u32>(&context->index_buffer, indices);
 
         return true;
     }
@@ -137,10 +146,11 @@ namespace Quasar
         {
             // Bind Pipeline and Draw
             vkCmdBindPipeline(commandBuffer->_handle, VK_PIPELINE_BIND_POINT_GRAPHICS, context->_pipeline._graphics_pipeline);
-            VkBuffer vertexBuffers[] = {context->vertex_buffer.buffer};
+            VkBuffer vertexBuffers[] = {context->vertex_buffer._buffer};
             VkDeviceSize offsets[] = {0};
             vkCmdBindVertexBuffers(commandBuffer->_handle, 0, 1, vertexBuffers, offsets);
-            vkCmdDraw(commandBuffer->_handle, static_cast<uint32_t>(vertices.get_size()), 1, 0, 0);
+            vkCmdBindIndexBuffer(commandBuffer->_handle, context->index_buffer._buffer, 0, VK_INDEX_TYPE_UINT32);
+            vkCmdDrawIndexed(commandBuffer->_handle, static_cast<uint32_t>(indices.get_size()), 1, 0, 0, 0);
         }
         vkCmdEndRenderPass(commandBuffer->_handle);
 
