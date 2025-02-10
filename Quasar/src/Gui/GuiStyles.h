@@ -7,65 +7,57 @@ void customize_style() {
     ImGuiStyle& style = ImGui::GetStyle();
     ImVec4* colors = style.Colors;
 
-    // OLED Theme - High Contrast
-    ImVec4 background_color_0 = ImVec4(0.08f, 0.08f, 0.08f, 1.00f);
-    ImVec4 background_color_1 = ImVec4(0.12f, 0.12f, 0.12f, 1.00f);
-    ImVec4 panel_color = ImVec4(0.08f, 0.08f, 0.08f, 1.00f);
-
-    // Accent Colors
-    ImVec4 primary_accent = ImVec4(0.00f, 0.60f, 0.50f, 1.00f);
-    ImVec4 secondary_accent = ImVec4(0.00f, 0.65f, 0.40f, 1.00f);
-    
-    // Text Colors
-    ImVec4 color_text = ImVec4(1.00f, 1.00f, 1.00f, 1.00f);
-    ImVec4 title_color = ImVec4(1.00f, 1.00f, 1.00f, 1.00f);
-    ImVec4 text_disabled = ImVec4(0.50f, 0.50f, 0.50f, 1.00f);
+    // AMOLED Black Theme
+    ImVec4 black = ImVec4(0.00f, 0.00f, 0.00f, 1.00f);
+    ImVec4 dark_gray = ImVec4(0.10f, 0.10f, 0.10f, 1.00f);
+    ImVec4 mid_gray = ImVec4(0.15f, 0.15f, 0.15f, 1.00f);
+    ImVec4 accent_color = ImVec4(0.60f, 0.20f, 0.90f, 1.00f); // Purple accent
 
     // Backgrounds
-    colors[ImGuiCol_WindowBg]               = background_color_0;
-    colors[ImGuiCol_ChildBg]                = background_color_1;
-    colors[ImGuiCol_PopupBg]                = background_color_1;
-    colors[ImGuiCol_FrameBg]                = panel_color;
-    colors[ImGuiCol_FrameBgHovered]         = primary_accent;
-    colors[ImGuiCol_FrameBgActive]          = secondary_accent;
-    
-    // Titles - Bold and Modern
-    colors[ImGuiCol_TitleBg]                = primary_accent;
-    colors[ImGuiCol_TitleBgActive]          = secondary_accent;
-    colors[ImGuiCol_TitleBgCollapsed]       = primary_accent;
+    colors[ImGuiCol_WindowBg]               = black;
+    colors[ImGuiCol_ChildBg]                = black;
+    colors[ImGuiCol_PopupBg]                = dark_gray;
+    colors[ImGuiCol_FrameBg]                = mid_gray;
+    colors[ImGuiCol_FrameBgHovered]         = accent_color;
+    colors[ImGuiCol_FrameBgActive]          = accent_color;
+
+    // Titles
+    colors[ImGuiCol_TitleBg]                = dark_gray;
+    colors[ImGuiCol_TitleBgActive]          = accent_color;
+    colors[ImGuiCol_TitleBgCollapsed]       = dark_gray;
 
     // Menu Bar
-    colors[ImGuiCol_MenuBarBg] = ImVec4(0.06, 0.06f, 0.06f, 1.00f); // Dark gray
-    
+    colors[ImGuiCol_MenuBarBg]              = dark_gray;
+
     // Buttons
-    colors[ImGuiCol_Button]                 = primary_accent;
-    colors[ImGuiCol_ButtonHovered]          = secondary_accent;
-    colors[ImGuiCol_ButtonActive]           = secondary_accent;
+    colors[ImGuiCol_Button]                 = dark_gray;
+    colors[ImGuiCol_ButtonHovered]          = accent_color;
+    colors[ImGuiCol_ButtonActive]           = accent_color;
 
     // Text
-    colors[ImGuiCol_Text]                   = color_text;
-    colors[ImGuiCol_TextDisabled]           = text_disabled;
-    
-    // Borders
-    colors[ImGuiCol_Border]                 = ImVec4(0.50f, 0.50f, 0.50f, 1.00f);
-    colors[ImGuiCol_BorderShadow]           = ImVec4(0.00f, 0.00f, 0.00f, 0.00f);
-    
-    // Tabs
-    colors[ImGuiCol_Tab]                    = panel_color;
-    colors[ImGuiCol_TabHovered]             = secondary_accent;
-    colors[ImGuiCol_TabActive]              = primary_accent;
-    colors[ImGuiCol_TabUnfocused]           = panel_color;
-    colors[ImGuiCol_TabUnfocusedActive]     = primary_accent;
+    colors[ImGuiCol_Text]                   = ImVec4(1.00f, 1.00f, 1.00f, 1.00f);
+    colors[ImGuiCol_TextDisabled]           = ImVec4(0.50f, 0.50f, 0.50f, 1.00f);
 
-    // General Style Settings
-    style.WindowPadding = ImVec2(10, 10);
+    // Borders
+    colors[ImGuiCol_Border]                 = dark_gray;
+    colors[ImGuiCol_BorderShadow]           = black;
+
+    // Tabs
+    colors[ImGuiCol_Tab]                    = dark_gray;
+    colors[ImGuiCol_TabHovered]             = accent_color;
+    colors[ImGuiCol_TabActive]              = accent_color;
+    colors[ImGuiCol_TabUnfocused]           = dark_gray;
+    colors[ImGuiCol_TabUnfocusedActive]     = dark_gray;
+
+    // General Style Settings - Minimal Gaps
+    style.WindowPadding = ImVec2(4, 4);
     style.WindowRounding = 0.0f;
-    style.FramePadding = ImVec2(6, 6);
+    style.FramePadding = ImVec2(4, 4);
     style.FrameRounding = 0.0f;
-    style.ItemSpacing = ImVec2(14, 10);
-    style.ItemInnerSpacing = ImVec2(10, 8);
-    style.IndentSpacing = 25.0f;
-    style.ScrollbarSize = 16.0f;
+    style.ItemSpacing = ImVec2(6, 4);
+    style.ItemInnerSpacing = ImVec2(4, 4);
+    style.IndentSpacing = 15.0f;
+    style.ScrollbarSize = 12.0f;
     style.ScrollbarRounding = 0.0f;
     style.GrabMinSize = 6.0f;
     style.GrabRounding = 0.0f;
