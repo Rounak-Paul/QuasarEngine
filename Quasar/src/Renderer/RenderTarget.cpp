@@ -161,6 +161,24 @@ namespace Quasar
             VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
         );
 
+        updateUniformBuffer(frame_index);
+
         return true;
+    }
+    void RenderTarget::updateUniformBuffer(u32 index)
+    {
+        auto context = QS_RENDERER.get_vkcontext();
+        static auto startTime = std::chrono::high_resolution_clock::now();
+
+        auto currentTime = std::chrono::high_resolution_clock::now();
+        float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
+
+        Math::UniformBufferObject ubo{};
+        ubo.model = Math::Mat4::rotation(time * Math::PI / 2, Math::Vec3(0.0f, 0.0f, 1.0f));
+        ubo.view = Math::Mat4::look_at(Math::Vec3(2.0f, 2.0f, 2.0f), Math::Vec3(0.0f, 0.0f, 0.0f), Math::Vec3(0.0f, 0.0f, 1.0f));
+        ubo.proj = Math::Mat4::perspective(Math::PI / 4, _extent.width / (f32) _extent.height, 0.1f, 10.0f);
+        ubo.proj.mat[1][1] *= -1;
+
+        memcpy(context->uniformBuffersMapped[index], &ubo, sizeof(ubo));
     }
 }

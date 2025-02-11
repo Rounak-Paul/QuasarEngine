@@ -11,6 +11,13 @@
 
 namespace Quasar::Math {
 
+// TODO: temp
+struct UniformBufferObject {
+    Mat4 model;
+    Mat4 view;
+    Mat4 proj;
+};
+
 // Utility functions
 b8 f32_equal(f32 a, f32 b, f32 epsilon = EPSILON);
 

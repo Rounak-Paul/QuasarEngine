@@ -44,6 +44,8 @@ struct VulkanContext {
     // Buffers
     VulkanBuffer vertex_buffer;
     VulkanBuffer index_buffer;
+    DynamicArray<VulkanBuffer> uniformBuffers;
+    DynamicArray<void*> uniformBuffersMapped;
 
     PFN_vkCmdSetPrimitiveTopologyEXT vkCmdSetPrimitiveTopologyEXT;
 

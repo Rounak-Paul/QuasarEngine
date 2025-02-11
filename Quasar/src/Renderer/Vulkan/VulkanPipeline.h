@@ -28,5 +28,13 @@ namespace Quasar
 
         VkPipeline _graphics_pipeline;
         VkPipelineLayout _pipeline_layout;
+
+        VkDescriptorSetLayout _descriptor_set_layout;
+        VkDescriptorPool descriptorPool;
+        std::vector<VkDescriptorSet> descriptorSets;
+        
+        void descriptor_set_layout_create(VkDevice device);
+        void createDescriptorPool(VkDevice device);
+        void createDescriptorSets(VkDevice device);
     };
 } // namespace Quasar

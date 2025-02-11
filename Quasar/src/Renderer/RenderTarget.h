@@ -34,5 +34,6 @@ private:
 
     b8 actual_create();
     void actual_destroy();
+    void updateUniformBuffer(u32 index);
 };
 } // namespace Quasar

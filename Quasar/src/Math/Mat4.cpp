@@ -66,7 +66,7 @@ Mat4 Mat4::orthographic(f32 left, f32 right, f32 bottom, f32 top, f32 near, f32 
     return result;
 }
 
-Mat4 Mat4::mat4_look_at(Vec3 position, Vec3 target, Vec3 up)
+Mat4 Mat4::look_at(Vec3 position, Vec3 target, Vec3 up)
 {
     Vec3 z_axis = (target - position).normalized();       // Forward vector
     Vec3 x_axis = Vec3::cross(up, z_axis).normalized();          // Right vector
