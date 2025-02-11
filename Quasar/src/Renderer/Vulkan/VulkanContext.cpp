@@ -241,7 +241,8 @@ b8 VulkanContext::create(GLFWwindow* window) {
     // Pipeline
     VulkanPipelineConfig config;
     config.polygonMode = VK_POLYGON_MODE_FILL;
-    config.cullMode = VK_CULL_MODE_NONE;
+    config.cullMode = VK_CULL_MODE_BACK_BIT;
+    config.frontFace = VK_FRONT_FACE_CLOCKWISE;
     config.depthTestEnable = VK_TRUE;
     config.depthWriteEnable = VK_TRUE;
     config.msaaSamples = _msaa_samples;
@@ -318,23 +319,6 @@ b8 VulkanContext::create(GLFWwindow* window) {
         };
         index_buffer.create(this, buffer_info);
     }
-    {
-        VkDeviceSize bufferSize = sizeof(Math::UniformBufferObject);
-
-        uniformBuffers.resize(MAX_FRAMES_IN_FLIGHT);
-        uniformBuffersMapped.resize(MAX_FRAMES_IN_FLIGHT);
-
-        for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
-            VulkanBufferCreateInfo buffer_info = {
-                bufferSize, // size
-                VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, // usage
-                VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT // properties
-            };
-            uniformBuffers[i].create(this, buffer_info);
-            vkMapMemory(_device.logical_device, uniformBuffers[i]._buffer_memory, 0, bufferSize, 0, &uniformBuffersMapped[i]);
-        }
-    }
-
     return true;
 }
 
@@ -344,9 +328,6 @@ void VulkanContext::destroy()
 
     vertex_buffer.destroy();
     index_buffer.destroy();
-    for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
-        uniformBuffers[i].destroy();
-    }
 
     for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
         vkDestroySemaphore(_device.logical_device, renderFinishedSemaphores[i], nullptr);

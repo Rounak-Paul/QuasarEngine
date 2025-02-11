@@ -2,6 +2,8 @@
 #include <Platform/File.h>
 #include <Math/Math.h>
 
+#include "VulkanBuffer.h"
+
 namespace Quasar
 {
 std::vector<u8> LoadShaderSpv(const std::string& filename) {
@@ -185,11 +187,39 @@ b8 VulkanPipeline::create(VkDevice device, VkRenderPass render_pass, const Vulka
         fragShaderModule = VK_NULL_HANDLE;
     }
 
+    {
+        // TODO: temp
+        auto context = QS_RENDERER.get_vkcontext();
+        VkDeviceSize bufferSize = sizeof(Math::UniformBufferObject);
+
+        uniformBuffers.resize(MAX_FRAMES_IN_FLIGHT);
+        uniformBuffersMapped.resize(MAX_FRAMES_IN_FLIGHT);
+
+        for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+            VulkanBufferCreateInfo buffer_info = {
+                bufferSize, // size
+                VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, // usage
+                VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT // properties
+            };
+            uniformBuffers[i].create(context, buffer_info);
+            vkMapMemory(context->_device.logical_device, uniformBuffers[i]._buffer_memory, 0, bufferSize, 0, &uniformBuffersMapped[i]);
+        }
+    }
+
+    createDescriptorPool(device);
+    createDescriptorSets(device);
+
     return true;
 }
 
 void VulkanPipeline::destroy(VkDevice device)
 {
+    vkDestroyDescriptorPool(device, descriptorPool, nullptr);
+
+    for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+        uniformBuffers[i].destroy();
+    }
+
     if (_graphics_pipeline != VK_NULL_HANDLE) {
         vkDestroyPipeline(device, _graphics_pipeline, nullptr);
         _graphics_pipeline = VK_NULL_HANDLE;
@@ -261,7 +291,7 @@ void VulkanPipeline::createDescriptorSets(VkDevice device)
 
     for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
         VkDescriptorBufferInfo bufferInfo{};
-        bufferInfo.buffer = context->uniformBuffers[i]._buffer;
+        bufferInfo.buffer = uniformBuffers[i]._buffer;
         bufferInfo.offset = 0;
         bufferInfo.range = sizeof(Math::UniformBufferObject);
 

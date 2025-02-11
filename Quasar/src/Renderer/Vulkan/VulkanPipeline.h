@@ -29,6 +29,8 @@ namespace Quasar
         VkPipeline _graphics_pipeline;
         VkPipelineLayout _pipeline_layout;
 
+        DynamicArray<class VulkanBuffer> uniformBuffers;
+        DynamicArray<void*> uniformBuffersMapped;
         VkDescriptorSetLayout _descriptor_set_layout;
         VkDescriptorPool descriptorPool;
         std::vector<VkDescriptorSet> descriptorSets;

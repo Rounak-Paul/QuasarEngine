@@ -150,6 +150,7 @@ namespace Quasar
             VkDeviceSize offsets[] = {0};
             vkCmdBindVertexBuffers(commandBuffer->_handle, 0, 1, vertexBuffers, offsets);
             vkCmdBindIndexBuffer(commandBuffer->_handle, context->index_buffer._buffer, 0, VK_INDEX_TYPE_UINT32);
+            vkCmdBindDescriptorSets(commandBuffer->_handle, VK_PIPELINE_BIND_POINT_GRAPHICS, context->_pipeline._pipeline_layout, 0, 1, &context->_pipeline.descriptorSets[frame_index], 0, nullptr);
             vkCmdDrawIndexed(commandBuffer->_handle, static_cast<uint32_t>(indices.get_size()), 1, 0, 0, 0);
         }
         vkCmdEndRenderPass(commandBuffer->_handle);
@@ -179,6 +180,6 @@ namespace Quasar
         ubo.proj = Math::Mat4::perspective(Math::PI / 4, _extent.width / (f32) _extent.height, 0.1f, 10.0f);
         ubo.proj.mat[1][1] *= -1;
 
-        memcpy(context->uniformBuffersMapped[index], &ubo, sizeof(ubo));
+        memcpy(context->_pipeline.uniformBuffersMapped[index], &ubo, sizeof(ubo));
     }
 }
