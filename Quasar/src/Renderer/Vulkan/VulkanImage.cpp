@@ -29,11 +29,11 @@ b8 VulkanImage::create(
     image_create_info.samples = samples;
     image_create_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
-    VK_CALL(vkCreateImage(context->_device.logical_device, &image_create_info, nullptr, &_image));
+    VK_CALL(vkCreateImage(context->device.logical_device, &image_create_info, nullptr, &_image));
 
     // Query memory requirements.
     VkMemoryRequirements memory_requirements;
-    vkGetImageMemoryRequirements(context->_device.logical_device, _image, &memory_requirements);
+    vkGetImageMemoryRequirements(context->device.logical_device, _image, &memory_requirements);
 
     i32 memory_type = context->find_memory_type(memory_requirements.memoryTypeBits, memory_flags);
     if (memory_type == -1) {
@@ -44,10 +44,10 @@ b8 VulkanImage::create(
     VkMemoryAllocateInfo memory_allocate_info = {VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
     memory_allocate_info.allocationSize = memory_requirements.size;
     memory_allocate_info.memoryTypeIndex = memory_type;
-    VK_CALL(vkAllocateMemory(context->_device.logical_device, &memory_allocate_info, context->_allocator, &_image_memory));
+    VK_CALL(vkAllocateMemory(context->device.logical_device, &memory_allocate_info, context->allocator, &_image_memory));
 
     // Bind the memory
-    VK_CALL(vkBindImageMemory(context->_device.logical_device, _image, _image_memory, 0));  // TODO: configurable memory offset.
+    VK_CALL(vkBindImageMemory(context->device.logical_device, _image, _image_memory, 0));  // TODO: configurable memory offset.
 
     // Create view
     VkImageViewCreateInfo view_create_info = {VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
@@ -62,7 +62,7 @@ b8 VulkanImage::create(
     view_create_info.subresourceRange.baseArrayLayer = 0;
     view_create_info.subresourceRange.layerCount = 1;
 
-    VK_CALL(vkCreateImageView(context->_device.logical_device, &view_create_info, context->_allocator, &_image_view));
+    VK_CALL(vkCreateImageView(context->device.logical_device, &view_create_info, context->allocator, &_image_view));
 
     return true;
 }
@@ -70,15 +70,15 @@ b8 VulkanImage::create(
 void VulkanImage::destroy(const VulkanContext* context)
 {
     if (_image_view) {
-        vkDestroyImageView(context->_device.logical_device, _image_view, context->_allocator);
+        vkDestroyImageView(context->device.logical_device, _image_view, context->allocator);
         _image_view = nullptr;
     }
     if (_image_memory) {
-        vkFreeMemory(context->_device.logical_device, _image_memory, context->_allocator);
+        vkFreeMemory(context->device.logical_device, _image_memory, context->allocator);
         _image_memory = nullptr;
     }
     if (_image) {
-        vkDestroyImage(context->_device.logical_device, _image, context->_allocator);
+        vkDestroyImage(context->device.logical_device, _image, context->allocator);
         _image = nullptr;
     }
     current_layout = VK_IMAGE_LAYOUT_UNDEFINED;

@@ -13,32 +13,32 @@ b8 VulkanBuffer::create(VulkanContext* context, VulkanBufferCreateInfo& create_i
     bufferInfo.usage = create_info.usage;
     bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
-    if (vkCreateBuffer(context->_device.logical_device, &bufferInfo, context->_allocator, &_buffer) != VK_SUCCESS) {
+    if (vkCreateBuffer(context->device.logical_device, &bufferInfo, context->allocator, &_buffer) != VK_SUCCESS) {
         throw std::runtime_error("failed to create buffer!");
         return false;
     }
 
     VkMemoryRequirements memRequirements;
-    vkGetBufferMemoryRequirements(context->_device.logical_device, _buffer, &memRequirements);
+    vkGetBufferMemoryRequirements(context->device.logical_device, _buffer, &memRequirements);
 
     VkMemoryAllocateInfo allocInfo{};
     allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
     allocInfo.allocationSize = memRequirements.size;
     allocInfo.memoryTypeIndex = context->find_memory_type(memRequirements.memoryTypeBits, create_info.properties);
 
-    if (vkAllocateMemory(context->_device.logical_device, &allocInfo, context->_allocator, &_buffer_memory) != VK_SUCCESS) {
+    if (vkAllocateMemory(context->device.logical_device, &allocInfo, context->allocator, &_buffer_memory) != VK_SUCCESS) {
         throw std::runtime_error("failed to allocate buffer memory!");
     }
 
-    vkBindBufferMemory(context->_device.logical_device, _buffer, _buffer_memory, 0);
+    vkBindBufferMemory(context->device.logical_device, _buffer, _buffer_memory, 0);
 
     return true;
 }
 
 void VulkanBuffer::destroy()
 {
-    vkDestroyBuffer(_context->_device.logical_device, _buffer, _context->_allocator);
-    vkFreeMemory(_context->_device.logical_device, _buffer_memory, _context->_allocator);
+    vkDestroyBuffer(_context->device.logical_device, _buffer, _context->allocator);
+    vkFreeMemory(_context->device.logical_device, _buffer_memory, _context->allocator);
 }
 
 b8 VulkanBuffer::copy(VulkanBuffer *srcBuffer, VulkanBuffer *dstBuffer, VkDeviceSize size)
@@ -49,13 +49,13 @@ b8 VulkanBuffer::copy(VulkanBuffer *srcBuffer, VulkanBuffer *dstBuffer, VkDevice
     }
 
     VulkanCommandBuffer cmdBuffer;
-    cmdBuffer.allocate_and_begin_single_use(srcBuffer->_context, srcBuffer->_context->_command_pool);
+    cmdBuffer.allocate_and_begin_single_use(srcBuffer->_context, srcBuffer->_context->command_pool);
         VkBufferCopy copyRegion{};
         copyRegion.srcOffset = 0; // Optional
         copyRegion.dstOffset = 0; // Optional
         copyRegion.size = size;
         vkCmdCopyBuffer(cmdBuffer._handle, srcBuffer->_buffer, dstBuffer->_buffer, 1, &copyRegion);
-    cmdBuffer.end_single_use(srcBuffer->_context, srcBuffer->_context->_command_pool, srcBuffer->_context->_device.graphics_queue);
+    cmdBuffer.end_single_use(srcBuffer->_context, srcBuffer->_context->command_pool, srcBuffer->_context->device.graphics_queue);
 
     return true;
 }
@@ -75,9 +75,9 @@ b8 VulkanBuffer::upload_data(VulkanBuffer *buffer, DynamicArray<T> &renderdata) 
     }
 
     void* data;
-    vkMapMemory(buffer->_context->_device.logical_device, staging_buffer._buffer_memory, 0, buffer_size, 0, &data);
+    vkMapMemory(buffer->_context->device.logical_device, staging_buffer._buffer_memory, 0, buffer_size, 0, &data);
         memcpy(data, renderdata.get_data(), (size_t) buffer_size);
-    vkUnmapMemory(buffer->_context->_device.logical_device, staging_buffer._buffer_memory);
+    vkUnmapMemory(buffer->_context->device.logical_device, staging_buffer._buffer_memory);
 
     VulkanBuffer::copy(&staging_buffer, buffer, buffer_size);
 

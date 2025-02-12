@@ -16,14 +16,14 @@ void VulkanCommandBuffer::allocate(
     alloc_info.pNext = nullptr;
 
     _state = COMMAND_BUFFER_STATE_NOT_ALLOCATED;
-    VK_CALL(vkAllocateCommandBuffers(context->_device.logical_device, &alloc_info, &_handle));
+    VK_CALL(vkAllocateCommandBuffers(context->device.logical_device, &alloc_info, &_handle));
     _state = COMMAND_BUFFER_STATE_READY;
 }
 
 void VulkanCommandBuffer::free(const VulkanContext *context, VkCommandPool pool)
 {
     vkFreeCommandBuffers(
-        context->_device.logical_device,
+        context->device.logical_device,
         pool,
         1,
         &_handle);

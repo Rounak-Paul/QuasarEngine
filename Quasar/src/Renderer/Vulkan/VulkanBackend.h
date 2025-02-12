@@ -19,6 +19,14 @@ namespace Quasar
         b8 init(String& app_name, Window* main_window);
         void shutdown();
         void resize(u32 width, u32 height);
+        
+        /**
+         * @brief Blocking operation. Blocks CPU process / current thread untill GPU is idle.
+         * 
+         */
+        void gpu_wait_idle() {
+            vkDeviceWaitIdle(_context.device.logical_device);
+        };
 
         b8 frame_begin();
         b8 frame_end();

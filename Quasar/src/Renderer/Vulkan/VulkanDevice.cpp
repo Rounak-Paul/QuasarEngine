@@ -44,8 +44,8 @@ b8 VulkanDevice::create(VulkanContext* context) {
 
     LOG_INFO("Creating logical device...");
     // NOTE: Do not create additional queues for shared indices.
-    b8 present_shares_graphics_queue = context->_device.graphics_queue_index == context->_device.present_queue_index;
-    b8 transfer_shares_graphics_queue = context->_device.graphics_queue_index == context->_device.transfer_queue_index;
+    b8 present_shares_graphics_queue = context->device.graphics_queue_index == context->device.present_queue_index;
+    b8 transfer_shares_graphics_queue = context->device.graphics_queue_index == context->device.transfer_queue_index;
     u32 index_count = 1;
     if (!present_shares_graphics_queue) {
         index_count++;
@@ -55,18 +55,18 @@ b8 VulkanDevice::create(VulkanContext* context) {
     }
     std::vector<u32> indices(index_count);
     u8 index = 0;
-    indices[index++] = context->_device.graphics_queue_index;
+    indices[index++] = context->device.graphics_queue_index;
     if (!present_shares_graphics_queue) {
-        indices[index++] = context->_device.present_queue_index;
+        indices[index++] = context->device.present_queue_index;
     }
     if (!transfer_shares_graphics_queue) {
-        indices[index++] = context->_device.transfer_queue_index;
+        indices[index++] = context->device.transfer_queue_index;
     }
 
     VkQueueFamilyProperties props[32];
     u32 prop_count;
-    vkGetPhysicalDeviceQueueFamilyProperties(context->_device.physical_device, &prop_count, 0);
-    vkGetPhysicalDeviceQueueFamilyProperties(context->_device.physical_device, &prop_count, props);
+    vkGetPhysicalDeviceQueueFamilyProperties(context->device.physical_device, &prop_count, 0);
+    vkGetPhysicalDeviceQueueFamilyProperties(context->device.physical_device, &prop_count, props);
 
     std::vector<VkDeviceQueueCreateInfo> queue_create_infos(index_count);
     f32 queue_priority = 1.0f;
@@ -102,13 +102,13 @@ b8 VulkanDevice::create(VulkanContext* context) {
     // If dynamic topology isn't supported natively but *is* supported via extension,
     // include the extension. These may both be false in the event of macos.
     if (
-        ((context->_device.support_flags & VULKAN_DEVICE_SUPPORT_FLAG_NATIVE_DYNAMIC_TOPOLOGY_BIT) == 0) &&
-        ((context->_device.support_flags & VULKAN_DEVICE_SUPPORT_FLAG_DYNAMIC_TOPOLOGY_BIT) != 0)) {
+        ((context->device.support_flags & VULKAN_DEVICE_SUPPORT_FLAG_NATIVE_DYNAMIC_TOPOLOGY_BIT) == 0) &&
+        ((context->device.support_flags & VULKAN_DEVICE_SUPPORT_FLAG_DYNAMIC_TOPOLOGY_BIT) != 0)) {
         extension_names.push_back(VK_EXT_EXTENDED_DYNAMIC_STATE_EXTENSION_NAME);
     }
 
     // If smooth lines are supported, load the extension.
-    if ((context->_device.support_flags & VULKAN_DEVICE_SUPPORT_FLAG_LINE_SMOOTH_RASTERISATION_BIT)) {
+    if ((context->device.support_flags & VULKAN_DEVICE_SUPPORT_FLAG_LINE_SMOOTH_RASTERISATION_BIT)) {
         extension_names.push_back(VK_EXT_LINE_RASTERIZATION_EXTENSION_NAME);
     }
 
@@ -125,7 +125,7 @@ b8 VulkanDevice::create(VulkanContext* context) {
     device_create_info.pNext = &extended_dynamic_state;
     // Smooth line rasterisation, if supported.
     VkPhysicalDeviceLineRasterizationFeaturesEXT line_rasterization_ext {};
-    if (context->_device.support_flags & VULKAN_DEVICE_SUPPORT_FLAG_LINE_SMOOTH_RASTERISATION_BIT) {
+    if (context->device.support_flags & VULKAN_DEVICE_SUPPORT_FLAG_LINE_SMOOTH_RASTERISATION_BIT) {
         line_rasterization_ext.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_LINE_RASTERIZATION_FEATURES_EXT;
         line_rasterization_ext.smoothLines = VK_TRUE;
         extended_dynamic_state.pNext = &line_rasterization_ext;
@@ -133,20 +133,20 @@ b8 VulkanDevice::create(VulkanContext* context) {
 
     // Create the device.
     VK_CALL(vkCreateDevice(
-        context->_device.physical_device,
+        context->device.physical_device,
         &device_create_info,
-        context->_allocator,
-        &context->_device.logical_device));
+        context->allocator,
+        &context->device.logical_device));
 
     LOG_INFO("Logical device created.");
 
     if (
-        !(context->_device.support_flags & VULKAN_DEVICE_SUPPORT_FLAG_NATIVE_DYNAMIC_TOPOLOGY_BIT) &&
-        (context->_device.support_flags & VULKAN_DEVICE_SUPPORT_FLAG_DYNAMIC_TOPOLOGY_BIT)) {
+        !(context->device.support_flags & VULKAN_DEVICE_SUPPORT_FLAG_NATIVE_DYNAMIC_TOPOLOGY_BIT) &&
+        (context->device.support_flags & VULKAN_DEVICE_SUPPORT_FLAG_DYNAMIC_TOPOLOGY_BIT)) {
         LOG_INFO("Vulkan device doesn't support native dynamic topology, but does via extension. Using extension.");
-        context->vkCmdSetPrimitiveTopologyEXT = (PFN_vkCmdSetPrimitiveTopologyEXT)vkGetInstanceProcAddr(context->_instance, "vkCmdSetPrimitiveTopologyEXT");
+        context->vkCmdSetPrimitiveTopologyEXT = (PFN_vkCmdSetPrimitiveTopologyEXT)vkGetInstanceProcAddr(context->instance, "vkCmdSetPrimitiveTopologyEXT");
     } else {
-        if (context->_device.support_flags & VULKAN_DEVICE_SUPPORT_FLAG_NATIVE_DYNAMIC_TOPOLOGY_BIT) {
+        if (context->device.support_flags & VULKAN_DEVICE_SUPPORT_FLAG_NATIVE_DYNAMIC_TOPOLOGY_BIT) {
             LOG_INFO("Vulkan device supports native dynamic topology.");
         } else {
             LOG_INFO("Vulkan device does not support native or extension dynamic topology.");
@@ -155,33 +155,33 @@ b8 VulkanDevice::create(VulkanContext* context) {
 
     // Get queues.
     vkGetDeviceQueue(
-        context->_device.logical_device,
-        context->_device.graphics_queue_index,
+        context->device.logical_device,
+        context->device.graphics_queue_index,
         0,
-        &context->_device.graphics_queue);
+        &context->device.graphics_queue);
 
     vkGetDeviceQueue(
-        context->_device.logical_device,
-        context->_device.present_queue_index,
+        context->device.logical_device,
+        context->device.present_queue_index,
         0,
-        &context->_device.present_queue);
+        &context->device.present_queue);
 
     vkGetDeviceQueue(
-        context->_device.logical_device,
-        context->_device.transfer_queue_index,
+        context->device.logical_device,
+        context->device.transfer_queue_index,
         0,
-        &context->_device.transfer_queue);
+        &context->device.transfer_queue);
     LOG_INFO("Queues obtained.");
 
     // Create command pool for graphics queue.
     VkCommandPoolCreateInfo pool_create_info = {VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO};
-    pool_create_info.queueFamilyIndex = context->_device.graphics_queue_index;
+    pool_create_info.queueFamilyIndex = context->device.graphics_queue_index;
     pool_create_info.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
     VK_CALL(vkCreateCommandPool(
-        context->_device.logical_device,
+        context->device.logical_device,
         &pool_create_info,
-        context->_allocator,
-        &context->_device.graphics_command_pool));
+        context->allocator,
+        &context->device.graphics_command_pool));
     LOG_INFO("Graphics command pool created.");
 
     return true;
@@ -189,42 +189,42 @@ b8 VulkanDevice::create(VulkanContext* context) {
 
 void VulkanDevice::destroy(VulkanContext* context) {
     // Unset queues
-    context->_device.graphics_queue = 0;
-    context->_device.present_queue = 0;
-    context->_device.transfer_queue = 0;
+    context->device.graphics_queue = 0;
+    context->device.present_queue = 0;
+    context->device.transfer_queue = 0;
 
     LOG_INFO("Destroying command pools...");
     vkDestroyCommandPool(
-        context->_device.logical_device,
-        context->_device.graphics_command_pool,
-        context->_allocator);
+        context->device.logical_device,
+        context->device.graphics_command_pool,
+        context->allocator);
 
     // Destroy logical device
     LOG_INFO("Destroying logical device...");
-    if (context->_device.logical_device) {
-        vkDestroyDevice(context->_device.logical_device, context->_allocator);
-        context->_device.logical_device = 0;
+    if (context->device.logical_device) {
+        vkDestroyDevice(context->device.logical_device, context->allocator);
+        context->device.logical_device = 0;
     }
 
     // Physical devices are not destroyed.
     LOG_INFO("Releasing physical device resources...");
-    context->_device.physical_device = 0;
+    context->device.physical_device = 0;
 
-    if (!context->_device.swapchain_support.formats.empty()) {
-        context->_device.swapchain_support.formats.clear();
-        context->_device.swapchain_support.format_count = 0;
+    if (!context->device.swapchain_support.formats.empty()) {
+        context->device.swapchain_support.formats.clear();
+        context->device.swapchain_support.format_count = 0;
     }
 
-    if (!context->_device.swapchain_support.present_modes.empty()) {
-        context->_device.swapchain_support.present_modes.clear();
-        context->_device.swapchain_support.present_mode_count = 0;
+    if (!context->device.swapchain_support.present_modes.empty()) {
+        context->device.swapchain_support.present_modes.clear();
+        context->device.swapchain_support.present_mode_count = 0;
     }
 
-    context->_device.swapchain_support.capabilities = {};
+    context->device.swapchain_support.capabilities = {};
 
-    context->_device.graphics_queue_index = -1;
-    context->_device.present_queue_index = -1;
-    context->_device.transfer_queue_index = -1;
+    context->device.graphics_queue_index = -1;
+    context->device.present_queue_index = -1;
+    context->device.transfer_queue_index = -1;
 }
 
 void VulkanDevice::query_swapchain_support(
@@ -277,7 +277,7 @@ void VulkanDevice::query_swapchain_support(
 
 b8 select_physical_device(VulkanContext* context, b8 discreteGPU) {
     uint32_t physical_device_count = 0;
-    VK_CALL(vkEnumeratePhysicalDevices(context->_instance, &physical_device_count, nullptr));
+    VK_CALL(vkEnumeratePhysicalDevices(context->instance, &physical_device_count, nullptr));
     if (physical_device_count == 0) {
         LOG_FATAL("No devices which support Vulkan were found.");
         return false;
@@ -285,7 +285,7 @@ b8 select_physical_device(VulkanContext* context, b8 discreteGPU) {
 
     std::vector<VkPhysicalDevice> physical_devices(physical_device_count);
     physical_devices.resize(physical_device_count);
-    VK_CALL(vkEnumeratePhysicalDevices(context->_instance, &physical_device_count, physical_devices.data()));
+    VK_CALL(vkEnumeratePhysicalDevices(context->instance, &physical_device_count, physical_devices.data()));
     for (u32 i = 0; i < physical_device_count; ++i) {
         VkPhysicalDeviceProperties properties;
         vkGetPhysicalDeviceProperties(physical_devices[i], &properties);
@@ -339,12 +339,12 @@ b8 select_physical_device(VulkanContext* context, b8 discreteGPU) {
         vulkan_physical_device_queue_family_info queue_info = {};
         b8 result = physical_device_meets_requirements(
             physical_devices[i],
-            context->_surface,
+            context->surface,
             &properties,
             &features,
             &requirements,
             &queue_info,
-            &context->_device.swapchain_support);
+            &context->device.swapchain_support);
 
         if (result) {
             LOG_INFO("Selected device: '%s'.", properties.deviceName);
@@ -375,16 +375,16 @@ b8 select_physical_device(VulkanContext* context, b8 discreteGPU) {
                 VK_VERSION_PATCH(properties.driverVersion));
 
             // Save off the device-supported API version.
-            context->_device.api_major = VK_VERSION_MAJOR(properties.apiVersion);
-            context->_device.api_minor = VK_VERSION_MINOR(properties.apiVersion);
-            context->_device.api_patch = VK_VERSION_PATCH(properties.apiVersion);
+            context->device.api_major = VK_VERSION_MAJOR(properties.apiVersion);
+            context->device.api_minor = VK_VERSION_MINOR(properties.apiVersion);
+            context->device.api_patch = VK_VERSION_PATCH(properties.apiVersion);
 
             // Vulkan API version.
             LOG_INFO(
                 "Vulkan API version: %d.%d.%d",
-                context->_device.api_major,
-                context->_device.api_minor,
-                context->_device.api_minor);
+                context->device.api_major,
+                context->device.api_minor,
+                context->device.api_minor);
 
             // Memory information
             for (u32 j = 0; j < memory.memoryHeapCount; ++j) {
@@ -396,27 +396,27 @@ b8 select_physical_device(VulkanContext* context, b8 discreteGPU) {
                 }
             }
 
-            context->_device.physical_device = physical_devices[i];
-            context->_device.graphics_queue_index = queue_info.graphics_family_index;
-            context->_device.present_queue_index = queue_info.present_family_index;
-            context->_device.transfer_queue_index = queue_info.transfer_family_index;
+            context->device.physical_device = physical_devices[i];
+            context->device.graphics_queue_index = queue_info.graphics_family_index;
+            context->device.present_queue_index = queue_info.present_family_index;
+            context->device.transfer_queue_index = queue_info.transfer_family_index;
             // NOTE: set compute index here if needed.
 
             // Keep a copy of properties, features and memory info for later use.
-            context->_device.properties = properties;
-            context->_device.features = features;
-            context->_device.memory = memory;
-            context->_device.supports_device_local_host_visible = supports_device_local_host_visible;
+            context->device.properties = properties;
+            context->device.features = features;
+            context->device.memory = memory;
+            context->device.supports_device_local_host_visible = supports_device_local_host_visible;
 
             // The device may or may not support this, so save that here.
             if (dynamic_state_next.extendedDynamicState) {
-                context->_device.support_flags |= VULKAN_DEVICE_SUPPORT_FLAG_DYNAMIC_TOPOLOGY_BIT;
+                context->device.support_flags |= VULKAN_DEVICE_SUPPORT_FLAG_DYNAMIC_TOPOLOGY_BIT;
             }
-            if (context->_device.api_major > 1 || context->_device.api_minor > 2) {
-                context->_device.support_flags |= VULKAN_DEVICE_SUPPORT_FLAG_NATIVE_DYNAMIC_TOPOLOGY_BIT;
+            if (context->device.api_major > 1 || context->device.api_minor > 2) {
+                context->device.support_flags |= VULKAN_DEVICE_SUPPORT_FLAG_NATIVE_DYNAMIC_TOPOLOGY_BIT;
             }
             if (smooth_line_next.smoothLines) {
-                context->_device.support_flags |= VULKAN_DEVICE_SUPPORT_FLAG_LINE_SMOOTH_RASTERISATION_BIT;
+                context->device.support_flags |= VULKAN_DEVICE_SUPPORT_FLAG_LINE_SMOOTH_RASTERISATION_BIT;
             }
             
             break;
@@ -424,7 +424,7 @@ b8 select_physical_device(VulkanContext* context, b8 discreteGPU) {
     }
 
     // Ensure a device was selected
-    if (!context->_device.physical_device) {
+    if (!context->device.physical_device) {
         LOG_ERROR("No physical devices were found which meet the requirements.");
         return false;
     }

@@ -27,7 +27,7 @@ typedef struct VulkanPipelineConfig {
 } VulkanPipelineConfig;
 
 typedef struct VulkanPipeline {
-    VkPipeline pipeline = VK_NULL_HANDLE;
+    VkPipeline handle = VK_NULL_HANDLE;
     VkPipelineLayout pipeline_layout = VK_NULL_HANDLE;
 
     VkDescriptorSetLayout descriptor_set_layout = VK_NULL_HANDLE;
@@ -40,7 +40,7 @@ typedef struct VulkanPipeline {
 
 typedef struct VulkanShader {
     DynamicArray<VkShaderModule> shader_modules;
-    DynamicArray<VulkanPipeline> pipelines;
+    DynamicArray<VulkanPipeline*> pipelines;
     VkDescriptorSetLayout descriptor_set_layout;
 } VulkanShader;
 

@@ -2,7 +2,6 @@
 #include <Core/SystemManager.h>
 
 #include <Resources/Shader.h>
-#include "Vulkan/VulkanShader.h"
 
 namespace Quasar
 {
@@ -21,7 +20,7 @@ b8 RendererAPI::init(void* config) {
     return true;
 }
 void RendererAPI::shutdown() {
-    vkDeviceWaitIdle(backend._context._device.logical_device);
+    backend.gpu_wait_idle();
     backend.shutdown();
 }
 b8 RendererAPI::draw(render_packet* packet)
@@ -49,19 +48,19 @@ b8 RendererAPI::draw(render_packet* packet)
         backend.imgui_frame_end();
     }
 
-    backend._context._frame_index = (backend._context._frame_index + 1) % MAX_FRAMES_IN_FLIGHT;
+    backend._context.frame_index = (backend._context.frame_index + 1) % MAX_FRAMES_IN_FLIGHT;
 
     return true;
 }
 void RendererAPI::resize(u32 width, u32 height)
 {
-    backend._context._frame_index = 0;
+    backend._context.frame_index = 0;
     backend.resize(width, height);
 }
 
 b8 RendererAPI::shader_create(const ShaderConfig &config, Shader* s)
 {
-    
+    backend.shader_create(config, s);
     return true;
 }
 

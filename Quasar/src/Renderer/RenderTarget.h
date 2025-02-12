@@ -4,6 +4,8 @@
 #include <Math/Math.h>
 #include <Renderer/Vulkan/VulkanImage.h>
 
+#include <Resources/Shader.h>
+
 namespace Quasar
 {
 class RenderTarget {
@@ -25,6 +27,8 @@ private:
     DynamicArray<VulkanImage> _resolve_images;
     DynamicArray<VulkanImage> _offscreen_images;
     DynamicArray<VkFramebuffer> _framebuffer;
+
+    Shader _shader;
 
     u8 _frame_index = 0;
 
