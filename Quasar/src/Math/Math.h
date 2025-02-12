@@ -13,9 +13,9 @@ namespace Quasar::Math {
 
 // TODO: temp
 struct UniformBufferObject {
-    Mat4 model;
-    Mat4 view;
-    Mat4 proj;
+    alignas(16) Mat4 model;
+    alignas(16) Mat4 view;
+    alignas(16) Mat4 proj;
 };
 
 // Utility functions

@@ -33,8 +33,10 @@ VkShaderModule CreateShaderModule(VkDevice device, const std::vector<uint8_t>& c
     return shaderModule;
 }
 
-b8 VulkanPipeline::create(VkDevice device, VkRenderPass render_pass, const VulkanPipelineConfig &config)
+b8 VulkanPipeline::create(const VulkanContext *context, const VulkanPipelineConfig &config)
 {
+    _context = context;
+
     #ifdef QS_PLATFORM_APPLE
     auto vertShaderCode = LoadShaderSpv("./Shaders/Builtin.World.vert.spv");
     auto fragShaderCode = LoadShaderSpv("./Shaders/Builtin.World.frag.spv");
@@ -43,8 +45,8 @@ b8 VulkanPipeline::create(VkDevice device, VkRenderPass render_pass, const Vulka
     auto fragShaderCode = LoadShaderSpv("../Shaders/Builtin.World.frag.spv");
     #endif
 
-    auto vertShaderModule = CreateShaderModule(device, vertShaderCode);
-    auto fragShaderModule = CreateShaderModule(device, fragShaderCode);
+    auto vertShaderModule = CreateShaderModule(_context->_device.logical_device, vertShaderCode);
+    auto fragShaderModule = CreateShaderModule(_context->_device.logical_device, fragShaderCode);
 
     // Shader stage creation info
     VkPipelineShaderStageCreateInfo shader_stages[2] = {};
@@ -144,7 +146,7 @@ b8 VulkanPipeline::create(VkDevice device, VkRenderPass render_pass, const Vulka
     dynamic_state_info.dynamicStateCount = 2;
     dynamic_state_info.pDynamicStates = dynamic_states;
 
-    descriptor_set_layout_create(device);
+    descriptor_set_layout_create(_context->_device.logical_device);
 
     // Create pipeline layout
     VkPipelineLayoutCreateInfo pipeline_layout_info = {};
@@ -152,7 +154,7 @@ b8 VulkanPipeline::create(VkDevice device, VkRenderPass render_pass, const Vulka
     pipeline_layout_info.setLayoutCount = 1;
     pipeline_layout_info.pSetLayouts = &_descriptor_set_layout;
 
-    if (vkCreatePipelineLayout(device, &pipeline_layout_info, nullptr, &_pipeline_layout) != VK_SUCCESS) {
+    if (vkCreatePipelineLayout(_context->_device.logical_device, &pipeline_layout_info, nullptr, &_pipeline_layout) != VK_SUCCESS) {
         LOG_ERROR("Failed to create pipeline layout!");
         return false;
     }
@@ -170,20 +172,20 @@ b8 VulkanPipeline::create(VkDevice device, VkRenderPass render_pass, const Vulka
     pipeline_info.pColorBlendState = &color_blending;
     pipeline_info.pDynamicState = &dynamic_state_info;
     pipeline_info.layout = _pipeline_layout;
-    pipeline_info.renderPass = render_pass;
+    pipeline_info.renderPass = _context->_render_pass;
     pipeline_info.subpass = 0;
 
-    if (vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pipeline_info, nullptr, &_graphics_pipeline) != VK_SUCCESS) {
+    if (vkCreateGraphicsPipelines(_context->_device.logical_device, VK_NULL_HANDLE, 1, &pipeline_info, nullptr, &_pipeline) != VK_SUCCESS) {
         LOG_ERROR("Failed to create graphics pipeline!");
         return false;
     }
 
     if (vertShaderModule != VK_NULL_HANDLE) {
-        vkDestroyShaderModule(device, vertShaderModule, nullptr);
+        vkDestroyShaderModule(_context->_device.logical_device, vertShaderModule, nullptr);
     }
 
     if (fragShaderModule != VK_NULL_HANDLE) {
-        vkDestroyShaderModule(device, fragShaderModule, nullptr);
+        vkDestroyShaderModule(_context->_device.logical_device, fragShaderModule, nullptr);
         fragShaderModule = VK_NULL_HANDLE;
     }
 
@@ -192,8 +194,8 @@ b8 VulkanPipeline::create(VkDevice device, VkRenderPass render_pass, const Vulka
         auto context = QS_RENDERER.get_vkcontext();
         VkDeviceSize bufferSize = sizeof(Math::UniformBufferObject);
 
-        uniformBuffers.resize(MAX_FRAMES_IN_FLIGHT);
-        uniformBuffersMapped.resize(MAX_FRAMES_IN_FLIGHT);
+        _uniform_buffers.resize(MAX_FRAMES_IN_FLIGHT);
+        _uniform_buffers_mapped.resize(MAX_FRAMES_IN_FLIGHT);
 
         for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
             VulkanBufferCreateInfo buffer_info = {
@@ -201,37 +203,37 @@ b8 VulkanPipeline::create(VkDevice device, VkRenderPass render_pass, const Vulka
                 VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, // usage
                 VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT // properties
             };
-            uniformBuffers[i].create(context, buffer_info);
-            vkMapMemory(context->_device.logical_device, uniformBuffers[i]._buffer_memory, 0, bufferSize, 0, &uniformBuffersMapped[i]);
+            _uniform_buffers[i].create(context, buffer_info);
+            vkMapMemory(context->_device.logical_device, _uniform_buffers[i]._buffer_memory, 0, bufferSize, 0, &_uniform_buffers_mapped[i]);
         }
     }
 
-    createDescriptorPool(device);
-    createDescriptorSets(device);
+    createDescriptorPool(_context->_device.logical_device);
+    createDescriptorSets(_context->_device.logical_device);
 
     return true;
 }
 
-void VulkanPipeline::destroy(VkDevice device)
+void VulkanPipeline::destroy()
 {
-    vkDestroyDescriptorPool(device, descriptorPool, nullptr);
+    vkDestroyDescriptorPool(_context->_device.logical_device, _descriptor_pool, nullptr);
 
     for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
-        uniformBuffers[i].destroy();
+        _uniform_buffers[i].destroy();
     }
 
-    if (_graphics_pipeline != VK_NULL_HANDLE) {
-        vkDestroyPipeline(device, _graphics_pipeline, nullptr);
-        _graphics_pipeline = VK_NULL_HANDLE;
+    if (_pipeline != VK_NULL_HANDLE) {
+        vkDestroyPipeline(_context->_device.logical_device, _pipeline, nullptr);
+        _pipeline = VK_NULL_HANDLE;
     }
 
     if (_pipeline_layout != VK_NULL_HANDLE) {
-        vkDestroyPipelineLayout(device, _pipeline_layout, nullptr);
+        vkDestroyPipelineLayout(_context->_device.logical_device, _pipeline_layout, nullptr);
         _pipeline_layout = VK_NULL_HANDLE;
     }
 
     if (_descriptor_set_layout != VK_NULL_HANDLE) {
-        vkDestroyDescriptorSetLayout(device, _descriptor_set_layout, nullptr);
+        vkDestroyDescriptorSetLayout(_context->_device.logical_device, _descriptor_set_layout, nullptr);
         _descriptor_set_layout = VK_NULL_HANDLE;
     }
 }
@@ -267,7 +269,7 @@ void VulkanPipeline::createDescriptorPool(VkDevice device)
     poolInfo.pPoolSizes = &poolSize;
     poolInfo.maxSets = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
 
-    if (vkCreateDescriptorPool(device, &poolInfo, nullptr, &descriptorPool) != VK_SUCCESS) {
+    if (vkCreateDescriptorPool(device, &poolInfo, nullptr, &_descriptor_pool) != VK_SUCCESS) {
         throw std::runtime_error("failed to create descriptor pool!");
     }
 }
@@ -280,24 +282,24 @@ void VulkanPipeline::createDescriptorSets(VkDevice device)
     std::vector<VkDescriptorSetLayout> layouts(MAX_FRAMES_IN_FLIGHT, _descriptor_set_layout);
     VkDescriptorSetAllocateInfo allocInfo{};
     allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-    allocInfo.descriptorPool = descriptorPool;
+    allocInfo.descriptorPool = _descriptor_pool;
     allocInfo.descriptorSetCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
     allocInfo.pSetLayouts = layouts.data();
 
-    descriptorSets.resize(MAX_FRAMES_IN_FLIGHT);
-    if (vkAllocateDescriptorSets(device, &allocInfo, descriptorSets.data()) != VK_SUCCESS) {
+    _descriptor_sets.resize(MAX_FRAMES_IN_FLIGHT);
+    if (vkAllocateDescriptorSets(device, &allocInfo, _descriptor_sets.data()) != VK_SUCCESS) {
         throw std::runtime_error("failed to allocate descriptor sets!");
     }
 
     for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
         VkDescriptorBufferInfo bufferInfo{};
-        bufferInfo.buffer = uniformBuffers[i]._buffer;
+        bufferInfo.buffer = _uniform_buffers[i]._buffer;
         bufferInfo.offset = 0;
         bufferInfo.range = sizeof(Math::UniformBufferObject);
 
         VkWriteDescriptorSet descriptorWrite{};
         descriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        descriptorWrite.dstSet = descriptorSets[i];
+        descriptorWrite.dstSet = _descriptor_sets[i];
         descriptorWrite.dstBinding = 0;
         descriptorWrite.dstArrayElement = 0;
         descriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;

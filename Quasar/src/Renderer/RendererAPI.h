@@ -31,6 +31,9 @@ class RendererAPI : public System {
     b8 draw(render_packet* packet);
     void resize(u32 width, u32 height);
 
+    b8 shader_create(const struct ShaderConfig& config, class Shader* s);
+
+    // TODO: temp
     VulkanContext* get_vkcontext() {return &backend._context;}
 
     private:

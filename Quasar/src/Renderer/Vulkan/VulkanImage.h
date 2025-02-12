@@ -1,7 +1,6 @@
 #pragma once
 
 #include <qspch.h>
-#include "VulkanContext.h"
 #include <Math/Math.h>
 
 namespace Quasar

@@ -1,6 +1,5 @@
 #include "VulkanDevice.h"
 #include <cstring>
-#include "VulkanContext.h"
 #include "VulkanCheckResult.h"
 
 namespace Quasar {

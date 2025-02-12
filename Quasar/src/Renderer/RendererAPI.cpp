@@ -1,6 +1,9 @@
 #include "RendererAPI.h"
 #include <Core/SystemManager.h>
 
+#include <Resources/Shader.h>
+#include "Vulkan/VulkanShader.h"
+
 namespace Quasar
 {
 b8 RendererAPI::init(void* config) {
@@ -54,6 +57,12 @@ void RendererAPI::resize(u32 width, u32 height)
 {
     backend._context._frame_index = 0;
     backend.resize(width, height);
+}
+
+b8 RendererAPI::shader_create(const ShaderConfig &config, Shader* s)
+{
+    
+    return true;
 }
 
 } // namespace Quasar
