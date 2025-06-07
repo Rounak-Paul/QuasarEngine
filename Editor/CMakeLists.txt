@@ -10,7 +10,7 @@ add_executable(Editor ${APP_SOURCES})
 
 target_include_directories(Editor PUBLIC 
     src
-    ${PROJECT_SOURCE_DIR}/Quasar/src/Include
+    ${PROJECT_SOURCE_DIR}/Quasar/Include
 )
 
 target_link_libraries(Editor PUBLIC Quasar)

@@ -11,14 +11,12 @@ target_compile_definitions(Quasar PRIVATE QS_BUILD_DLL)
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-deprecated-anon-enum-enum-conversion")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-deprecated-declarations")
-set(FILAMENT_ENABLE_METAL OFF CACHE BOOL "Enable Metal backend" FORCE)
-set(FILAMENT_SUPPORTS_METAL OFF CACHE BOOL "Support Metal backend" FORCE)
 add_subdirectory(Vendor/FILAMENT)
 
-target_precompile_headers(Quasar PRIVATE src/qspch.h)
+target_precompile_headers(Quasar PUBLIC src/qspch.h)
 
 # Include directories
-target_include_directories(Quasar PRIVATE 
+target_include_directories(Quasar PUBLIC 
     src
     Vendor/FILAMENT/filament/include
     Vendor/FILAMENT/libs
@@ -28,7 +26,7 @@ target_include_directories(Quasar PRIVATE
 )
 
 # Link core libraries
-target_link_libraries(Quasar PRIVATE 
+target_link_libraries(Quasar PUBLIC 
     filament
     filabridge
     backend

@@ -2,7 +2,7 @@
 
 using namespace Quasar;
 
-Quasar::Engine* Quasar::CreateApplication()
+Quasar::Engine* Quasar::CreateEngine()
 {
     Quasar::app_create_info info;
     info.width = 800;

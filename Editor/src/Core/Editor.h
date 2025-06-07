@@ -3,7 +3,7 @@
 #include <Quasar.h>
 #include <EntryPoint.h>
 
-class Editor : public Quasar::Application
+class Editor : public Quasar::Engine
 {
 	public:
 	Editor(Quasar::app_create_info state);
