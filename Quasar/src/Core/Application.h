@@ -9,22 +9,22 @@ namespace Quasar
         u32 height;
     } app_create_info ;
 
-    class QS_API Engine
+    class QS_API Application
     {
     public:
-        Engine(app_create_info info);
-        ~Engine();
+        Application(app_create_info info);
+        ~Application();
 
-        Engine(const Engine&) = delete;
-		Engine& operator=(const Engine&) = delete;
+        Application(const Application&) = delete;
+		Application& operator=(const Application&) = delete;
 
         void run();
     
     private:
-        static Engine* instance;
+        static Application* instance;
         b8 running = true;
         b8 suspended = false;
     };
 
-    Engine* CreateEngine();
+    Application* CreateApplication();
 } // namespace Quasar
