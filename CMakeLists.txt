@@ -11,13 +11,24 @@ project(QuasarEngine)
 
 add_compile_definitions($<$<CONFIG:Debug>:QS_DEBUG>)
 
+set(CMAKE_CXX_FLAGS_RELEASE "")
+set(CMAKE_C_FLAGS_RELEASE "")
+set(CMAKE_EXE_LINKER_FLAGS_RELEASE "")
+
 if(APPLE)
+    message("Building on Apple macOS or iOS")
+    set(VULKAN_PATH "/Users/duke/VulkanSDK/1.4.313.1/macOS")
     add_definitions(-DQS_PLATFORM_APPLE)
+    set(ENV{VK_ICD_FILENAMES} "${VULKAN_PATH}/share/vulkan/icd.d/MoltenVK_icd.json")
+    set(ENV{VK_LAYER_PATH} "${VULKAN_PATH}/share/vulkan/explicit_layer.d")
 
 elseif(WIN32)
+    message("Building on Windows")
+    set(VULKAN_PATH $ENV{VULKAN_SDK})
     add_definitions(-DQS_PLATFORM_WINDOWS)
 
 elseif(UNIX)
+    message("Building on Unix-like OS (including Linux)")
     add_definitions(-DQS_PLATFORM_LINUX)
 
 else()

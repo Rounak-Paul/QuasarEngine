@@ -1,6 +1,8 @@
 #pragma once
 #include <qspch.h>
 
+#include <Renderer/Renderer.h>
+
 namespace Quasar
 {
     typedef struct QS_API app_create_info {
@@ -24,6 +26,7 @@ namespace Quasar
         static Application* instance;
         b8 running = true;
         b8 suspended = false;
+        Renderer renderer;
     };
 
     Application* CreateApplication();
