@@ -4,7 +4,7 @@
 namespace Quasar
 {
     typedef struct QS_API app_create_info {
-        char* app_name;
+        std::string app_name;
         u32 width;
         u32 height;
     } app_create_info ;
