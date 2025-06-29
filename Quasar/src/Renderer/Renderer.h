@@ -6,6 +6,7 @@
 namespace Quasar
 {
     class Renderer {
+        public:
         Renderer() = default;
         ~Renderer() = default;
 
