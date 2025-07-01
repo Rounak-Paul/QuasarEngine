@@ -9,12 +9,18 @@ add_library(Quasar SHARED ${SOURCES})
 set_target_properties(Quasar PROPERTIES LINKER_LANGUAGE CXX)
 target_compile_definitions(Quasar PRIVATE QS_BUILD_DLL)
 
+add_subdirectory(Vendor/GLFW)
+add_subdirectory(Vendor/GLM)
+
 target_precompile_headers(Quasar PUBLIC src/qspch.h)
+target_precompile_headers(Quasar PUBLIC src/defines.h)
 
 # Include directories
 target_include_directories(Quasar PUBLIC 
     src
     ${VULKAN_PATH}/include
+    vendor/GLFW/include
+    vendor/GLM
 )
 
 # Link directories
@@ -22,7 +28,8 @@ target_link_directories(Quasar PUBLIC ${VULKAN_PATH}/lib)
 
 # Link core libraries
 target_link_libraries(Quasar PRIVATE 
-    
+    glfw
+    glm
 )
 
 if(APPLE)

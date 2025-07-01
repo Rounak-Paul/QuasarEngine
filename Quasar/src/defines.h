@@ -13,6 +13,12 @@
 
 #pragma once
 
+#define GLM_ENABLE_EXPERIMENTAL
+#include <glm/glm.hpp>
+#include <glm/gtc/constants.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/integer.hpp>
+
 // Unsigned int types.
 
 /** @brief Unsigned 8-bit integer */
@@ -114,12 +120,22 @@ STATIC_ASSERT(sizeof(f32) == 4, "Expected f32 to be 4 bytes.");
 /** @brief Assert f64 to be 8 bytes.*/
 STATIC_ASSERT(sizeof(f64) == 8, "Expected f64 to be 8 bytes.");
 
+// TODO: remove after adding custom math library
+/** @brief Assert glm::mat2 to be 4*2*2 bytes.*/
+STATIC_ASSERT(sizeof(glm::mat2) == 4*2*2, "Expected f64 to be 8 bytes.");
+
+/** @brief Assert glm::mat3 to be 4*3*3 bytes.*/
+STATIC_ASSERT(sizeof(glm::mat3) == 4*3*3, "Expected f64 to be 8 bytes.");
+
+/** @brief Assert glm::mat4 to be 4*4*4 bytes.*/
+STATIC_ASSERT(sizeof(glm::mat4) == 4*4*4, "Expected f64 to be 8 bytes.");
+
 /**
  * @brief Any id set to this should be considered invalid,
  * and not actually pointing to a real object.
  */
 #define INVALID_ID_U64 18446744073709551615UL
-#define INVALID_ID 4294967295U
+#define INVALID_ID_U32 4294967295U
 #define INVALID_ID_U16 65535U
 #define INVALID_ID_U8 255U
 
@@ -139,7 +155,7 @@ STATIC_ASSERT(sizeof(f64) == 8, "Expected f64 to be 8 bytes.");
 /** @brief Import/export qualifier */
 #define QS_API
 #endif
-#endif
+#endif 
 
 /**
  * @brief Clamps value to a range of min and max (inclusive).
@@ -160,21 +176,21 @@ STATIC_ASSERT(sizeof(f64) == 8, "Expected f64 to be 8 bytes.");
 #define QS_INLINE __attribute__((always_inline)) inline
 
 /** @brief No-inline qualifier */
-#define QSNOINLINE __attribute__((noinline))
+#define QS_NOINLINE __attribute__((noinline))
 #elif defined(_MSC_VER)
 
 /** @brief Inline qualifier */
 #define QS_INLINE __forceinline
 
 /** @brief No-inline qualifier */
-#define QSNOINLINE __declspec(noinline)
+#define QS_NOINLINE __declspec(noinline)
 #else
 
 /** @brief Inline qualifier */
 #define QS_INLINE static inline
 
 /** @brief No-inline qualifier */
-#define QSNOINLINE
+#define QS_NOINLINE
 #endif
 
 /** @brief Gets the number of bytes from amount of gibibytes (GiB) (1024*1024*1024) */

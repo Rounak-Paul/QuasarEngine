@@ -1,6 +1,7 @@
 #pragma once
 #include <qspch.h>
 
+#include <Core/Window.h>
 #include <Renderer/Renderer.h>
 
 namespace Quasar
@@ -23,10 +24,12 @@ namespace Quasar
         void run();
     
     private:
-        static Application* instance;
-        b8 running = true;
-        b8 suspended = false;
-        Renderer renderer;
+        static Application* _instance;
+        b8 _running = true;
+        b8 _suspended = false;
+
+        Window _window;
+        Renderer _renderer;
     };
 
     Application* CreateApplication();

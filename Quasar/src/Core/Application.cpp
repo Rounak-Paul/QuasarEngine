@@ -3,17 +3,27 @@
 namespace Quasar
 {
 Application::Application(app_create_info info) {
-    renderer.init();
+    if (!_window.create(800, 600, "Quasar Engine")) {
+
+    }
+    _renderer.init();
 }
 
 Application::~Application() {
-    renderer.shutdown();
+    _renderer.shutdown();
 }
 
 void Application::run() {
-    while (true) {
-        if (renderer.begin_frame()) {
-            renderer.end_frame();
+    while (!_window.should_close() && _running) {
+        if (_suspended) { 
+            _window.wait_events();
+            continue; 
+        }
+        _window.poll_events();
+
+        
+        if (_renderer.begin_frame()) {
+            _renderer.end_frame();
         }
     }
 }
