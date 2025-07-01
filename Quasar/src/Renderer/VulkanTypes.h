@@ -7,8 +7,8 @@
 #define VK_CHECK(x)                                                                     \
     do {                                                                               \
         VkResult err = x;                                                              \
-        if (err) {                                                                     \
-            std::cout << "Detected Vulkan error: " + string_VkResult(err) << std::endl;\
+        if (x) {                                                                     \
+            LOG_ERROR("Detected Vulkan error: {}", string_VkResult(err));\
             abort();                                                                   \
         }                                                                              \
     } while (0)

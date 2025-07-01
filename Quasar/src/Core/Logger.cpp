@@ -82,10 +82,6 @@ void Logger::write_log(LogLevel level, const std::string& message, const std::st
     }
 }
 
-void Logger::format_impl(std::stringstream& ss, const std::string& format) {
-    ss << format;
-}
-
 void Logger::set_log_level(LogLevel level) {
     std::lock_guard<std::mutex> lock(logMutex);
     currentLevel = level;
@@ -95,7 +91,7 @@ LogLevel Logger::get_log_level() const {
     return currentLevel;
 }
 
-void Logger::enable_console_cutput(bool enable) {
+void Logger::enable_console_output(bool enable) {
     std::lock_guard<std::mutex> lock(logMutex);
     consoleOutput = enable;
 }
@@ -118,7 +114,7 @@ bool Logger::init_file_output(const std::string& filepath) {
     return false;
 }
 
-void Logger::disable_fileOutput() {
+void Logger::disable_file_output() {
     std::lock_guard<std::mutex> lock(logMutex);
     if (logFile.is_open()) {
         logFile.close();
