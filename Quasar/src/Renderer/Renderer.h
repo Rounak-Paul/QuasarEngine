@@ -16,5 +16,8 @@ namespace Quasar
         void end_frame();
 
         void shutdown();
+
+        private:
+        u8 _frame_number {0};
     };
 } // namespace Quasar::Renderer
