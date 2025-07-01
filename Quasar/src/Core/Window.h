@@ -14,7 +14,7 @@ namespace Quasar
 		Window(const Window&) = delete;
 		Window& operator=(const Window&) = delete;
 
-		b8 create(u32 w, u32 h, const char* name);
+		b8 create(u32 w, u32 h, const std::string& name);
 		void destroy();
 
 		QS_INLINE b8 should_close() { return glfwWindowShouldClose(_window); }
@@ -25,7 +25,6 @@ namespace Quasar
 		QS_INLINE void wait_events() { glfwWaitEvents(); }
 		
 		GLFWwindow* get_GLFWwindow() const { return _window; }
-		static bool _gui_has_focus;
 
 	private:
 		static void resize_callback(GLFWwindow* window, int width, int height);
@@ -35,7 +34,7 @@ namespace Quasar
 		u32 _height;
 		b8 _framebuffer_resized = false;
 
-		const char* _name;
+		std::string _name;
 		GLFWwindow* _window;
 	};
 }

@@ -3,10 +3,10 @@
 namespace Quasar
 {
 Application::Application(app_create_info info) {
-    if (!_window.create(800, 600, "Quasar Engine")) {
+    if (!_window.create(info.width, info.height, info.app_name.c_str())) {
 
     }
-    _renderer.init();
+    _renderer.init(info.app_name, _window);
 }
 
 Application::~Application() {

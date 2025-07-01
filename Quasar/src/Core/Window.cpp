@@ -2,9 +2,8 @@
 
 namespace Quasar
 {
-	b8 Window::_gui_has_focus = false;
 
-	b8 Window::create(u32 w, u32 h, const char* name)
+	b8 Window::create(u32 w, u32 h, const std::string& name)
 	{
 		_width = w;
 		_height = h;
@@ -18,7 +17,7 @@ namespace Quasar
 			const GLFWvidmode* mode = glfwGetVideoMode(monitor);
 			_width = mode->width; _height = mode->height;
 		}
-		_window = glfwCreateWindow(_width, _height, _name, nullptr, nullptr);
+		_window = glfwCreateWindow(_width, _height, _name.c_str(), nullptr, nullptr);
 		
 		glfwSetWindowUserPointer(_window, this);
 		glfwSetFramebufferSizeCallback(_window, resize_callback);
@@ -39,8 +38,8 @@ namespace Quasar
 		glfwTerminate();
 	}
 
-	void Window::resize_callback(GLFWwindow* window, int width, int height)
-	{
+    void Window::resize_callback(GLFWwindow *window, int width, int height)
+    {
 		auto w = reinterpret_cast<Window*>(glfwGetWindowUserPointer(window));
 	}
 
