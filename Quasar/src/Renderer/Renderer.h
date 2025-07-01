@@ -19,5 +19,11 @@ namespace Quasar
 
         private:
         u8 _frame_number {0};
+
+        VkInstance _instance;
+        VkDebugUtilsMessengerEXT _debug_messenger;
+        VkPhysicalDevice _physical_device;
+        VkDevice _device;
+        VkSurfaceKHR _surface;
     };
 } // namespace Quasar::Renderer
