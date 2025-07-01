@@ -11,6 +11,7 @@ Application::Application(app_create_info info) {
 
 Application::~Application() {
     _renderer.shutdown();
+    _window.destroy();
 }
 
 void Application::run() {
@@ -20,7 +21,6 @@ void Application::run() {
             continue; 
         }
         _window.poll_events();
-
         
         if (_renderer.begin_frame()) {
             _renderer.end_frame();
