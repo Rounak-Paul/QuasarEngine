@@ -1,7 +1,7 @@
 #pragma once
 
 #include <qspch.h>
-#include "RendererTypes.h"
+#include "VulkanTypes.h"
 #include <Core/Window.h>
 
 namespace Quasar

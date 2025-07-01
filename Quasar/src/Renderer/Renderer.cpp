@@ -75,21 +75,20 @@ b8 Renderer::init(const std::string& name, const Window& window)
     // Create instance
     VkResult result = vkCreateInstance(&create_info, nullptr, &_instance);
     if (result != VK_SUCCESS) {
-        // TODO: Log specific error based on result
+        LOG_FATAL("Failed to create vulkan instance!");
         return false;
     }
 
     // Setup debug messenger
     if (_validation_enabled) {
         if (create_debug_utils_messenger_ext(_instance, &debug_create_info, nullptr, &_debug_messenger) != VK_SUCCESS) {
-            // TODO: Log error - could continue without debug messenger in some cases
-            // For now, treat as non-fatal
+            LOG_WARN("Failed to create vulkan debug messenger! Validation errors may be ommited.");
         }
     }
 
     // Surface
     if (!platform_create_vulkan_surface(_instance, window, _surface)) {
-        // TODO: log
+        LOG_FATAL("Failed to create primary surface for drawing!");
         return false;
     }
 
@@ -98,7 +97,6 @@ b8 Renderer::init(const std::string& name, const Window& window)
 
 b8 Renderer::begin_frame()
 {
-    // TODO: Implement frame begin logic
     return true;
 }
 
@@ -197,26 +195,23 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL vk_debug_callback(
     const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData,
     void* pUserData) 
 {
-    const char* severity_str;
     switch (messageSeverity) {
         case VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT:
-            severity_str = "ERROR";
+            LOG_ERROR(pCallbackData->pMessage);
             break;
         case VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT:
-            severity_str = "WARNING";
+            LOG_WARN(pCallbackData->pMessage);
             break;
         case VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT:
-            severity_str = "INFO";
+            LOG_INFO(pCallbackData->pMessage);
             break;
         case VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT:
-            severity_str = "VERBOSE";
+            LOG_DEBUG(pCallbackData->pMessage);
             break;
         default:
-            severity_str = "UNKNOWN";
+            LOG_TRACE(pCallbackData->pMessage);
             break;
     }
-    
-    std::cout << "[VULKAN " << severity_str << "] " << pCallbackData->pMessage << std::endl;
     return VK_FALSE;
 }
 
