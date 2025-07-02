@@ -37,7 +37,6 @@ namespace Quasar
         PFN_vkCmdSetDepthTestEnableEXT vkCmdSetDepthTestEnableEXT;
         PFN_vkCmdSetDepthWriteEnableEXT vkCmdSetDepthWriteEnableEXT;
         PFN_vkCmdSetStencilOpEXT vkCmdSetStencilOpEXT;
-
         PFN_vkCmdBeginRenderingKHR vkCmdBeginRenderingKHR;
         PFN_vkCmdEndRenderingKHR vkCmdEndRenderingKHR;
     };
