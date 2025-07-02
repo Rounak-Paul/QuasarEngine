@@ -171,7 +171,7 @@ b8 Renderer::begin_frame()
 
     //request image from the swapchain
 	uint32_t swapchain_image_index;
-	VK_CHECK(vkAcquireNextImageKHR(_device.logical_device, _swapchain.handle, 1000000000, get_current_frame().swapchain_semaphore, nullptr, &_frame_number));
+	VK_CHECK(vkAcquireNextImageKHR(_device.logical_device, _swapchain.handle, 1000000000, get_current_frame().swapchain_semaphore, nullptr, &swapchain_image_index));
 
 	VkCommandBuffer cmd = get_current_frame().main_command_buffer;
 

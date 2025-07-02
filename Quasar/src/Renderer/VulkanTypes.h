@@ -15,7 +15,7 @@
 
 namespace Quasar {
 
-constexpr unsigned int FRAME_OVERLAP = 3;
+constexpr unsigned int FRAME_OVERLAP = 2;
 
 struct FrameData {
 	VkCommandPool command_pool;
