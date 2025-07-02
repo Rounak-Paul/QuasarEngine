@@ -18,7 +18,7 @@ namespace Quasar
 		void destroy();
 
 		QS_INLINE b8 should_close() { return glfwWindowShouldClose(_window); }
-		Extent2D get_extent() { 
+		const Extent2D get_extent() const { 
 			return { _width, _height }; 
 			}
         QS_INLINE void poll_events() { glfwPollEvents(); }

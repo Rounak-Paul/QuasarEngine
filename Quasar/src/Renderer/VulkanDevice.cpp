@@ -30,10 +30,6 @@ b8 PhysicalDeviceMeetsRequirements(
     const VulkanPhysicalDeviceRequirements* requirements,
     VulkanPhysicalDeviceQueueFamilyInfo* out_queue_family_info,
     VulkanSwapchainSupportInfo* out_swapchain_support);
-static void query_swapchain_support(
-    VkPhysicalDevice physical_device,
-    VkSurfaceKHR surface,
-    VulkanSwapchainSupportInfo* out_support_info);
 
 static b8 select_physical_device(VkInstance instance, VkSurfaceKHR surface, b8 discrete_gpu, VulkanDevice& device) {
     uint32_t physical_device_count = 0;
@@ -604,19 +600,13 @@ void vulkan_device_destroy(VkInstance instance, VulkanDevice &device)
 
     // Destroy command pool FIRST and MOST IMPORTANT
     if (device.graphics_command_pool != VK_NULL_HANDLE) {
-        LOG_DEBUG("Destroying graphics command pool (handle: {})...", 
-                    (unsigned long long)device.graphics_command_pool);
-        try {
-            vkDestroyCommandPool(
-                device.logical_device,
-                device.graphics_command_pool,
-                nullptr);
-            device.graphics_command_pool = VK_NULL_HANDLE;
-            LOG_DEBUG("Graphics command pool destroyed successfully.");
-        } catch (...) {
-            LOG_ERROR("Exception occurred while destroying command pool!");
-            // Continue anyway
-        }
+        LOG_DEBUG("Destroying graphics command pool (handle: {})...", (unsigned long long)device.graphics_command_pool);
+        vkDestroyCommandPool(
+            device.logical_device,
+            device.graphics_command_pool,
+            nullptr);
+        device.graphics_command_pool = VK_NULL_HANDLE;
+        LOG_DEBUG("Graphics command pool destroyed successfully.");
     } else {
         LOG_WARN("Graphics command pool is null, nothing to destroy.");
     }

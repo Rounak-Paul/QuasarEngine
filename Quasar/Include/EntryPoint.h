@@ -3,7 +3,7 @@
 extern Quasar::Application* Quasar::CreateApplication();
 
 int main(int argc, char** argv) {
-	auto app = Quasar::CreateApplication();
+	Quasar::Application* app = Quasar::CreateApplication(); ;
 	app->init();
 	app->run();
 	app->shutdown();

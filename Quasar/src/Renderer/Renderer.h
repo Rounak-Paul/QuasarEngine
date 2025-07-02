@@ -4,6 +4,7 @@
 #include "VulkanTypes.h"
 #include <Core/Window.h>
 #include "VulkanDevice.h"
+#include "VulkanSwapchain.h"
 
 namespace Quasar
 {
@@ -11,6 +12,9 @@ namespace Quasar
         public:
         Renderer() = default;
         ~Renderer() = default;
+
+        Renderer(const Renderer&) = delete;
+		Renderer& operator=(const Renderer&) = delete;
 
         b8 init(const std::string& name, const Window& window);
 
@@ -30,6 +34,7 @@ namespace Quasar
         VkDebugUtilsMessengerEXT _debug_messenger;
         VulkanDevice _device;
         VkSurfaceKHR _surface;
+        VulkanSwapchain _swapchain;
 
         PFN_vkCmdSetPrimitiveTopologyEXT vkCmdSetPrimitiveTopologyEXT;
         PFN_vkCmdSetFrontFaceEXT vkCmdSetFrontFaceEXT;

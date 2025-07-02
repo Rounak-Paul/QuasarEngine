@@ -60,5 +60,6 @@ typedef struct VulkanDevice {
 b8 vulkan_device_create(VkInstance instance, VkSurfaceKHR surface, VulkanDevice& device);
 void vulkan_device_destroy(VkInstance instance, VulkanDevice& device);
 b8 vulkan_device_detect_depth_format(VulkanDevice& device);
+void query_swapchain_support(VkPhysicalDevice physical_device, VkSurfaceKHR surface, VulkanSwapchainSupportInfo* out_support_info);
 
 }

@@ -20,7 +20,7 @@ static VkResult create_debug_utils_messenger_ext(
     const VkDebugUtilsMessengerCreateInfoEXT* pCreateInfo,
     const VkAllocationCallbacks* pAllocator,
     VkDebugUtilsMessengerEXT* pDebugMessenger);
-static b8 platform_create_vulkan_surface(VkInstance& instance, const Window& window, VkSurfaceKHR& surface);
+static b8 platform_create_vulkan_surface(VkInstance instance, const Window& window, VkSurfaceKHR* surface);
 
 b8 Renderer::init(const std::string& name, const Window& window)
 {
@@ -88,7 +88,7 @@ b8 Renderer::init(const std::string& name, const Window& window)
     }
 
     // Surface
-    if (!platform_create_vulkan_surface(_instance, window, _surface)) {
+    if (!platform_create_vulkan_surface(_instance, window, &_surface)) {
         LOG_FATAL("Failed to create primary surface for drawing!");
         return false;
     }
@@ -127,6 +127,9 @@ b8 Renderer::init(const std::string& name, const Window& window)
         }
     }
 
+    Extent2D extent = window.get_extent();
+    vulkan_swapchain_create(_device, _surface, extent.width, extent.height, _swapchain);
+
     return true;
 }
 
@@ -146,6 +149,8 @@ void Renderer::shutdown()
     if (_device.logical_device != VK_NULL_HANDLE) {
         vkDeviceWaitIdle(_device.logical_device);
     }
+
+    vulkan_swapchain_destroy(_device, _swapchain);
 
     // if (_validation_enabled && _debug_messenger != VK_NULL_HANDLE) {
     //     auto destroy_func = (PFN_vkDestroyDebugUtilsMessengerEXT) 
@@ -283,12 +288,12 @@ static VkResult create_debug_utils_messenger_ext(
     }
 }
 
-static b8 platform_create_vulkan_surface(VkInstance& instance, const Window& window, VkSurfaceKHR& surface) {
+static b8 platform_create_vulkan_surface(VkInstance instance, const Window& window, VkSurfaceKHR* surface) {
     GLFWwindow* w = window.get_GLFWwindow();
-    auto res = glfwCreateWindowSurface(instance, w, nullptr, &surface);
+    auto res = glfwCreateWindowSurface(instance, w, nullptr, surface);
     if (res != VK_SUCCESS)
     {
-        // TODO: log error
+        LOG_ERROR("Surface creation failed");
         return false;
     }
     return true;
