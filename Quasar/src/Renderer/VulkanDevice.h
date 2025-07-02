@@ -38,11 +38,13 @@ typedef struct VulkanDevice {
     i32 graphics_queue_index;
     i32 present_queue_index;
     i32 transfer_queue_index;
+    i32 compute_queue_index;
     b8 supports_device_local_host_visible;
 
     VkQueue graphics_queue;
     VkQueue present_queue;
     VkQueue transfer_queue;
+    VkQueue compute_queue;
 
     VkCommandPool graphics_command_pool;
 

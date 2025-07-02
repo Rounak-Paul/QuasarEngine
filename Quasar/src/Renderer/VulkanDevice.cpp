@@ -80,8 +80,7 @@ static b8 select_physical_device(VkInstance instance, VkSurfaceKHR surface, b8 d
         requirements.graphics = true;
         requirements.present = true;
         requirements.transfer = true;
-        // NOTE: Enable this if compute will be required.
-        // requirements.compute = true;
+        requirements.compute = true;
         requirements.sampler_anisotropy = true;
         requirements.discrete_gpu = discrete_gpu;
         requirements.device_extension_names = {};
@@ -156,7 +155,7 @@ static b8 select_physical_device(VkInstance instance, VkSurfaceKHR surface, b8 d
             device.graphics_queue_index = queue_info.graphics_family_index;
             device.present_queue_index = queue_info.present_family_index;
             device.transfer_queue_index = queue_info.transfer_family_index;
-            // NOTE: set compute index here if needed.
+            device.compute_queue_index = queue_info.compute_family_index;
 
             // Keep a copy of properties, features and memory info for later use.
             device.properties = properties;
@@ -426,22 +425,31 @@ b8 vulkan_device_create(VkInstance instance, VkSurfaceKHR surface, VulkanDevice&
     // NOTE: Do not create additional queues for shared indices.
     b8 present_shares_graphics_queue = device.graphics_queue_index == device.present_queue_index;
     b8 transfer_shares_graphics_queue = device.graphics_queue_index == device.transfer_queue_index;
+    b8 compute_shares_graphics_queue = device.graphics_queue_index == device.compute_queue_index;
     b8 present_must_share_graphics = false;
     u32 index_count = 1;
-    if (!present_shares_graphics_queue) {
+    if (!present_shares_graphics_queue) index_count++;
+    if (!transfer_shares_graphics_queue) index_count++;
+    if (!compute_shares_graphics_queue &&
+        device.compute_queue_index != device.present_queue_index &&
+        device.compute_queue_index != device.transfer_queue_index) {
         index_count++;
     }
-    if (!transfer_shares_graphics_queue) {
-        index_count++;
-    }
+
     std::vector<i32> indices(index_count);
     u8 index = 0;
     indices[index++] = device.graphics_queue_index;
+
     if (!present_shares_graphics_queue) {
         indices[index++] = device.present_queue_index;
     }
     if (!transfer_shares_graphics_queue) {
         indices[index++] = device.transfer_queue_index;
+    }
+    if (!compute_shares_graphics_queue &&
+        device.compute_queue_index != device.present_queue_index &&
+        device.compute_queue_index != device.transfer_queue_index) {
+        indices[index++] = device.compute_queue_index;
     }
 
     std::vector<VkDeviceQueueCreateInfo> queue_create_infos(index_count);
@@ -571,6 +579,12 @@ b8 vulkan_device_create(VkInstance instance, VkSurfaceKHR surface, VulkanDevice&
         device.transfer_queue_index,
         0,
         &device.transfer_queue);
+
+    vkGetDeviceQueue(
+        device.logical_device,
+        device.compute_queue_index,
+        0,
+        &device.compute_queue);
     LOG_DEBUG("Queues obtained.");
 
     // Create command pool for graphics queue.
@@ -650,6 +664,7 @@ void vulkan_device_destroy(VkInstance instance, VulkanDevice &device)
     device.graphics_queue_index = UINT32_MAX;
     device.present_queue_index = UINT32_MAX;
     device.transfer_queue_index = UINT32_MAX;
+    device.compute_queue_index = UINT32_MAX;
 
     LOG_DEBUG("vulkan_device_destroy completed.");
 }
