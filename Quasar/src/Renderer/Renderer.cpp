@@ -30,7 +30,7 @@ b8 Renderer::init(const std::string& name, const Window& window)
 {
     // Validate layers if validation is enabled
     if (_validation_enabled && !check_validation_layer_support()) {
-        // TODO: Log error - validation layers requested but not available
+        LOG_ERROR("validation layers requested but not available");
         return false;
     }
 
