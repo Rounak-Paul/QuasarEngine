@@ -27,6 +27,9 @@ void Application::run() {
         _window.poll_events();
         
         if (_renderer.begin_frame()) {
+            
+            _renderer.draw();
+
             _renderer.end_frame();
         }
     }

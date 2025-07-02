@@ -135,6 +135,8 @@ static void _create(VulkanDevice& device, VkSurfaceKHR surface, u32 width, u32 h
         VK_CHECK(vkCreateImageView(device.logical_device, &view_info, nullptr, &swapchain->views[i]));
     }
 
+    swapchain->extent = swapchain_extent;
+
     LOG_DEBUG("Swapchain created successfully.");
 }
 

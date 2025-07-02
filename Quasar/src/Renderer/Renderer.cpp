@@ -1,6 +1,8 @@
 #include "Renderer.h"
 #include "VulkanInitInfo.h"
-#include "VulkanImage.h"
+
+#define VMA_IMPLEMENTATION
+#include "vk_mem_alloc.h"
 
 namespace Quasar {
 
@@ -104,6 +106,58 @@ b8 Renderer::init(const std::string& name, const Window& window)
     Extent2D extent = window.get_extent();
     vulkan_swapchain_create(_device, _surface, extent.width, extent.height, _swapchain);
 
+    // initialize the memory allocator
+    VmaAllocatorCreateInfo allocatorInfo = {};
+    allocatorInfo.physicalDevice = _device.physical_device;
+    allocatorInfo.device = _device.logical_device;
+    allocatorInfo.instance = _instance;
+    // allocatorInfo.flags = VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT;
+    allocatorInfo.flags = 0;
+    vmaCreateAllocator(&allocatorInfo, &_allocator);
+
+    _main_deletion_queue.push_function([&]() {
+        vmaDestroyAllocator(_allocator);
+    });
+
+    // Offscreen render image
+    //draw image size will match the window
+	VkExtent3D drawImageExtent = {
+		extent.width,
+		extent.height,
+		1
+	};
+
+	//hardcoding the draw format to 32 bit float
+	_draw_image.imageFormat = VK_FORMAT_R16G16B16A16_SFLOAT;
+	_draw_image.imageExtent = drawImageExtent;
+
+	VkImageUsageFlags drawImageUsages{};
+	drawImageUsages |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+	drawImageUsages |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+	drawImageUsages |= VK_IMAGE_USAGE_STORAGE_BIT;
+	drawImageUsages |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+
+	VkImageCreateInfo rimg_info = image_create_info(_draw_image.imageFormat, drawImageUsages, drawImageExtent);
+
+	//for the draw image, we want to allocate it from gpu local memory
+	VmaAllocationCreateInfo rimg_allocinfo = {};
+	rimg_allocinfo.usage = VMA_MEMORY_USAGE_GPU_ONLY;
+	rimg_allocinfo.requiredFlags = VkMemoryPropertyFlags(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+
+	//allocate and create the image
+	vmaCreateImage(_allocator, &rimg_info, &rimg_allocinfo, &_draw_image.image, &_draw_image.allocation, nullptr);
+
+	//build a image-view for the draw image to use for rendering
+	VkImageViewCreateInfo rview_info = imageview_create_info(_draw_image.imageFormat, _draw_image.image, VK_IMAGE_ASPECT_COLOR_BIT);
+
+	VK_CHECK(vkCreateImageView(_device.logical_device, &rview_info, nullptr, &_draw_image.imageView));
+
+	//add to deletion queues
+	_main_deletion_queue.push_function([=, this]() {
+		vkDestroyImageView(_device.logical_device, _draw_image.imageView, nullptr);
+		vmaDestroyImage(_allocator, _draw_image.image, _draw_image.allocation);
+	});
+
     // Commands
     // create a command pool for commands submitted to the graphics queue.
 	// we also want the pool to allow for resetting of individual command buffers
@@ -139,6 +193,7 @@ b8 Renderer::begin_frame()
 {
     // wait until the gpu has finished rendering the last frame. Timeout of 1 second
 	VK_CHECK(vkWaitForFences(_device.logical_device, 1, &get_current_frame().render_fence, true, 1000000000));
+    get_current_frame().deletion_queue.flush();
 	VK_CHECK(vkResetFences(_device.logical_device, 1, &get_current_frame().render_fence));
 
     //request image from the swapchain
@@ -152,13 +207,22 @@ b8 Renderer::begin_frame()
 	//begin the command buffer recording.
 	VkCommandBufferBeginInfo cmdBeginInfo = command_buffer_begin_info(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
 
-	//start the command buffer recording
-	VK_CHECK(vkBeginCommandBuffer(cmd, &cmdBeginInfo));
+	_draw_extent.width = _draw_image.imageExtent.width;
+	_draw_extent.height = _draw_image.imageExtent.height;
 
-    //make the swapchain image into writeable mode before rendering
-	transition_image(_device, cmd, _swapchain.images[_swapchain.image_index], VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
+	VK_CHECK(vkBeginCommandBuffer(cmd, &cmdBeginInfo));	
 
-	//make a clear-color from frame number. This will flash with a 120 frame period.
+	// transition our main draw image into general layout so we can write into it
+	// we will overwrite it all so we dont care about what was the older layout
+	transition_image(_device, cmd, _draw_image.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
+    return true;
+}
+
+void Renderer::draw()
+{
+    VkCommandBuffer cmd = get_current_frame().main_command_buffer;
+
+    //make a clear-color from frame number. This will flash with a 120 frame period.
 	VkClearColorValue clearValue;
 	float flash = std::abs(std::sin(_frame_number / 120.f));
 	clearValue = { { 0.0f, 0.0f, flash, 1.0f } };
@@ -166,12 +230,7 @@ b8 Renderer::begin_frame()
 	VkImageSubresourceRange clearRange = image_subresource_range(VK_IMAGE_ASPECT_COLOR_BIT);
 
 	//clear image
-	vkCmdClearColorImage(cmd, _swapchain.images[_swapchain.image_index], VK_IMAGE_LAYOUT_GENERAL, &clearValue, 1, &clearRange);
-
-	//make the swapchain image into presentable mode
-	transition_image(_device, cmd, _swapchain.images[_swapchain.image_index], VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
-
-    return true;
+	vkCmdClearColorImage(cmd, _draw_image.image, VK_IMAGE_LAYOUT_GENERAL, &clearValue, 1, &clearRange);
 }
 
 void Renderer::end_frame()
@@ -179,14 +238,24 @@ void Renderer::end_frame()
     //prepare the submission to the queue. 
 	//we want to wait on the _presentSemaphore, as that semaphore is signaled when the swapchain is ready
 	//we will signal the _renderSemaphore, to signal that rendering has finished
-
     VkCommandBuffer cmd = get_current_frame().main_command_buffer;
+
+    //transition the draw image and the swapchain image into their correct transfer layouts
+	transition_image(_device, cmd, _draw_image.image, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+	transition_image(_device, cmd, _swapchain.images[_swapchain.image_index], VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+
+	// execute a copy from the draw image into the swapchain
+	copy_image_to_image(_device, cmd, _draw_image.image, _swapchain.images[_swapchain.image_index], _draw_extent, _swapchain.extent);
+
+	// set swapchain image layout to Present so we can show it on the screen
+	transition_image(_device, cmd, _swapchain.images[_swapchain.image_index], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
+
     //finalize the command buffer 
 	VK_CHECK(vkEndCommandBuffer(cmd));
 
 	VkCommandBufferSubmitInfo cmdinfo = command_buffer_submit_info(cmd);	
 	
-	VkSemaphoreSubmitInfo waitInfo = semaphore_submit_info(VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT_KHR,get_current_frame().swapchain_semaphore);
+	VkSemaphoreSubmitInfo waitInfo = semaphore_submit_info(VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT_KHR, get_current_frame().swapchain_semaphore);
 	VkSemaphoreSubmitInfo signalInfo = semaphore_submit_info(VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT, get_current_frame().render_semaphore);	
 	
 	VkSubmitInfo2 submit = submit_info(&cmdinfo,&signalInfo,&waitInfo);	
@@ -235,7 +304,12 @@ void Renderer::shutdown()
 		vkDestroyFence(_device.logical_device, _frames[i].render_fence, nullptr);
 		vkDestroySemaphore(_device.logical_device, _frames[i].render_semaphore, nullptr);
 		vkDestroySemaphore(_device.logical_device, _frames[i].swapchain_semaphore, nullptr);
+
+        _frames[i].deletion_queue.flush();
 	}
+
+    //flush the global deletion queue
+    _main_deletion_queue.flush();
 
     vulkan_swapchain_destroy(_device, _swapchain);
 

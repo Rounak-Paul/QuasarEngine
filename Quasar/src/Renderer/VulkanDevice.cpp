@@ -479,9 +479,16 @@ b8 vulkan_device_create(VkInstance instance, VkSurfaceKHR surface, VulkanDevice&
         queue_create_infos[i].pQueuePriorities = queue_priorities;
     }
 
+    #if defined(QS_PLATFORM_APPLE)
+    // NOTE: On macOS set environment variable to configure MoltenVK for using Metal argument buffers (needed for descriptor indexing).
+    //     - MoltenVK supports Metal argument buffers on macOS, iOS possible in future (see https://github.com/KhronosGroup/MoltenVK/issues/1651)
+    setenv("MVK_CONFIG_USE_METAL_ARGUMENT_BUFFERS", "1", 1);
+    #endif
+
     std::vector<const char*> extension_names = {
         VK_KHR_SWAPCHAIN_EXTENSION_NAME,
-        VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME
+        VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME,
+        VK_KHR_COPY_COMMANDS_2_EXTENSION_NAME
     };
 
     // Add sync2 extension if supported but not native
@@ -489,9 +496,9 @@ b8 vulkan_device_create(VkInstance instance, VkSurfaceKHR surface, VulkanDevice&
         extension_names.push_back("VK_KHR_synchronization2");
     }
 
-#ifdef QS_PLATFORM_APPLE
+    #ifdef QS_PLATFORM_APPLE
     extension_names.push_back("VK_KHR_portability_subset");
-#endif
+    #endif
 
     if (((device.support_flags & VULKAN_DEVICE_SUPPORT_FLAG_NATIVE_DYNAMIC_STATE_BIT) == 0) &&
         ((device.support_flags & VULKAN_DEVICE_SUPPORT_FLAG_DYNAMIC_STATE_BIT) != 0)) {
@@ -592,6 +599,8 @@ b8 vulkan_device_create(VkInstance instance, VkSurfaceKHR surface, VulkanDevice&
         device.vkCmdWaitEvents2KHR = (PFN_vkCmdWaitEvents2KHR)vkGetDeviceProcAddr(device.logical_device, "vkCmdWaitEvents2KHR");
         device.vkCmdSetEvent2KHR = (PFN_vkCmdSetEvent2KHR)vkGetDeviceProcAddr(device.logical_device, "vkCmdSetEvent2KHR");
         device.vkCmdResetEvent2KHR = (PFN_vkCmdResetEvent2KHR)vkGetDeviceProcAddr(device.logical_device, "vkCmdResetEvent2KHR");
+        // Copy
+        device.vkCmdBlitImage2KHR = (PFN_vkCmdBlitImage2)vkGetDeviceProcAddr(device.logical_device, "vkCmdBlitImage2KHR");
     } else {
         LOG_DEBUG("Synchronization2 not supported, using legacy synchronization functions.");
     }

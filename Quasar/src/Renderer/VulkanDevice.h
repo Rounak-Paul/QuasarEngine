@@ -72,6 +72,7 @@ typedef struct VulkanDevice {
     PFN_vkCmdWaitEvents2KHR vkCmdWaitEvents2KHR;
     PFN_vkCmdSetEvent2KHR vkCmdSetEvent2KHR;
     PFN_vkCmdResetEvent2KHR vkCmdResetEvent2KHR;
+    PFN_vkCmdBlitImage2 vkCmdBlitImage2KHR;
 } VulkanDevice;
 
 b8 vulkan_device_create(VkInstance instance, VkSurfaceKHR surface, VulkanDevice& device);

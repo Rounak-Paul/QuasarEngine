@@ -5,6 +5,7 @@
 #include <Core/Window.h>
 #include "VulkanDevice.h"
 #include "VulkanSwapchain.h"
+#include "VulkanImage.h"
 
 namespace Quasar
 {
@@ -19,6 +20,7 @@ namespace Quasar
         b8 init(const std::string& name, const Window& window);
 
         b8 begin_frame();
+        void draw();
         void end_frame();
 
         void shutdown();
@@ -35,9 +37,14 @@ namespace Quasar
         u32 _api_patch; // The instance-level api patch version.
         b8 _validation_enabled = true;
         VkInstance _instance;
+        VmaAllocator _allocator;
         VkDebugUtilsMessengerEXT _debug_messenger;
         VulkanDevice _device;
         VkSurfaceKHR _surface;
         VulkanSwapchain _swapchain;
+
+        //draw resources
+        VulkanImage _draw_image;
+        VkExtent2D _draw_extent;
     };
 } // namespace Quasar::Renderer

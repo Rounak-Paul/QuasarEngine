@@ -25,7 +25,7 @@ struct FrameData {
     VkSemaphore swapchain_semaphore, render_semaphore;
 	VkFence render_fence;
 
-    DeletionQueue _deletion_queue;
+    DeletionQueue deletion_queue;
 };
 
 }
