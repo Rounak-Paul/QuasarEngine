@@ -6,6 +6,10 @@
 
 #include "VulkanPipeline.h"
 
+#include <imgui.h>
+#include <backends/imgui_impl_glfw.h>
+#include <backends/imgui_impl_vulkan.h>
+
 namespace Quasar {
 
 static const std::vector<const char*> validation_layers = {

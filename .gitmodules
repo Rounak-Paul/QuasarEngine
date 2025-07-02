@@ -7,3 +7,6 @@
 [submodule "Quasar/vendor/VMA"]
 	path = Quasar/vendor/VMA
 	url = https://github.com/Rounak-Paul/VulkanMemoryAllocator.git
+[submodule "Quasar/vendor/IMGUI/imgui"]
+	path = Quasar/vendor/IMGUI/imgui
+	url = https://github.com/Rounak-Paul/imgui.git

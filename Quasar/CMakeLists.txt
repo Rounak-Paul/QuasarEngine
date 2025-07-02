@@ -12,6 +12,7 @@ target_compile_definitions(Quasar PRIVATE QS_BUILD_DLL)
 add_subdirectory(Vendor/GLFW)
 add_subdirectory(Vendor/GLM)
 add_subdirectory(Vendor/VMA)
+add_subdirectory(Vendor/IMGUI)
 
 target_precompile_headers(Quasar PUBLIC src/qspch.h)
 target_precompile_headers(Quasar PUBLIC src/defines.h)
@@ -23,6 +24,7 @@ target_include_directories(Quasar PUBLIC
     vendor/GLFW/include
     vendor/GLM
     vendor/VMA/include
+    Vendor/IMGUI/imgui
 )
 
 # Link directories
@@ -32,6 +34,7 @@ target_link_directories(Quasar PUBLIC ${VULKAN_PATH}/lib)
 target_link_libraries(Quasar PRIVATE 
     glfw
     glm
+    ImGui
 )
 
 if(APPLE)
