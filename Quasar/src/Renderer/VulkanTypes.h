@@ -1,5 +1,6 @@
 #pragma once
 
+#include <qspch.h>
 #include <vulkan/vulkan.h>
 #include <vulkan/vk_enum_string_helper.h>
 #include <vk_mem_alloc.h>
@@ -23,6 +24,8 @@ struct FrameData {
 
     VkSemaphore swapchain_semaphore, render_semaphore;
 	VkFence render_fence;
+
+    DeletionQueue _deletion_queue;
 };
 
 }

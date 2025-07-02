@@ -28,6 +28,7 @@ namespace Quasar
         private:
         u32 _frame_number {0};
         FrameData _frames[FRAME_OVERLAP];
+        DeletionQueue _main_deletion_queue;
 
         u32 _api_major; // The instance-level api major version.
         u32 _api_minor; // The instance-level api minor version.
