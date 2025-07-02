@@ -3,6 +3,7 @@
 #include <qspch.h>
 #include "VulkanTypes.h"
 #include <Core/Window.h>
+#include "VulkanDevice.h"
 
 namespace Quasar
 {
@@ -27,8 +28,17 @@ namespace Quasar
         b8 _validation_enabled = true;
         VkInstance _instance;
         VkDebugUtilsMessengerEXT _debug_messenger;
-        VkPhysicalDevice _physical_device;
-        VkDevice _device;
+        VulkanDevice _device;
         VkSurfaceKHR _surface;
+
+        PFN_vkCmdSetPrimitiveTopologyEXT vkCmdSetPrimitiveTopologyEXT;
+        PFN_vkCmdSetFrontFaceEXT vkCmdSetFrontFaceEXT;
+        PFN_vkCmdSetStencilTestEnableEXT vkCmdSetStencilTestEnableEXT;
+        PFN_vkCmdSetDepthTestEnableEXT vkCmdSetDepthTestEnableEXT;
+        PFN_vkCmdSetDepthWriteEnableEXT vkCmdSetDepthWriteEnableEXT;
+        PFN_vkCmdSetStencilOpEXT vkCmdSetStencilOpEXT;
+
+        PFN_vkCmdBeginRenderingKHR vkCmdBeginRenderingKHR;
+        PFN_vkCmdEndRenderingKHR vkCmdEndRenderingKHR;
     };
 } // namespace Quasar::Renderer

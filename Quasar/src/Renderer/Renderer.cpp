@@ -4,6 +4,7 @@ namespace Quasar {
 
 static const std::vector<const char*> validation_layers = {
     "VK_LAYER_KHRONOS_validation"
+    // ,"VK_LAYER_LUNARG_api_dump" // For all vulkan calls
 };
 
 static b8 check_validation_layer_support();
@@ -92,6 +93,40 @@ b8 Renderer::init(const std::string& name, const Window& window)
         return false;
     }
 
+    // Device creation
+    if (!vulkan_device_create(_instance, _surface, _device)) {
+        LOG_ERROR("Failed to create device!");
+        return false;
+    }
+
+    // Examine dynamic state support and load function pointer if need be.
+    if (
+        !(_device.support_flags & VULKAN_DEVICE_SUPPORT_FLAG_NATIVE_DYNAMIC_STATE_BIT) &&
+        (_device.support_flags & VULKAN_DEVICE_SUPPORT_FLAG_DYNAMIC_STATE_BIT)) {
+        LOG_INFO("Vulkan device doesn't support native dynamic state, but does via extension. Using extension.");
+
+        // Dynamic primitive topology.
+        vkCmdSetPrimitiveTopologyEXT = (PFN_vkCmdSetPrimitiveTopologyEXT)vkGetInstanceProcAddr(_instance, "vkCmdSetPrimitiveTopologyEXT");
+
+        // Dynamic front-cace
+        vkCmdSetFrontFaceEXT = (PFN_vkCmdSetFrontFaceEXT)vkGetInstanceProcAddr(_instance, "vkCmdSetFrontFaceEXT");
+        // Dynamic depth/stencil state
+        vkCmdSetStencilOpEXT = (PFN_vkCmdSetStencilOpEXT)vkGetInstanceProcAddr(_instance, "vkCmdSetStencilOpEXT");
+        vkCmdSetStencilTestEnableEXT = (PFN_vkCmdSetStencilTestEnableEXT)vkGetInstanceProcAddr(_instance, "vkCmdSetStencilTestEnableEXT");
+        vkCmdSetDepthTestEnableEXT = (PFN_vkCmdSetDepthTestEnableEXT)vkGetInstanceProcAddr(_instance, "vkCmdSetDepthTestEnableEXT");
+        vkCmdSetDepthWriteEnableEXT = (PFN_vkCmdSetDepthWriteEnableEXT)vkGetInstanceProcAddr(_instance, "vkCmdSetDepthWriteEnableEXT");
+
+        // Dynamic rendering
+        vkCmdBeginRenderingKHR = (PFN_vkCmdBeginRenderingKHR)vkGetInstanceProcAddr(_instance, "vkCmdBeginRenderingKHR");
+        vkCmdEndRenderingKHR = (PFN_vkCmdEndRenderingKHR)vkGetInstanceProcAddr(_instance, "vkCmdEndRenderingKHR");
+    } else {
+        if (_device.support_flags & VULKAN_DEVICE_SUPPORT_FLAG_NATIVE_DYNAMIC_STATE_BIT) {
+            LOG_INFO("Vulkan device supports native dynamic state.");
+        } else {
+            LOG_WARN("Vulkan device does not support native or extension dynamic state. This may cause issues with the renderer.");
+        }
+    }
+
     return true;
 }
 
@@ -107,23 +142,41 @@ void Renderer::end_frame()
 
 void Renderer::shutdown()
 {
-    if (_surface) {
-        vkDestroySurfaceKHR(_instance, _surface, nullptr);
+    // Wait for device to finish all operations before cleanup
+    if (_device.logical_device != VK_NULL_HANDLE) {
+        vkDeviceWaitIdle(_device.logical_device);
+    }
+    
+    if (_device.logical_device != VK_NULL_HANDLE) {
+        vulkan_device_destroy(_instance, _device);
+        _device.logical_device = VK_NULL_HANDLE;
     }
 
-    // TODO: Cleanup debug messenger, instance, etc.
+    // Destroy surface
+    if (_surface != VK_NULL_HANDLE) {
+        vkDestroySurfaceKHR(_instance, _surface, nullptr);
+        _surface = VK_NULL_HANDLE;
+    }
+
     if (_validation_enabled && _debug_messenger != VK_NULL_HANDLE) {
-        auto func = (PFN_vkDestroyDebugUtilsMessengerEXT) 
+        auto destroy_func = (PFN_vkDestroyDebugUtilsMessengerEXT) 
             vkGetInstanceProcAddr(_instance, "vkDestroyDebugUtilsMessengerEXT");
-        if (func != nullptr) {
-            func(_instance, _debug_messenger, nullptr);
+        if (destroy_func != nullptr) {
+            destroy_func(_instance, _debug_messenger, nullptr);
+            _debug_messenger = VK_NULL_HANDLE;
         }
     }
     
+    // Destroy instance (must be last)
     if (_instance != VK_NULL_HANDLE) {
         vkDestroyInstance(_instance, nullptr);
         _instance = VK_NULL_HANDLE;
     }
+    
+    // Reset API version info
+    _api_major = 0;
+    _api_minor = 0;
+    _api_patch = 0;
 }
 
 // Helper function to setup debug messenger create info
@@ -133,9 +186,9 @@ static void populate_debug_messenger_create_info(VkDebugUtilsMessengerCreateInfo
     create_info.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
     create_info.messageSeverity = 
         VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT |
-        VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT |
-        VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT |
-        VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT;
+        VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT ;
+        // VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT |
+        // VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT;
     create_info.messageType = 
         VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT |
         VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT |
