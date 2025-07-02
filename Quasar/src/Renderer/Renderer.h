@@ -6,6 +6,7 @@
 #include "VulkanDevice.h"
 #include "VulkanSwapchain.h"
 #include "VulkanImage.h"
+#include "VulkanDescriptor.h"
 
 namespace Quasar
 {
@@ -42,6 +43,9 @@ namespace Quasar
         VulkanDevice _device;
         VkSurfaceKHR _surface;
         VulkanSwapchain _swapchain;
+        DescriptorAllocator global_descriptor_allocator;
+        VkDescriptorSet _draw_image_descriptors;
+        VkDescriptorSetLayout _draw_image_descriptor_layout;
 
         //draw resources
         VulkanImage _draw_image;
@@ -58,5 +62,6 @@ namespace Quasar
         b8 create_draw_image(const Window& window);
         b8 create_command_buffers();
         b8 create_sync_objects();
+        void create_descriptors();
     };
 } // namespace Quasar::Renderer

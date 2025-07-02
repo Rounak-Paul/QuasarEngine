@@ -43,6 +43,8 @@ b8 Renderer::init(const std::string& name, const Window& window) {
     if (!create_command_buffers()) return false;
     if (!create_sync_objects()) return false;
 
+    create_descriptors();
+
     return true;
 }
 
@@ -476,5 +478,48 @@ b8 Renderer::create_sync_objects() {
     }
 
     return true;
+}
+void Renderer::create_descriptors()
+{
+    //create a descriptor pool that will hold 10 sets with 1 image each
+	std::vector<DescriptorAllocator::PoolSizeRatio> sizes =
+	{
+		{ VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1 }
+	};
+
+	global_descriptor_allocator.init_pool(_device.logical_device, 10, sizes);
+
+	//make the descriptor set layout for our compute draw
+	{
+		DescriptorLayoutBuilder builder;
+		builder.add_binding(0, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
+		_draw_image_descriptor_layout = builder.build(_device.logical_device, VK_SHADER_STAGE_COMPUTE_BIT);
+	}
+
+    //allocate a descriptor set for our draw image
+	_draw_image_descriptors = global_descriptor_allocator.allocate(_device.logical_device,_draw_image_descriptor_layout);	
+
+	VkDescriptorImageInfo imgInfo{};
+	imgInfo.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
+	imgInfo.imageView = _draw_image.imageView;
+	
+	VkWriteDescriptorSet drawImageWrite = {};
+	drawImageWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+	drawImageWrite.pNext = nullptr;
+	
+	drawImageWrite.dstBinding = 0;
+	drawImageWrite.dstSet = _draw_image_descriptors;
+	drawImageWrite.descriptorCount = 1;
+	drawImageWrite.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+	drawImageWrite.pImageInfo = &imgInfo;
+
+	vkUpdateDescriptorSets(_device.logical_device, 1, &drawImageWrite, 0, nullptr);
+
+	//make sure both the descriptor allocator and the new layout get cleaned up properly
+	_main_deletion_queue.push_function([&]() {
+		global_descriptor_allocator.destroy_pool(_device.logical_device);
+
+		vkDestroyDescriptorSetLayout(_device.logical_device, _draw_image_descriptor_layout, nullptr);
+	});
 }
 } // namespace Quasar

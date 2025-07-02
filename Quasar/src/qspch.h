@@ -4,6 +4,7 @@
 
 #include <string>
 #include <iostream>
+#include <span>
 
 // Vendor
 #define GLFW_INCLUDE_VULKAN
