@@ -15,5 +15,11 @@
 
 namespace Quasar {
 
+constexpr unsigned int FRAME_OVERLAP = 3;
+
+struct FrameData {
+	VkCommandPool command_pool;
+	VkCommandBuffer main_command_buffer;
+};
 
 }

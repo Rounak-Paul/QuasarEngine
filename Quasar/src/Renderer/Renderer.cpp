@@ -1,4 +1,5 @@
 #include "Renderer.h"
+#include "VulkanInit.h"
 
 namespace Quasar {
 
@@ -130,6 +131,20 @@ b8 Renderer::init(const std::string& name, const Window& window)
     Extent2D extent = window.get_extent();
     vulkan_swapchain_create(_device, _surface, extent.width, extent.height, _swapchain);
 
+    // commands
+    // create a command pool for commands submitted to the graphics queue.
+	// we also want the pool to allow for resetting of individual command buffers
+	VkCommandPoolCreateInfo command_pool_info = command_pool_create_info(_device.graphics_queue_index, VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);
+
+	for (int i = 0; i < FRAME_OVERLAP; i++) {
+		VK_CHECK(vkCreateCommandPool(_device.logical_device, &command_pool_info, nullptr, &_frames[i].command_pool));
+
+		// allocate the default command buffer that we will use for rendering
+		VkCommandBufferAllocateInfo cmd_alloc_info = command_buffer_allocate_info(_frames[i].command_pool, 1);
+
+		VK_CHECK(vkAllocateCommandBuffers(_device.logical_device, &cmd_alloc_info, &_frames[i].main_command_buffer));
+	}
+
     return true;
 }
 
@@ -148,6 +163,10 @@ void Renderer::shutdown()
     // Wait for device to finish all operations before cleanup
     if (_device.logical_device != VK_NULL_HANDLE) {
         vkDeviceWaitIdle(_device.logical_device);
+    }
+
+    for (int i = 0; i < FRAME_OVERLAP; i++) {
+        vkDestroyCommandPool(_device.logical_device, _frames[i].command_pool, nullptr);
     }
 
     vulkan_swapchain_destroy(_device, _swapchain);
