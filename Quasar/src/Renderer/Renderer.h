@@ -26,7 +26,7 @@ namespace Quasar
         FrameData& get_current_frame() { return _frames[_frame_number % FRAME_OVERLAP]; };
 
         private:
-        u8 _frame_number {0};
+        u32 _frame_number {0};
         FrameData _frames[FRAME_OVERLAP];
 
         u32 _api_major; // The instance-level api major version.

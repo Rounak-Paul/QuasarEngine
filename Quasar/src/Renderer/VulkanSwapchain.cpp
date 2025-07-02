@@ -84,7 +84,7 @@ static void _create(VulkanDevice& device, VkSurfaceKHR surface, u32 width, u32 h
     swapchain_create_info.imageColorSpace = swapchain->image_format.colorSpace;
     swapchain_create_info.imageExtent = swapchain_extent;
     swapchain_create_info.imageArrayLayers = 1;
-    swapchain_create_info.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+    swapchain_create_info.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
 
     // Setup the queue family indices
     if (device.graphics_queue_index != device.present_queue_index) {

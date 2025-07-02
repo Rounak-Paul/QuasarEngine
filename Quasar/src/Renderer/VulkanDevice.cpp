@@ -85,6 +85,7 @@ static b8 select_physical_device(VkInstance instance, VkSurfaceKHR surface, b8 d
         requirements.discrete_gpu = discrete_gpu;
         requirements.device_extension_names = {};
         requirements.device_extension_names.emplace_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
+        requirements.device_extension_names.emplace_back("VK_KHR_synchronization2");
         requirements.wide_lines = true;
 #ifdef QS_PLATFORM_APPLE
         requirements.discrete_gpu = false;
@@ -422,7 +423,6 @@ b8 vulkan_device_create(VkInstance instance, VkSurfaceKHR surface, VulkanDevice&
     }
 
     LOG_DEBUG("Creating logical device...");
-    // NOTE: Do not create additional queues for shared indices.
     b8 present_shares_graphics_queue = device.graphics_queue_index == device.present_queue_index;
     b8 transfer_shares_graphics_queue = device.graphics_queue_index == device.transfer_queue_index;
     b8 compute_shares_graphics_queue = device.graphics_queue_index == device.compute_queue_index;
@@ -439,13 +439,8 @@ b8 vulkan_device_create(VkInstance instance, VkSurfaceKHR surface, VulkanDevice&
     std::vector<i32> indices(index_count);
     u8 index = 0;
     indices[index++] = device.graphics_queue_index;
-
-    if (!present_shares_graphics_queue) {
-        indices[index++] = device.present_queue_index;
-    }
-    if (!transfer_shares_graphics_queue) {
-        indices[index++] = device.transfer_queue_index;
-    }
+    if (!present_shares_graphics_queue) indices[index++] = device.present_queue_index;
+    if (!transfer_shares_graphics_queue) indices[index++] = device.transfer_queue_index;
     if (!compute_shares_graphics_queue &&
         device.compute_queue_index != device.present_queue_index &&
         device.compute_queue_index != device.transfer_queue_index) {
@@ -454,10 +449,10 @@ b8 vulkan_device_create(VkInstance instance, VkSurfaceKHR surface, VulkanDevice&
 
     std::vector<VkDeviceQueueCreateInfo> queue_create_infos(index_count);
     f32 queue_priorities[2] = {0.9f, 1.0f};
-    
+
     VkQueueFamilyProperties props[32];
     u32 prop_count;
-    vkGetPhysicalDeviceQueueFamilyProperties(device.physical_device, &prop_count, 0);
+    vkGetPhysicalDeviceQueueFamilyProperties(device.physical_device, &prop_count, nullptr);
     vkGetPhysicalDeviceQueueFamilyProperties(device.physical_device, &prop_count, props);
 
     for (u32 i = 0; i < index_count; ++i) {
@@ -466,125 +461,89 @@ b8 vulkan_device_create(VkInstance instance, VkSurfaceKHR surface, VulkanDevice&
         queue_create_infos[i].queueCount = 1;
         if (present_shares_graphics_queue && indices[i] == device.present_queue_index) {
             if (props[device.present_queue_index].queueCount > 1) {
-                // If the same family is shared between graphic and presentation,
-                // pull from the second index instead of the first for a unique queue.
                 queue_create_infos[i].queueCount = 2;
             } else {
-                // Don't have available queues, just share them.
                 present_must_share_graphics = true;
             }
         }
         queue_create_infos[i].flags = 0;
-        queue_create_infos[i].pNext = 0;
+        queue_create_infos[i].pNext = nullptr;
         queue_create_infos[i].pQueuePriorities = queue_priorities;
     }
 
-    std::vector<const char*> extension_names = {VK_KHR_SWAPCHAIN_EXTENSION_NAME};
-    // Dynamic indexing. NOTE: not needed for 1.2+
-    extension_names.push_back(VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME);
+    std::vector<const char*> extension_names = {
+        VK_KHR_SWAPCHAIN_EXTENSION_NAME,
+        VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME,
+        "VK_KHR_synchronization2"
+    };
+
 #ifdef QS_PLATFORM_APPLE
     extension_names.push_back("VK_KHR_portability_subset");
 #endif
-    // If dynamic topology isn't supported natively but *is* supported via extension,
-    // include the extension. These may both be false in the event of macos.
-    if (
-        ((device.support_flags & VULKAN_DEVICE_SUPPORT_FLAG_NATIVE_DYNAMIC_STATE_BIT) == 0) &&
+
+    if (((device.support_flags & VULKAN_DEVICE_SUPPORT_FLAG_NATIVE_DYNAMIC_STATE_BIT) == 0) &&
         ((device.support_flags & VULKAN_DEVICE_SUPPORT_FLAG_DYNAMIC_STATE_BIT) != 0)) {
-            extension_names.push_back(VK_EXT_EXTENDED_DYNAMIC_STATE_EXTENSION_NAME);
-            extension_names.push_back(VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME);
+        extension_names.push_back(VK_EXT_EXTENDED_DYNAMIC_STATE_EXTENSION_NAME);
+        extension_names.push_back(VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME);
     }
 
-    // If smooth lines are supported, load the extension.
-    if ((device.support_flags & VULKAN_DEVICE_SUPPORT_FLAG_LINE_SMOOTH_RASTERISATION_BIT)) {
+    if (device.support_flags & VULKAN_DEVICE_SUPPORT_FLAG_LINE_SMOOTH_RASTERISATION_BIT) {
         extension_names.push_back(VK_EXT_LINE_RASTERIZATION_EXTENSION_NAME);
     }
 
-    // Request device features.
-    // NOTE: Request supported device features.
-    VkPhysicalDeviceFeatures2 device_features = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2_KHR};
-    {
-        // Native features
-        device_features.features.samplerAnisotropy = device.features.samplerAnisotropy;  // Request anistrophy
-        device_features.features.fillModeNonSolid = device.features.fillModeNonSolid;
+    // Requested features and extensions
+    VkPhysicalDeviceFeatures2 device_features = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2};
+    device_features.features.samplerAnisotropy = device.features.samplerAnisotropy;
+    device_features.features.fillModeNonSolid = device.features.fillModeNonSolid;
 
-        // Dynamic rendering.
-        VkPhysicalDeviceDynamicRenderingFeatures dynamic_rendering_ext = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES};
-        dynamic_rendering_ext.dynamicRendering = VK_TRUE;
-        device_features.pNext = &dynamic_rendering_ext;
-
-        // VK_EXT_extended_dynamic_state
-        VkPhysicalDeviceExtendedDynamicStateFeaturesEXT extended_dynamic_state = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTENDED_DYNAMIC_STATE_FEATURES_EXT};
-        extended_dynamic_state.extendedDynamicState = VK_TRUE;
-        dynamic_rendering_ext.pNext = &extended_dynamic_state;
-
-        // VK_EXT_descriptor_indexing
-        VkPhysicalDeviceDescriptorIndexingFeatures descriptor_indexing_features = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES_EXT};
-        // Partial binding is required for descriptor aliasing.
-        descriptor_indexing_features.descriptorBindingPartiallyBound = VK_TRUE;  // TODO: Check if supported?
-        extended_dynamic_state.pNext = &descriptor_indexing_features;
-
-        #if defined(QS_PLATFORM_APPLE)
-        // NOTE: On macOS set environment variable to configure MoltenVK for using Metal argument buffers (needed for descriptor indexing).
-        //     - MoltenVK supports Metal argument buffers on macOS, iOS possible in future (see https://github.com/KhronosGroup/MoltenVK/issues/1651)
-        setenv("MVK_CONFIG_USE_METAL_ARGUMENT_BUFFERS", "1", 1);
-        #endif
-
-    // Smooth line rasterisation, if supported.
-        VkPhysicalDeviceLineRasterizationFeaturesEXT line_rasterization_ext = {};
-        if (device.support_flags & VULKAN_DEVICE_SUPPORT_FLAG_LINE_SMOOTH_RASTERISATION_BIT) {
-            line_rasterization_ext.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_LINE_RASTERIZATION_FEATURES_EXT;
-            line_rasterization_ext.smoothLines = VK_TRUE;
-            descriptor_indexing_features.pNext = &line_rasterization_ext;
-        }
+    VkPhysicalDeviceLineRasterizationFeaturesEXT line_rasterization_ext = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_LINE_RASTERIZATION_FEATURES_EXT};
+    if (device.support_flags & VULKAN_DEVICE_SUPPORT_FLAG_LINE_SMOOTH_RASTERISATION_BIT) {
+        line_rasterization_ext.smoothLines = VK_TRUE;
     }
+
+    VkPhysicalDeviceDescriptorIndexingFeatures descriptor_indexing_features = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES_EXT};
+    descriptor_indexing_features.descriptorBindingPartiallyBound = VK_TRUE;
+
+    VkPhysicalDeviceExtendedDynamicStateFeaturesEXT extended_dynamic_state = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTENDED_DYNAMIC_STATE_FEATURES_EXT};
+    extended_dynamic_state.extendedDynamicState = VK_TRUE;
+
+    VkPhysicalDeviceDynamicRenderingFeatures dynamic_rendering_ext = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES};
+    dynamic_rendering_ext.dynamicRendering = VK_TRUE;
+
+    VkPhysicalDeviceSynchronization2Features sync2_features = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES};
+    sync2_features.synchronization2 = VK_TRUE;
+
+    // Chain the pNext fields: sync2 → rendering → dyn_state → descriptor → raster
+    sync2_features.pNext = &dynamic_rendering_ext;
+    dynamic_rendering_ext.pNext = &extended_dynamic_state;
+    extended_dynamic_state.pNext = &descriptor_indexing_features;
+    descriptor_indexing_features.pNext = (device.support_flags & VULKAN_DEVICE_SUPPORT_FLAG_LINE_SMOOTH_RASTERISATION_BIT) ? &line_rasterization_ext : nullptr;
+    device_features.pNext = &sync2_features;
+
+#if defined(QS_PLATFORM_APPLE)
+    setenv("MVK_CONFIG_USE_METAL_ARGUMENT_BUFFERS", "1", 1);
+#endif
 
     VkDeviceCreateInfo device_create_info = {VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO};
     device_create_info.queueCreateInfoCount = index_count;
     device_create_info.pQueueCreateInfos = queue_create_infos.data();
-    device_create_info.pEnabledFeatures = 0;  // &device_features;
-    device_create_info.enabledExtensionCount = static_cast<uint32_t>(extension_names.size());
-    device_create_info.ppEnabledExtensionNames = extension_names.data();;
-
-    // Deprecated and ignored, so pass nothing.
+    device_create_info.pEnabledFeatures = nullptr;
+    device_create_info.enabledExtensionCount = static_cast<u32>(extension_names.size());
+    device_create_info.ppEnabledExtensionNames = extension_names.data();
     device_create_info.enabledLayerCount = 0;
-    device_create_info.ppEnabledLayerNames = 0;
+    device_create_info.ppEnabledLayerNames = nullptr;
     device_create_info.pNext = &device_features;
 
-    // Create the device.
-    VK_CHECK(vkCreateDevice(
-        device.physical_device,
-        &device_create_info,
-        nullptr,
-        &device.logical_device));
-
+    VK_CHECK(vkCreateDevice(device.physical_device, &device_create_info, nullptr, &device.logical_device));
     LOG_DEBUG("Logical device created.");
 
-    // Get queues.
-    vkGetDeviceQueue(
-        device.logical_device,
-        device.graphics_queue_index,
-        0,
-        &device.graphics_queue);
-
-    vkGetDeviceQueue(
-        device.logical_device,
-        device.present_queue_index,
-        // If the same family is shared between graphic and presentation,
-        // pull from the second index instead of the first for a unique queue.
-        present_must_share_graphics ? 0 : (device.graphics_queue_index == device.present_queue_index) ? 1 : 0,
+    // Get queues
+    vkGetDeviceQueue(device.logical_device, device.graphics_queue_index, 0, &device.graphics_queue);
+    vkGetDeviceQueue(device.logical_device, device.present_queue_index,
+        present_must_share_graphics ? 0 : (device.graphics_queue_index == device.present_queue_index ? 1 : 0),
         &device.present_queue);
-
-    vkGetDeviceQueue(
-        device.logical_device,
-        device.transfer_queue_index,
-        0,
-        &device.transfer_queue);
-
-    vkGetDeviceQueue(
-        device.logical_device,
-        device.compute_queue_index,
-        0,
-        &device.compute_queue);
+    vkGetDeviceQueue(device.logical_device, device.transfer_queue_index, 0, &device.transfer_queue);
+    vkGetDeviceQueue(device.logical_device, device.compute_queue_index, 0, &device.compute_queue);
     LOG_DEBUG("Queues obtained.");
 
     return true;

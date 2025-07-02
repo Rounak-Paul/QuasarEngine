@@ -1,5 +1,6 @@
 #include "Renderer.h"
-#include "VulkanInit.h"
+#include "VulkanInitInfo.h"
+#include "VulkanImage.h"
 
 namespace Quasar {
 
@@ -131,7 +132,7 @@ b8 Renderer::init(const std::string& name, const Window& window)
     Extent2D extent = window.get_extent();
     vulkan_swapchain_create(_device, _surface, extent.width, extent.height, _swapchain);
 
-    // commands
+    // Commands
     // create a command pool for commands submitted to the graphics queue.
 	// we also want the pool to allow for resetting of individual command buffers
 	VkCommandPoolCreateInfo command_pool_info = command_pool_create_info(_device.graphics_queue_index, VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);
@@ -145,17 +146,107 @@ b8 Renderer::init(const std::string& name, const Window& window)
 		VK_CHECK(vkAllocateCommandBuffers(_device.logical_device, &cmd_alloc_info, &_frames[i].main_command_buffer));
 	}
 
+    // Sync objects
+    //one fence to control when the gpu has finished rendering the frame,
+	//and 2 semaphores to syncronize rendering with swapchain
+	//we want the fence to start signalled so we can wait on it on the first frame
+	VkFenceCreateInfo fence_info = fence_create_info(VK_FENCE_CREATE_SIGNALED_BIT);
+	VkSemaphoreCreateInfo semaphore_info = semaphore_create_info();
+
+	for (int i = 0; i < FRAME_OVERLAP; i++) {
+		VK_CHECK(vkCreateFence(_device.logical_device, &fence_info, nullptr, &_frames[i].render_fence));
+
+		VK_CHECK(vkCreateSemaphore(_device.logical_device, &semaphore_info, nullptr, &_frames[i].swapchain_semaphore));
+		VK_CHECK(vkCreateSemaphore(_device.logical_device, &semaphore_info, nullptr, &_frames[i].render_semaphore));
+	}
+
     return true;
 }
 
 b8 Renderer::begin_frame()
 {
+    // wait until the gpu has finished rendering the last frame. Timeout of 1 second
+	VK_CHECK(vkWaitForFences(_device.logical_device, 1, &get_current_frame().render_fence, true, 1000000000));
+	VK_CHECK(vkResetFences(_device.logical_device, 1, &get_current_frame().render_fence));
+
+    //request image from the swapchain
+	uint32_t swapchain_image_index;
+	VK_CHECK(vkAcquireNextImageKHR(_device.logical_device, _swapchain.handle, 1000000000, get_current_frame().swapchain_semaphore, nullptr, &_frame_number));
+
+	VkCommandBuffer cmd = get_current_frame().main_command_buffer;
+
+	// now that we are sure that the commands finished executing, we can safely reset the command buffer to begin recording again.
+	VK_CHECK(vkResetCommandBuffer(cmd, 0));
+
+	//begin the command buffer recording.
+	VkCommandBufferBeginInfo cmdBeginInfo = command_buffer_begin_info(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
+
+	//start the command buffer recording
+	VK_CHECK(vkBeginCommandBuffer(cmd, &cmdBeginInfo));
+
+    //make the swapchain image into writeable mode before rendering
+	transition_image(cmd, _swapchain.images[swapchain_image_index], VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
+
+	//make a clear-color from frame number. This will flash with a 120 frame period.
+	VkClearColorValue clearValue;
+	float flash = std::abs(std::sin(_frame_number / 120.f));
+	clearValue = { { 0.0f, 0.0f, flash, 1.0f } };
+
+	VkImageSubresourceRange clearRange = image_subresource_range(VK_IMAGE_ASPECT_COLOR_BIT);
+
+	//clear image
+	vkCmdClearColorImage(cmd, _swapchain.images[swapchain_image_index], VK_IMAGE_LAYOUT_GENERAL, &clearValue, 1, &clearRange);
+
+	//make the swapchain image into presentable mode
+	transition_image(cmd, _swapchain.images[swapchain_image_index], VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
+
+    // TODO:
+
+    //prepare the submission to the queue. 
+	//we want to wait on the _presentSemaphore, as that semaphore is signaled when the swapchain is ready
+	//we will signal the _renderSemaphore, to signal that rendering has finished
+
+    // VkCommandBuffer cmd = get_current_frame().main_command_buffer;
+    //finalize the command buffer 
+	VK_CHECK(vkEndCommandBuffer(cmd));
+
+	VkCommandBufferSubmitInfo cmdinfo = command_buffer_submit_info(cmd);	
+	
+	VkSemaphoreSubmitInfo waitInfo = semaphore_submit_info(VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT_KHR,get_current_frame().swapchain_semaphore);
+	VkSemaphoreSubmitInfo signalInfo = semaphore_submit_info(VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT, get_current_frame().render_semaphore);	
+	
+	VkSubmitInfo2 submit = submit_info(&cmdinfo,&signalInfo,&waitInfo);	
+
+	//submit command buffer to the queue and execute it.
+	// _renderFence will now block until the graphic commands finish execution
+	VK_CHECK(vkQueueSubmit2(_device.graphics_queue, 1, &submit, get_current_frame().render_fence));
+    
+    //prepare present
+	// this will put the image we just rendered to into the visible window.
+	// we want to wait on the _renderSemaphore for that, 
+	// as its necessary that drawing commands have finished before the image is displayed to the user
+	VkPresentInfoKHR presentInfo = {};
+	presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+	presentInfo.pNext = nullptr;
+	presentInfo.pSwapchains = &_swapchain.handle;
+	presentInfo.swapchainCount = 1;
+
+	presentInfo.pWaitSemaphores = &get_current_frame().render_semaphore;
+	presentInfo.waitSemaphoreCount = 1;
+
+	presentInfo.pImageIndices = &swapchain_image_index;
+
+	VK_CHECK(vkQueuePresentKHR(_device.graphics_queue, &presentInfo));
+
+	//increase the number of frames drawn
+	_frame_number++;
+
     return true;
 }
 
 void Renderer::end_frame()
 {
-    // TODO: Implement frame end logic
+    
 }
 
 void Renderer::shutdown()
@@ -166,8 +257,13 @@ void Renderer::shutdown()
     }
 
     for (int i = 0; i < FRAME_OVERLAP; i++) {
-        vkDestroyCommandPool(_device.logical_device, _frames[i].command_pool, nullptr);
-    }
+		vkDestroyCommandPool(_device.logical_device, _frames[i].command_pool, nullptr);
+
+		//destroy sync objects
+		vkDestroyFence(_device.logical_device, _frames[i].render_fence, nullptr);
+		vkDestroySemaphore(_device.logical_device, _frames[i].render_semaphore, nullptr);
+		vkDestroySemaphore(_device.logical_device, _frames[i].swapchain_semaphore, nullptr);
+	}
 
     vulkan_swapchain_destroy(_device, _swapchain);
 
