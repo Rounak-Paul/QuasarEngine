@@ -587,17 +587,6 @@ b8 vulkan_device_create(VkInstance instance, VkSurfaceKHR surface, VulkanDevice&
         &device.compute_queue);
     LOG_DEBUG("Queues obtained.");
 
-    // Create command pool for graphics queue.
-    VkCommandPoolCreateInfo pool_create_info = {VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO};
-    pool_create_info.queueFamilyIndex = device.graphics_queue_index;
-    pool_create_info.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
-    VK_CHECK(vkCreateCommandPool(
-        device.logical_device,
-        &pool_create_info,
-        nullptr,
-        &device.graphics_command_pool));
-    LOG_DEBUG("Graphics command pool created.");
-
     return true;
 }
 
@@ -612,23 +601,11 @@ void vulkan_device_destroy(VkInstance instance, VulkanDevice &device)
         return;
     }
 
-    // Destroy command pool FIRST and MOST IMPORTANT
-    if (device.graphics_command_pool != VK_NULL_HANDLE) {
-        LOG_DEBUG("Destroying graphics command pool (handle: {})...", (unsigned long long)device.graphics_command_pool);
-        vkDestroyCommandPool(
-            device.logical_device,
-            device.graphics_command_pool,
-            nullptr);
-        device.graphics_command_pool = VK_NULL_HANDLE;
-        LOG_DEBUG("Graphics command pool destroyed successfully.");
-    } else {
-        LOG_WARN("Graphics command pool is null, nothing to destroy.");
-    }
-
     // Clear queue handles (these are not destroyed, just unset)
     device.graphics_queue = VK_NULL_HANDLE;
     device.present_queue = VK_NULL_HANDLE;
     device.transfer_queue = VK_NULL_HANDLE;
+    device.compute_queue = VK_NULL_HANDLE;
 
     // Destroy logical device
     if (device.logical_device != VK_NULL_HANDLE) {
