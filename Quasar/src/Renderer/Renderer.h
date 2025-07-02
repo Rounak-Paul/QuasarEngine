@@ -46,5 +46,17 @@ namespace Quasar
         //draw resources
         VulkanImage _draw_image;
         VkExtent2D _draw_extent;
+
+        b8 initialize_validation_layers();
+        void fetch_api_version();
+        b8 create_instance(const std::string& name);
+        void setup_debug_messenger();
+        b8 create_surface(const Window& window);
+        b8 create_device();
+        b8 create_swapchain(const Window& window);
+        b8 create_allocator();
+        b8 create_draw_image(const Window& window);
+        b8 create_command_buffers();
+        b8 create_sync_objects();
     };
 } // namespace Quasar::Renderer

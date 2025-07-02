@@ -26,165 +26,22 @@ static VkResult create_debug_utils_messenger_ext(
     VkDebugUtilsMessengerEXT* pDebugMessenger);
 static b8 platform_create_vulkan_surface(VkInstance instance, const Window& window, VkSurfaceKHR* surface);
 
-b8 Renderer::init(const std::string& name, const Window& window)
-{
-    // Validate layers if validation is enabled
-    if (_validation_enabled && !check_validation_layer_support()) {
-        LOG_ERROR("validation layers requested but not available");
-        return false;
-    }
+b8 Renderer::init(const std::string& name, const Window& window) {
+    if (!initialize_validation_layers()) return false;
+    fetch_api_version();
 
-    // Get API version
-    u32 api_version = 0;
-    vkEnumerateInstanceVersion(&api_version);
-    _api_major = VK_VERSION_MAJOR(api_version);
-    _api_minor = VK_VERSION_MINOR(api_version);
-    _api_patch = VK_VERSION_PATCH(api_version);
+    if (!create_instance(name)) return false;
+    setup_debug_messenger();
 
-    // Application info
-    VkApplicationInfo app_info = {VK_STRUCTURE_TYPE_APPLICATION_INFO};
-    app_info.pApplicationName = name.c_str();
-    app_info.applicationVersion = VK_MAKE_API_VERSION(0, 1, 3, 0);
-    app_info.pEngineName = "Quasar Engine";
-    app_info.engineVersion = VK_MAKE_API_VERSION(0, 1, 3, 0);
-    app_info.apiVersion = VK_MAKE_API_VERSION(0, _api_major, _api_minor, _api_patch);
-
-    // Get required extensions
-    auto extensions = get_required_extensions();
+    if (!create_surface(window)) return false;
+    if (!create_device()) return false;
     
-    // Instance create info
-    VkInstanceCreateInfo create_info = {VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO};
-    create_info.pApplicationInfo = &app_info;
-    
-    #ifdef QS_PLATFORM_APPLE
-    create_info.flags |= VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR;
-    #endif
-    
-    create_info.enabledExtensionCount = static_cast<u32>(extensions.size());
-    create_info.ppEnabledExtensionNames = extensions.data();
+    if (!create_swapchain(window)) return false;
+    if (!create_allocator()) return false;
 
-    // Setup validation layers and debug messenger
-    VkDebugUtilsMessengerCreateInfoEXT debug_create_info{};
-    if (_validation_enabled) {
-        create_info.enabledLayerCount = static_cast<u32>(validation_layers.size());
-        create_info.ppEnabledLayerNames = validation_layers.data();
-
-        // Setup debug messenger for instance creation/destruction
-        populate_debug_messenger_create_info(debug_create_info);
-        create_info.pNext = &debug_create_info;
-    } else {
-        create_info.enabledLayerCount = 0;
-        create_info.pNext = nullptr;
-    }
-
-    // Create instance
-    VkResult result = vkCreateInstance(&create_info, nullptr, &_instance);
-    if (result != VK_SUCCESS) {
-        LOG_FATAL("Failed to create vulkan instance!");
-        return false;
-    }
-
-    // Setup debug messenger
-    if (_validation_enabled) {
-        if (create_debug_utils_messenger_ext(_instance, &debug_create_info, nullptr, &_debug_messenger) != VK_SUCCESS) {
-            LOG_WARN("Failed to create vulkan debug messenger! Validation errors may be ommited.");
-        }
-    }
-
-    // Surface
-    if (!platform_create_vulkan_surface(_instance, window, &_surface)) {
-        LOG_FATAL("Failed to create primary surface for drawing!");
-        return false;
-    }
-
-    // Device creation
-    if (!vulkan_device_create(_instance, _surface, _device)) {
-        LOG_ERROR("Failed to create device!");
-        return false;
-    }
-
-    Extent2D extent = window.get_extent();
-    vulkan_swapchain_create(_device, _surface, extent.width, extent.height, _swapchain);
-
-    // initialize the memory allocator
-    VmaAllocatorCreateInfo allocatorInfo = {};
-    allocatorInfo.physicalDevice = _device.physical_device;
-    allocatorInfo.device = _device.logical_device;
-    allocatorInfo.instance = _instance;
-    // allocatorInfo.flags = VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT;
-    allocatorInfo.flags = 0;
-    vmaCreateAllocator(&allocatorInfo, &_allocator);
-
-    _main_deletion_queue.push_function([&]() {
-        vmaDestroyAllocator(_allocator);
-    });
-
-    // Offscreen render image
-    //draw image size will match the window
-	VkExtent3D drawImageExtent = {
-		extent.width,
-		extent.height,
-		1
-	};
-
-	//hardcoding the draw format to 32 bit float
-	_draw_image.imageFormat = VK_FORMAT_R16G16B16A16_SFLOAT;
-	_draw_image.imageExtent = drawImageExtent;
-
-	VkImageUsageFlags drawImageUsages{};
-	drawImageUsages |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
-	drawImageUsages |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;
-	drawImageUsages |= VK_IMAGE_USAGE_STORAGE_BIT;
-	drawImageUsages |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
-
-	VkImageCreateInfo rimg_info = image_create_info(_draw_image.imageFormat, drawImageUsages, drawImageExtent);
-
-	//for the draw image, we want to allocate it from gpu local memory
-	VmaAllocationCreateInfo rimg_allocinfo = {};
-	rimg_allocinfo.usage = VMA_MEMORY_USAGE_GPU_ONLY;
-	rimg_allocinfo.requiredFlags = VkMemoryPropertyFlags(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-
-	//allocate and create the image
-	vmaCreateImage(_allocator, &rimg_info, &rimg_allocinfo, &_draw_image.image, &_draw_image.allocation, nullptr);
-
-	//build a image-view for the draw image to use for rendering
-	VkImageViewCreateInfo rview_info = imageview_create_info(_draw_image.imageFormat, _draw_image.image, VK_IMAGE_ASPECT_COLOR_BIT);
-
-	VK_CHECK(vkCreateImageView(_device.logical_device, &rview_info, nullptr, &_draw_image.imageView));
-
-	//add to deletion queues
-	_main_deletion_queue.push_function([=, this]() {
-		vkDestroyImageView(_device.logical_device, _draw_image.imageView, nullptr);
-		vmaDestroyImage(_allocator, _draw_image.image, _draw_image.allocation);
-	});
-
-    // Commands
-    // create a command pool for commands submitted to the graphics queue.
-	// we also want the pool to allow for resetting of individual command buffers
-	VkCommandPoolCreateInfo command_pool_info = command_pool_create_info(_device.graphics_queue_index, VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);
-
-	for (int i = 0; i < FRAME_OVERLAP; i++) {
-		VK_CHECK(vkCreateCommandPool(_device.logical_device, &command_pool_info, nullptr, &_frames[i].command_pool));
-
-		// allocate the default command buffer that we will use for rendering
-		VkCommandBufferAllocateInfo cmd_alloc_info = command_buffer_allocate_info(_frames[i].command_pool, 1);
-
-		VK_CHECK(vkAllocateCommandBuffers(_device.logical_device, &cmd_alloc_info, &_frames[i].main_command_buffer));
-	}
-
-    // Sync objects
-    //one fence to control when the gpu has finished rendering the frame,
-	//and 2 semaphores to syncronize rendering with swapchain
-	//we want the fence to start signalled so we can wait on it on the first frame
-	VkFenceCreateInfo fence_info = fence_create_info(VK_FENCE_CREATE_SIGNALED_BIT);
-	VkSemaphoreCreateInfo semaphore_info = semaphore_create_info();
-
-	for (int i = 0; i < FRAME_OVERLAP; i++) {
-		VK_CHECK(vkCreateFence(_device.logical_device, &fence_info, nullptr, &_frames[i].render_fence));
-
-		VK_CHECK(vkCreateSemaphore(_device.logical_device, &semaphore_info, nullptr, &_frames[i].swapchain_semaphore));
-		VK_CHECK(vkCreateSemaphore(_device.logical_device, &semaphore_info, nullptr, &_frames[i].render_semaphore));
-	}
+    if (!create_draw_image(window)) return false;
+    if (!create_command_buffers()) return false;
+    if (!create_sync_objects()) return false;
 
     return true;
 }
@@ -457,6 +314,167 @@ static b8 platform_create_vulkan_surface(VkInstance instance, const Window& wind
         LOG_ERROR("Surface creation failed");
         return false;
     }
+    return true;
+}
+
+b8 Renderer::initialize_validation_layers() {
+    if (_validation_enabled && !check_validation_layer_support()) {
+        LOG_ERROR("validation layers requested but not available");
+        return false;
+    }
+    return true;
+}
+
+void Renderer::fetch_api_version() {
+    u32 api_version = 0;
+    vkEnumerateInstanceVersion(&api_version);
+    _api_major = VK_VERSION_MAJOR(api_version);
+    _api_minor = VK_VERSION_MINOR(api_version);
+    _api_patch = VK_VERSION_PATCH(api_version);
+}
+
+b8 Renderer::create_instance(const std::string& name) {
+    VkApplicationInfo app_info = {VK_STRUCTURE_TYPE_APPLICATION_INFO};
+    app_info.pApplicationName = name.c_str();
+    app_info.applicationVersion = VK_MAKE_API_VERSION(0, 1, 3, 0);
+    app_info.pEngineName = "Quasar Engine";
+    app_info.engineVersion = VK_MAKE_API_VERSION(0, 1, 3, 0);
+    app_info.apiVersion = VK_MAKE_API_VERSION(0, _api_major, _api_minor, _api_patch);
+
+    auto extensions = get_required_extensions();
+
+    VkInstanceCreateInfo create_info = {VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO};
+    create_info.pApplicationInfo = &app_info;
+#ifdef QS_PLATFORM_APPLE
+    create_info.flags |= VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR;
+#endif
+    create_info.enabledExtensionCount = static_cast<u32>(extensions.size());
+    create_info.ppEnabledExtensionNames = extensions.data();
+
+    VkDebugUtilsMessengerCreateInfoEXT debug_create_info{};
+    if (_validation_enabled) {
+        create_info.enabledLayerCount = static_cast<u32>(validation_layers.size());
+        create_info.ppEnabledLayerNames = validation_layers.data();
+        populate_debug_messenger_create_info(debug_create_info);
+        create_info.pNext = &debug_create_info;
+    } else {
+        create_info.enabledLayerCount = 0;
+        create_info.pNext = nullptr;
+    }
+
+    if (vkCreateInstance(&create_info, nullptr, &_instance) != VK_SUCCESS) {
+        LOG_FATAL("Failed to create vulkan instance!");
+        return false;
+    }
+
+    return true;
+}
+
+void Renderer::setup_debug_messenger() {
+    if (_validation_enabled) {
+        VkDebugUtilsMessengerCreateInfoEXT debug_create_info{};
+        populate_debug_messenger_create_info(debug_create_info);
+        if (create_debug_utils_messenger_ext(_instance, &debug_create_info, nullptr, &_debug_messenger) != VK_SUCCESS) {
+            LOG_WARN("Failed to create vulkan debug messenger! Validation errors may be omitted.");
+        }
+    }
+}
+
+b8 Renderer::create_surface(const Window& window) {
+    if (!platform_create_vulkan_surface(_instance, window, &_surface)) {
+        LOG_FATAL("Failed to create primary surface for drawing!");
+        return false;
+    }
+    return true;
+}
+
+b8 Renderer::create_device() {
+    if (!vulkan_device_create(_instance, _surface, _device)) {
+        LOG_ERROR("Failed to create device!");
+        return false;
+    }
+    return true;
+}
+
+b8 Renderer::create_swapchain(const Window& window) {
+    Extent2D extent = window.get_extent();
+    vulkan_swapchain_create(_device, _surface, extent.width, extent.height, _swapchain);
+    return true;
+}
+
+b8 Renderer::create_allocator() {
+    VmaAllocatorCreateInfo allocatorInfo = {};
+    allocatorInfo.physicalDevice = _device.physical_device;
+    allocatorInfo.device = _device.logical_device;
+    allocatorInfo.instance = _instance;
+    allocatorInfo.flags = 0;
+
+    if (vmaCreateAllocator(&allocatorInfo, &_allocator) != VK_SUCCESS) {
+        LOG_ERROR("Failed to create memory allocator!");
+        return false;
+    }
+
+    _main_deletion_queue.push_function([&]() {
+        vmaDestroyAllocator(_allocator);
+    });
+
+    return true;
+}
+
+b8 Renderer::create_draw_image(const Window& window) {
+    Extent2D extent = window.get_extent();
+    VkExtent3D drawImageExtent = { extent.width, extent.height, 1 };
+
+    _draw_image.imageFormat = VK_FORMAT_R16G16B16A16_SFLOAT;
+    _draw_image.imageExtent = drawImageExtent;
+
+    VkImageUsageFlags usage = VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT |
+                                VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+
+    VkImageCreateInfo image_info = image_create_info(_draw_image.imageFormat, usage, drawImageExtent);
+    VmaAllocationCreateInfo alloc_info = {};
+    alloc_info.usage = VMA_MEMORY_USAGE_GPU_ONLY;
+    alloc_info.requiredFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+
+    vmaCreateImage(_allocator, &image_info, &alloc_info, &_draw_image.image, &_draw_image.allocation, nullptr);
+
+    VkImageViewCreateInfo view_info = imageview_create_info(_draw_image.imageFormat, _draw_image.image, VK_IMAGE_ASPECT_COLOR_BIT);
+    VK_CHECK(vkCreateImageView(_device.logical_device, &view_info, nullptr, &_draw_image.imageView));
+
+    _main_deletion_queue.push_function([=, this]() {
+        vkDestroyImageView(_device.logical_device, _draw_image.imageView, nullptr);
+        vmaDestroyImage(_allocator, _draw_image.image, _draw_image.allocation);
+    });
+
+    return true;
+}
+
+b8 Renderer::create_command_buffers() {
+    VkCommandPoolCreateInfo pool_info = command_pool_create_info(
+        _device.graphics_queue_index,
+        VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT
+    );
+
+    for (int i = 0; i < FRAME_OVERLAP; i++) {
+        VK_CHECK(vkCreateCommandPool(_device.logical_device, &pool_info, nullptr, &_frames[i].command_pool));
+
+        VkCommandBufferAllocateInfo cmd_info = command_buffer_allocate_info(_frames[i].command_pool, 1);
+        VK_CHECK(vkAllocateCommandBuffers(_device.logical_device, &cmd_info, &_frames[i].main_command_buffer));
+    }
+
+    return true;
+}
+
+b8 Renderer::create_sync_objects() {
+    VkFenceCreateInfo fence_info = fence_create_info(VK_FENCE_CREATE_SIGNALED_BIT);
+    VkSemaphoreCreateInfo semaphore_info = semaphore_create_info();
+
+    for (int i = 0; i < FRAME_OVERLAP; i++) {
+        VK_CHECK(vkCreateFence(_device.logical_device, &fence_info, nullptr, &_frames[i].render_fence));
+        VK_CHECK(vkCreateSemaphore(_device.logical_device, &semaphore_info, nullptr, &_frames[i].swapchain_semaphore));
+        VK_CHECK(vkCreateSemaphore(_device.logical_device, &semaphore_info, nullptr, &_frames[i].render_semaphore));
+    }
+
     return true;
 }
 } // namespace Quasar
