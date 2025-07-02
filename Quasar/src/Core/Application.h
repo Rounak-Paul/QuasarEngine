@@ -16,17 +16,20 @@ namespace Quasar
     {
     public:
         Application(app_create_info info);
-        ~Application();
+        ~Application() = default;
 
         Application(const Application&) = delete;
 		Application& operator=(const Application&) = delete;
 
+        b8 init();
         void run();
+        void shutdown();
     
     private:
         static Application* _instance;
         b8 _running = true;
         b8 _suspended = false;
+        app_create_info create_info;
 
         Window _window;
         Renderer _renderer;

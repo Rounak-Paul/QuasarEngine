@@ -3,13 +3,17 @@
 namespace Quasar
 {
 Application::Application(app_create_info info) {
-    if (!_window.create(info.width, info.height, info.app_name.c_str())) {
-
-    }
-    _renderer.init(info.app_name, _window);
+    create_info = info;
 }
 
-Application::~Application() {
+b8 Application::init() {
+    if (!_window.create(create_info.width, create_info.height, create_info.app_name.c_str())) {
+
+    }
+    _renderer.init(create_info.app_name, _window);
+}
+
+void Application::shutdown() {
     _renderer.shutdown();
     _window.destroy();
 }

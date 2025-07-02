@@ -146,17 +146,6 @@ void Renderer::shutdown()
     if (_device.logical_device != VK_NULL_HANDLE) {
         vkDeviceWaitIdle(_device.logical_device);
     }
-    
-    if (_device.logical_device != VK_NULL_HANDLE) {
-        vulkan_device_destroy(_instance, _device);
-        _device.logical_device = VK_NULL_HANDLE;
-    }
-
-    // Destroy surface
-    if (_surface != VK_NULL_HANDLE) {
-        vkDestroySurfaceKHR(_instance, _surface, nullptr);
-        _surface = VK_NULL_HANDLE;
-    }
 
     if (_validation_enabled && _debug_messenger != VK_NULL_HANDLE) {
         auto destroy_func = (PFN_vkDestroyDebugUtilsMessengerEXT) 
@@ -166,12 +155,22 @@ void Renderer::shutdown()
             _debug_messenger = VK_NULL_HANDLE;
         }
     }
-    
-    // Destroy instance (must be last)
-    if (_instance != VK_NULL_HANDLE) {
-        vkDestroyInstance(_instance, nullptr);
-        _instance = VK_NULL_HANDLE;
+
+    // Destroy surface
+    if (_surface != VK_NULL_HANDLE) {
+        vkDestroySurfaceKHR(_instance, _surface, nullptr);
+        _surface = VK_NULL_HANDLE;
     }
+    
+    if (_device.logical_device != VK_NULL_HANDLE) {
+        vulkan_device_destroy(_instance, _device);
+        _device.logical_device = VK_NULL_HANDLE;
+    }
+    
+    // if (_instance != VK_NULL_HANDLE) {
+    //     vkDestroyInstance(_instance, nullptr);
+    //     _instance = VK_NULL_HANDLE;
+    // }
     
     // Reset API version info
     _api_major = 0;
