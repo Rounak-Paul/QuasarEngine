@@ -22,7 +22,9 @@ typedef enum VulkanDeviceSupportFlagsBits {
 
     /** @brief Indicates if this device supports dynamic state. If not, the renderer will need to generate a separate pipeline per topology type. */
     VULKAN_DEVICE_SUPPORT_FLAG_DYNAMIC_STATE_BIT = 0x02,
-    VULKAN_DEVICE_SUPPORT_FLAG_LINE_SMOOTH_RASTERISATION_BIT = 0x04
+    VULKAN_DEVICE_SUPPORT_FLAG_LINE_SMOOTH_RASTERISATION_BIT = 0x04,
+    VULKAN_DEVICE_SUPPORT_FLAG_SYNCRONIZATION2_BIT = 0x08,
+    VULKAN_DEVICE_SUPPORT_FLAG_NATIVE_SYNCRONIZATION2_BIT = 0x10
 } VulkanDeviceSupportFlagsBits;
 
 typedef struct VulkanDevice {
@@ -55,6 +57,21 @@ typedef struct VulkanDevice {
 
     /** @brief Indicates support for various features. */
     VulkanDeviceSupportFlags support_flags;
+
+    PFN_vkCmdSetPrimitiveTopologyEXT vkCmdSetPrimitiveTopologyEXT;
+    PFN_vkCmdSetFrontFaceEXT vkCmdSetFrontFaceEXT;
+    PFN_vkCmdSetStencilTestEnableEXT vkCmdSetStencilTestEnableEXT;
+    PFN_vkCmdSetDepthTestEnableEXT vkCmdSetDepthTestEnableEXT;
+    PFN_vkCmdSetDepthWriteEnableEXT vkCmdSetDepthWriteEnableEXT;
+    PFN_vkCmdSetStencilOpEXT vkCmdSetStencilOpEXT;
+    PFN_vkCmdBeginRenderingKHR vkCmdBeginRenderingKHR;
+    PFN_vkCmdEndRenderingKHR vkCmdEndRenderingKHR;
+    PFN_vkCmdPipelineBarrier2KHR vkCmdPipelineBarrier2KHR;
+    PFN_vkCmdWriteTimestamp2KHR vkCmdWriteTimestamp2KHR;
+    PFN_vkQueueSubmit2KHR vkQueueSubmit2KHR;
+    PFN_vkCmdWaitEvents2KHR vkCmdWaitEvents2KHR;
+    PFN_vkCmdSetEvent2KHR vkCmdSetEvent2KHR;
+    PFN_vkCmdResetEvent2KHR vkCmdResetEvent2KHR;
 } VulkanDevice;
 
 b8 vulkan_device_create(VkInstance instance, VkSurfaceKHR surface, VulkanDevice& device);

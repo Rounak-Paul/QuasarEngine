@@ -38,14 +38,5 @@ namespace Quasar
         VulkanDevice _device;
         VkSurfaceKHR _surface;
         VulkanSwapchain _swapchain;
-
-        PFN_vkCmdSetPrimitiveTopologyEXT vkCmdSetPrimitiveTopologyEXT;
-        PFN_vkCmdSetFrontFaceEXT vkCmdSetFrontFaceEXT;
-        PFN_vkCmdSetStencilTestEnableEXT vkCmdSetStencilTestEnableEXT;
-        PFN_vkCmdSetDepthTestEnableEXT vkCmdSetDepthTestEnableEXT;
-        PFN_vkCmdSetDepthWriteEnableEXT vkCmdSetDepthWriteEnableEXT;
-        PFN_vkCmdSetStencilOpEXT vkCmdSetStencilOpEXT;
-        PFN_vkCmdBeginRenderingKHR vkCmdBeginRenderingKHR;
-        PFN_vkCmdEndRenderingKHR vkCmdEndRenderingKHR;
     };
 } // namespace Quasar::Renderer

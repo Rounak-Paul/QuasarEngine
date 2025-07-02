@@ -3,7 +3,7 @@
 
 namespace Quasar
 {
-void transition_image(VkCommandBuffer cmd, VkImage image, VkImageLayout currentLayout, VkImageLayout newLayout)
+void transition_image(VulkanDevice& device, VkCommandBuffer cmd, VkImage image, VkImageLayout currentLayout, VkImageLayout newLayout)
 {
     VkImageMemoryBarrier2 imageBarrier {.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2};
     imageBarrier.pNext = nullptr;
@@ -27,7 +27,12 @@ void transition_image(VkCommandBuffer cmd, VkImage image, VkImageLayout currentL
     depInfo.imageMemoryBarrierCount = 1;
     depInfo.pImageMemoryBarriers = &imageBarrier;
 
-    vkCmdPipelineBarrier2(cmd, &depInfo);
+    if (device.support_flags & VULKAN_DEVICE_SUPPORT_FLAG_NATIVE_SYNCRONIZATION2_BIT) {
+        vkCmdPipelineBarrier2(cmd, &depInfo);
+    }
+    else if (device.support_flags & VULKAN_DEVICE_SUPPORT_FLAG_SYNCRONIZATION2_BIT) {
+        device.vkCmdPipelineBarrier2KHR(cmd, &depInfo);
+    } 
 }
 
 } // namespace Quasar

@@ -56,6 +56,9 @@ static b8 select_physical_device(VkInstance instance, VkSurfaceKHR surface, b8 d
         // Check for smooth line rasterisation support via extension.
         VkPhysicalDeviceLineRasterizationFeaturesEXT smooth_line_next = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_LINE_RASTERIZATION_FEATURES_EXT};
         dynamic_state_next.pNext = &smooth_line_next;
+        // Check for synchronization2 support via extension.
+        VkPhysicalDeviceSynchronization2Features sync2_next = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES};
+        smooth_line_next.pNext = &sync2_next;
         // Perform the query.
         vkGetPhysicalDeviceFeatures2(physical_devices[i], &features2);
 
@@ -167,6 +170,7 @@ static b8 select_physical_device(VkInstance instance, VkSurfaceKHR surface, b8 d
             // The device may or may not support dynamic state, so save that here.
             if (device.api_major >= 1 && device.api_minor > 2) {
                 device.support_flags |= VULKAN_DEVICE_SUPPORT_FLAG_NATIVE_DYNAMIC_STATE_BIT;
+                device.support_flags |= VULKAN_DEVICE_SUPPORT_FLAG_NATIVE_SYNCRONIZATION2_BIT;
             }
             // If not supported natively, it might be supported via extension.
             if (dynamic_state_next.extendedDynamicState) {
@@ -175,6 +179,10 @@ static b8 select_physical_device(VkInstance instance, VkSurfaceKHR surface, b8 d
             // Check for smooth line rasterization support.
             if (smooth_line_next.smoothLines) {
                 device.support_flags |= VULKAN_DEVICE_SUPPORT_FLAG_LINE_SMOOTH_RASTERISATION_BIT;
+            }
+            // Check for synchronization2 support.
+            if (sync2_next.synchronization2) {
+                device.support_flags |= VULKAN_DEVICE_SUPPORT_FLAG_SYNCRONIZATION2_BIT;
             }
             
             break;
@@ -473,9 +481,13 @@ b8 vulkan_device_create(VkInstance instance, VkSurfaceKHR surface, VulkanDevice&
 
     std::vector<const char*> extension_names = {
         VK_KHR_SWAPCHAIN_EXTENSION_NAME,
-        VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME,
-        "VK_KHR_synchronization2"
+        VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME
     };
+
+    // Add sync2 extension if supported but not native
+    if (device.support_flags & VULKAN_DEVICE_SUPPORT_FLAG_SYNCRONIZATION2_BIT) {
+        extension_names.push_back("VK_KHR_synchronization2");
+    }
 
 #ifdef QS_PLATFORM_APPLE
     extension_names.push_back("VK_KHR_portability_subset");
@@ -545,6 +557,44 @@ b8 vulkan_device_create(VkInstance instance, VkSurfaceKHR surface, VulkanDevice&
     vkGetDeviceQueue(device.logical_device, device.transfer_queue_index, 0, &device.transfer_queue);
     vkGetDeviceQueue(device.logical_device, device.compute_queue_index, 0, &device.compute_queue);
     LOG_DEBUG("Queues obtained.");
+
+    // Examine dynamic state support and load function pointer if need be.
+    if (
+        !(device.support_flags & VULKAN_DEVICE_SUPPORT_FLAG_NATIVE_DYNAMIC_STATE_BIT) &&
+        (device.support_flags & VULKAN_DEVICE_SUPPORT_FLAG_DYNAMIC_STATE_BIT)) {
+        LOG_DEBUG("Vulkan device doesn't support native dynamic state, but does via extension. Using extension.");
+        // Dynamic primitive topology.
+        device.vkCmdSetPrimitiveTopologyEXT = (PFN_vkCmdSetPrimitiveTopologyEXT)vkGetDeviceProcAddr(device.logical_device, "vkCmdSetPrimitiveTopologyEXT");
+        // Dynamic front-face
+        device.vkCmdSetFrontFaceEXT = (PFN_vkCmdSetFrontFaceEXT)vkGetDeviceProcAddr(device.logical_device, "vkCmdSetFrontFaceEXT");
+        // Dynamic depth/stencil state
+        device.vkCmdSetStencilOpEXT = (PFN_vkCmdSetStencilOpEXT)vkGetDeviceProcAddr(device.logical_device, "vkCmdSetStencilOpEXT");
+        device.vkCmdSetStencilTestEnableEXT = (PFN_vkCmdSetStencilTestEnableEXT)vkGetDeviceProcAddr(device.logical_device, "vkCmdSetStencilTestEnableEXT");
+        device.vkCmdSetDepthTestEnableEXT = (PFN_vkCmdSetDepthTestEnableEXT)vkGetDeviceProcAddr(device.logical_device, "vkCmdSetDepthTestEnableEXT");
+        device.vkCmdSetDepthWriteEnableEXT = (PFN_vkCmdSetDepthWriteEnableEXT)vkGetDeviceProcAddr(device.logical_device, "vkCmdSetDepthWriteEnableEXT");
+        // Dynamic rendering
+        device.vkCmdBeginRenderingKHR = (PFN_vkCmdBeginRenderingKHR)vkGetDeviceProcAddr(device.logical_device, "vkCmdBeginRenderingKHR");
+        device.vkCmdEndRenderingKHR = (PFN_vkCmdEndRenderingKHR)vkGetDeviceProcAddr(device.logical_device, "vkCmdEndRenderingKHR");
+    } else {
+        if (device.support_flags & VULKAN_DEVICE_SUPPORT_FLAG_NATIVE_DYNAMIC_STATE_BIT) {
+            LOG_DEBUG("Vulkan device supports native dynamic state.");
+        } else {
+            LOG_WARN("Vulkan device does not support native or extension dynamic state. This may cause issues with the renderer.");
+        }
+    }
+
+    // Load synchronization2 function pointers if supported
+    if (device.support_flags & VULKAN_DEVICE_SUPPORT_FLAG_SYNCRONIZATION2_BIT) {
+        LOG_DEBUG("Loading synchronization2 function pointers.");
+        device.vkCmdPipelineBarrier2KHR = (PFN_vkCmdPipelineBarrier2KHR)vkGetDeviceProcAddr(device.logical_device, "vkCmdPipelineBarrier2KHR");
+        device.vkCmdWriteTimestamp2KHR = (PFN_vkCmdWriteTimestamp2KHR)vkGetDeviceProcAddr(device.logical_device, "vkCmdWriteTimestamp2KHR");
+        device.vkQueueSubmit2KHR = (PFN_vkQueueSubmit2KHR)vkGetDeviceProcAddr(device.logical_device, "vkQueueSubmit2KHR");
+        device.vkCmdWaitEvents2KHR = (PFN_vkCmdWaitEvents2KHR)vkGetDeviceProcAddr(device.logical_device, "vkCmdWaitEvents2KHR");
+        device.vkCmdSetEvent2KHR = (PFN_vkCmdSetEvent2KHR)vkGetDeviceProcAddr(device.logical_device, "vkCmdSetEvent2KHR");
+        device.vkCmdResetEvent2KHR = (PFN_vkCmdResetEvent2KHR)vkGetDeviceProcAddr(device.logical_device, "vkCmdResetEvent2KHR");
+    } else {
+        LOG_DEBUG("Synchronization2 not supported, using legacy synchronization functions.");
+    }
 
     return true;
 }

@@ -101,34 +101,6 @@ b8 Renderer::init(const std::string& name, const Window& window)
         return false;
     }
 
-    // Examine dynamic state support and load function pointer if need be.
-    if (
-        !(_device.support_flags & VULKAN_DEVICE_SUPPORT_FLAG_NATIVE_DYNAMIC_STATE_BIT) &&
-        (_device.support_flags & VULKAN_DEVICE_SUPPORT_FLAG_DYNAMIC_STATE_BIT)) {
-        LOG_DEBUG("Vulkan device doesn't support native dynamic state, but does via extension. Using extension.");
-
-        // Dynamic primitive topology.
-        vkCmdSetPrimitiveTopologyEXT = (PFN_vkCmdSetPrimitiveTopologyEXT)vkGetInstanceProcAddr(_instance, "vkCmdSetPrimitiveTopologyEXT");
-
-        // Dynamic front-cace
-        vkCmdSetFrontFaceEXT = (PFN_vkCmdSetFrontFaceEXT)vkGetInstanceProcAddr(_instance, "vkCmdSetFrontFaceEXT");
-        // Dynamic depth/stencil state
-        vkCmdSetStencilOpEXT = (PFN_vkCmdSetStencilOpEXT)vkGetInstanceProcAddr(_instance, "vkCmdSetStencilOpEXT");
-        vkCmdSetStencilTestEnableEXT = (PFN_vkCmdSetStencilTestEnableEXT)vkGetInstanceProcAddr(_instance, "vkCmdSetStencilTestEnableEXT");
-        vkCmdSetDepthTestEnableEXT = (PFN_vkCmdSetDepthTestEnableEXT)vkGetInstanceProcAddr(_instance, "vkCmdSetDepthTestEnableEXT");
-        vkCmdSetDepthWriteEnableEXT = (PFN_vkCmdSetDepthWriteEnableEXT)vkGetInstanceProcAddr(_instance, "vkCmdSetDepthWriteEnableEXT");
-
-        // Dynamic rendering
-        vkCmdBeginRenderingKHR = (PFN_vkCmdBeginRenderingKHR)vkGetInstanceProcAddr(_instance, "vkCmdBeginRenderingKHR");
-        vkCmdEndRenderingKHR = (PFN_vkCmdEndRenderingKHR)vkGetInstanceProcAddr(_instance, "vkCmdEndRenderingKHR");
-    } else {
-        if (_device.support_flags & VULKAN_DEVICE_SUPPORT_FLAG_NATIVE_DYNAMIC_STATE_BIT) {
-            LOG_DEBUG("Vulkan device supports native dynamic state.");
-        } else {
-            LOG_WARN("Vulkan device does not support native or extension dynamic state. This may cause issues with the renderer.");
-        }
-    }
-
     Extent2D extent = window.get_extent();
     vulkan_swapchain_create(_device, _surface, extent.width, extent.height, _swapchain);
 
@@ -185,7 +157,7 @@ b8 Renderer::begin_frame()
 	VK_CHECK(vkBeginCommandBuffer(cmd, &cmdBeginInfo));
 
     //make the swapchain image into writeable mode before rendering
-	transition_image(cmd, _swapchain.images[swapchain_image_index], VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
+	transition_image(_device, cmd, _swapchain.images[swapchain_image_index], VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
 
 	//make a clear-color from frame number. This will flash with a 120 frame period.
 	VkClearColorValue clearValue;
@@ -198,7 +170,7 @@ b8 Renderer::begin_frame()
 	vkCmdClearColorImage(cmd, _swapchain.images[swapchain_image_index], VK_IMAGE_LAYOUT_GENERAL, &clearValue, 1, &clearRange);
 
 	//make the swapchain image into presentable mode
-	transition_image(cmd, _swapchain.images[swapchain_image_index], VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
+	transition_image(_device, cmd, _swapchain.images[swapchain_image_index], VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
 
     // TODO:
 
@@ -219,7 +191,12 @@ b8 Renderer::begin_frame()
 
 	//submit command buffer to the queue and execute it.
 	// _renderFence will now block until the graphic commands finish execution
-	VK_CHECK(vkQueueSubmit2(_device.graphics_queue, 1, &submit, get_current_frame().render_fence));
+    if (_device.support_flags & VULKAN_DEVICE_SUPPORT_FLAG_NATIVE_SYNCRONIZATION2_BIT) {
+        VK_CHECK(vkQueueSubmit2(_device.graphics_queue, 1, &submit, get_current_frame().render_fence));
+    }
+    else if (_device.support_flags & VULKAN_DEVICE_SUPPORT_FLAG_SYNCRONIZATION2_BIT) {
+        VK_CHECK(_device.vkQueueSubmit2KHR(_device.graphics_queue, 1, &submit, get_current_frame().render_fence));
+    } 
     
     //prepare present
 	// this will put the image we just rendered to into the visible window.
