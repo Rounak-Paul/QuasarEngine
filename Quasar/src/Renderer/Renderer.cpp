@@ -4,6 +4,8 @@
 #define VMA_IMPLEMENTATION
 #include "vk_mem_alloc.h"
 
+#include "VulkanPipeline.h"
+
 namespace Quasar {
 
 static const std::vector<const char*> validation_layers = {
@@ -44,6 +46,7 @@ b8 Renderer::init(const std::string& name, const Window& window) {
     if (!create_sync_objects()) return false;
 
     create_descriptors();
+    create_pipelines();
 
     return true;
 }
@@ -77,19 +80,19 @@ b8 Renderer::begin_frame()
     return true;
 }
 
-void Renderer::draw()
+void Renderer::draw_background()
 {
     VkCommandBuffer cmd = get_current_frame().main_command_buffer;
 
-    //make a clear-color from frame number. This will flash with a 120 frame period.
-	VkClearColorValue clearValue;
-	float flash = std::abs(std::sin(_frame_number / 120.f));
-	clearValue = { { 0.0f, 0.0f, flash, 1.0f } };
+    // bind the gradient drawing compute pipeline
+	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, _gradient_pipeline);
 
-	VkImageSubresourceRange clearRange = image_subresource_range(VK_IMAGE_ASPECT_COLOR_BIT);
+	// bind the descriptor set containing the draw image for the compute pipeline
+	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, _gradient_pipeline_layout, 0, 1, &_draw_image_descriptors, 0, nullptr);
 
-	//clear image
-	vkCmdClearColorImage(cmd, _draw_image.image, VK_IMAGE_LAYOUT_GENERAL, &clearValue, 1, &clearRange);
+	// execute the compute pipeline dispatch. We are using 16x16 workgroup size so we need to divide by it
+	vkCmdDispatch(cmd, std::ceil(_draw_extent.width / 16.0), std::ceil(_draw_extent.height / 16.0), 1);
+
 }
 
 void Renderer::end_frame()
@@ -521,5 +524,47 @@ void Renderer::create_descriptors()
 
 		vkDestroyDescriptorSetLayout(_device.logical_device, _draw_image_descriptor_layout, nullptr);
 	});
+}
+void Renderer::create_pipelines()
+{
+    create_background_pipelines();
+}
+void Renderer::create_background_pipelines()
+{
+    VkPipelineLayoutCreateInfo computeLayout{};
+	computeLayout.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+	computeLayout.pNext = nullptr;
+	computeLayout.pSetLayouts = &_draw_image_descriptor_layout;
+	computeLayout.setLayoutCount = 1;
+
+	VK_CHECK(vkCreatePipelineLayout(_device.logical_device, &computeLayout, nullptr, &_gradient_pipeline_layout));
+
+    VkShaderModule computeDrawShader;
+	if (!load_shader_module("../Assets/shaders/gradient.comp", _device.logical_device, &computeDrawShader))
+	{
+		LOG_ERROR("Error when building the compute shader");
+	}
+
+	VkPipelineShaderStageCreateInfo stageinfo{};
+	stageinfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+	stageinfo.pNext = nullptr;
+	stageinfo.stage = VK_SHADER_STAGE_COMPUTE_BIT;
+	stageinfo.module = computeDrawShader;
+	stageinfo.pName = "main";
+
+	VkComputePipelineCreateInfo computePipelineCreateInfo{};
+	computePipelineCreateInfo.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
+	computePipelineCreateInfo.pNext = nullptr;
+	computePipelineCreateInfo.layout = _gradient_pipeline_layout;
+	computePipelineCreateInfo.stage = stageinfo;
+	
+	VK_CHECK(vkCreateComputePipelines(_device.logical_device, VK_NULL_HANDLE, 1, &computePipelineCreateInfo, nullptr, &_gradient_pipeline));
+
+    vkDestroyShaderModule(_device.logical_device, computeDrawShader, nullptr);
+
+	_main_deletion_queue.push_function([&]() {
+		vkDestroyPipelineLayout(_device.logical_device, _gradient_pipeline_layout, nullptr);
+		vkDestroyPipeline(_device.logical_device, _gradient_pipeline, nullptr);
+    });
 }
 } // namespace Quasar

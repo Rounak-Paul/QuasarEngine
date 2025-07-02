@@ -21,7 +21,7 @@ namespace Quasar
         b8 init(const std::string& name, const Window& window);
 
         b8 begin_frame();
-        void draw();
+        void draw_background();
         void end_frame();
 
         void shutdown();
@@ -46,6 +46,8 @@ namespace Quasar
         DescriptorAllocator global_descriptor_allocator;
         VkDescriptorSet _draw_image_descriptors;
         VkDescriptorSetLayout _draw_image_descriptor_layout;
+        VkPipeline _gradient_pipeline;
+        VkPipelineLayout _gradient_pipeline_layout;
 
         //draw resources
         VulkanImage _draw_image;
@@ -63,5 +65,7 @@ namespace Quasar
         b8 create_command_buffers();
         b8 create_sync_objects();
         void create_descriptors();
+        void create_pipelines();
+        void create_background_pipelines();
     };
 } // namespace Quasar::Renderer

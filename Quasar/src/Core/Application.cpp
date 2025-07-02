@@ -28,7 +28,7 @@ void Application::run() {
         
         if (_renderer.begin_frame()) {
             
-            _renderer.draw();
+            _renderer.draw_background();
 
             _renderer.end_frame();
         }
