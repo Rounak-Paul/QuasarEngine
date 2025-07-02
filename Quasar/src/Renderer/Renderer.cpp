@@ -103,7 +103,7 @@ b8 Renderer::init(const std::string& name, const Window& window)
     if (
         !(_device.support_flags & VULKAN_DEVICE_SUPPORT_FLAG_NATIVE_DYNAMIC_STATE_BIT) &&
         (_device.support_flags & VULKAN_DEVICE_SUPPORT_FLAG_DYNAMIC_STATE_BIT)) {
-        LOG_INFO("Vulkan device doesn't support native dynamic state, but does via extension. Using extension.");
+        LOG_DEBUG("Vulkan device doesn't support native dynamic state, but does via extension. Using extension.");
 
         // Dynamic primitive topology.
         vkCmdSetPrimitiveTopologyEXT = (PFN_vkCmdSetPrimitiveTopologyEXT)vkGetInstanceProcAddr(_instance, "vkCmdSetPrimitiveTopologyEXT");
@@ -121,7 +121,7 @@ b8 Renderer::init(const std::string& name, const Window& window)
         vkCmdEndRenderingKHR = (PFN_vkCmdEndRenderingKHR)vkGetInstanceProcAddr(_instance, "vkCmdEndRenderingKHR");
     } else {
         if (_device.support_flags & VULKAN_DEVICE_SUPPORT_FLAG_NATIVE_DYNAMIC_STATE_BIT) {
-            LOG_INFO("Vulkan device supports native dynamic state.");
+            LOG_DEBUG("Vulkan device supports native dynamic state.");
         } else {
             LOG_WARN("Vulkan device does not support native or extension dynamic state. This may cause issues with the renderer.");
         }
@@ -147,14 +147,14 @@ void Renderer::shutdown()
         vkDeviceWaitIdle(_device.logical_device);
     }
 
-    if (_validation_enabled && _debug_messenger != VK_NULL_HANDLE) {
-        auto destroy_func = (PFN_vkDestroyDebugUtilsMessengerEXT) 
-            vkGetInstanceProcAddr(_instance, "vkDestroyDebugUtilsMessengerEXT");
-        if (destroy_func != nullptr) {
-            destroy_func(_instance, _debug_messenger, nullptr);
-            _debug_messenger = VK_NULL_HANDLE;
-        }
-    }
+    // if (_validation_enabled && _debug_messenger != VK_NULL_HANDLE) {
+    //     auto destroy_func = (PFN_vkDestroyDebugUtilsMessengerEXT) 
+    //         vkGetInstanceProcAddr(_instance, "vkDestroyDebugUtilsMessengerEXT");
+    //     if (destroy_func != nullptr) {
+    //         destroy_func(_instance, _debug_messenger, nullptr);
+    //         _debug_messenger = VK_NULL_HANDLE;
+    //     }
+    // }
 
     // Destroy surface
     if (_surface != VK_NULL_HANDLE) {
@@ -255,7 +255,7 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL vk_debug_callback(
             LOG_WARN(pCallbackData->pMessage);
             break;
         case VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT:
-            LOG_INFO(pCallbackData->pMessage);
+            LOG_DEBUG(pCallbackData->pMessage);
             break;
         case VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT:
             LOG_DEBUG(pCallbackData->pMessage);

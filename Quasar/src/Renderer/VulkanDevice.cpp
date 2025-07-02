@@ -107,28 +107,28 @@ static b8 select_physical_device(VkInstance instance, VkSurfaceKHR surface, b8 d
             &device.swapchain_support);
 
         if (result) {
-            LOG_INFO("Selected device: '{}'.", properties.deviceName);
+            LOG_DEBUG("Selected device: '{}'.", properties.deviceName);
             // GPU type, etc.
             switch (properties.deviceType) {
                 default:
                 case VK_PHYSICAL_DEVICE_TYPE_OTHER:
-                    LOG_INFO("GPU type is Unknown.");
+                    LOG_DEBUG("GPU type is Unknown.");
                     break;
                 case VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU:
-                    LOG_INFO("GPU type is Integrated.");
+                    LOG_DEBUG("GPU type is Integrated.");
                     break;
                 case VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU:
-                    LOG_INFO("GPU type is Descrete.");
+                    LOG_DEBUG("GPU type is Descrete.");
                     break;
                 case VK_PHYSICAL_DEVICE_TYPE_VIRTUAL_GPU:
-                    LOG_INFO("GPU type is Virtual.");
+                    LOG_DEBUG("GPU type is Virtual.");
                     break;
                 case VK_PHYSICAL_DEVICE_TYPE_CPU:
-                    LOG_INFO("GPU type is CPU.");
+                    LOG_DEBUG("GPU type is CPU.");
                     break;
             }
 
-            LOG_INFO(
+            LOG_DEBUG(
                 "GPU Driver version: {}.{}.{}",
                 VK_VERSION_MAJOR(properties.driverVersion),
                 VK_VERSION_MINOR(properties.driverVersion),
@@ -140,7 +140,7 @@ static b8 select_physical_device(VkInstance instance, VkSurfaceKHR surface, b8 d
             device.api_patch = VK_VERSION_PATCH(properties.apiVersion);
 
             // Vulkan API version.
-            LOG_INFO(
+            LOG_DEBUG(
                 "Vulkan API version: {}.{}.{}",
                 device.api_major,
                 device.api_minor,
@@ -150,9 +150,9 @@ static b8 select_physical_device(VkInstance instance, VkSurfaceKHR surface, b8 d
             for (u32 j = 0; j < memory.memoryHeapCount; ++j) {
                 f32 memory_size_gib = (((f32)memory.memoryHeaps[j].size) / 1024.0f / 1024.0f / 1024.0f);
                 if (memory.memoryHeaps[j].flags & VK_MEMORY_HEAP_DEVICE_LOCAL_BIT) {
-                    LOG_INFO("Local GPU memory: {} GiB", memory_size_gib);
+                    LOG_DEBUG("Local GPU memory: {} GiB", memory_size_gib);
                 } else {
-                    LOG_INFO("Shared System memory: {} GiB", memory_size_gib);
+                    LOG_DEBUG("Shared System memory: {} GiB", memory_size_gib);
                 }
             }
 
@@ -192,7 +192,7 @@ static b8 select_physical_device(VkInstance instance, VkSurfaceKHR surface, b8 d
     }
 
     physical_devices.clear();
-    LOG_INFO("Physical device selected.");
+    LOG_DEBUG("Physical device selected.");
     return true;
 }
 
@@ -213,7 +213,7 @@ b8 PhysicalDeviceMeetsRequirements(
     // Discrete GPU?
     if (requirements->discrete_gpu) {
         if (properties->deviceType != VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU) {
-            LOG_INFO("Device is not a discrete GPU, and one is required. Skipping.");
+            LOG_DEBUG("Device is not a discrete GPU, and one is required. Skipping.");
             return false;
         }
     }
@@ -224,7 +224,7 @@ b8 PhysicalDeviceMeetsRequirements(
     vkGetPhysicalDeviceQueueFamilyProperties(device, &queue_family_count, queue_families.data());
 
     // Look at each queue and see what queues it supports
-    LOG_INFO("Graphics | Present | Compute | Transfer | Name");
+    LOG_DEBUG("Graphics | Present | Compute | Transfer | Name");
     u8 min_transfer_score = 255;
     for (u32 i = 0; i < queue_family_count; ++i) {
         u8 current_transfer_score = 0;
@@ -281,7 +281,7 @@ b8 PhysicalDeviceMeetsRequirements(
     }
 
     // Print out some info about the device
-    LOG_INFO("       {} |       {} |       {} |        {} | {}",
+    LOG_DEBUG("       {} |       {} |       {} |        {} | {}",
             out_queue_info->graphics_family_index != -1,
             out_queue_info->present_family_index != -1,
             out_queue_info->compute_family_index != -1,
@@ -293,7 +293,7 @@ b8 PhysicalDeviceMeetsRequirements(
         (!requirements->present || (requirements->present && out_queue_info->present_family_index != -1)) &&
         (!requirements->compute || (requirements->compute && out_queue_info->compute_family_index != -1)) &&
         (!requirements->transfer || (requirements->transfer && out_queue_info->transfer_family_index != -1))) {
-        LOG_INFO("Device meets queue requirements.");
+        LOG_DEBUG("Device meets queue requirements.");
         LOG_TRACE("Graphics Family Index: {}", out_queue_info->graphics_family_index);
         LOG_TRACE("Present Family Index:  {}", out_queue_info->present_family_index);
         LOG_TRACE("Transfer Family Index: {}", out_queue_info->transfer_family_index);
@@ -312,7 +312,7 @@ b8 PhysicalDeviceMeetsRequirements(
             if (!out_swapchain_support->present_modes.empty()) {
                 out_swapchain_support->present_modes.clear();
             }
-            LOG_INFO("Required swapchain support not present, skipping device.");
+            LOG_DEBUG("Required swapchain support not present, skipping device.");
             return false;
         }
 
@@ -343,7 +343,7 @@ b8 PhysicalDeviceMeetsRequirements(
                     }
 
                     if (!found) {
-                        LOG_INFO("Required extension not found: '{}', skipping device.", requirements->device_extension_names[i]);
+                        LOG_DEBUG("Required extension not found: '{}', skipping device.", requirements->device_extension_names[i]);
                         return false;
                     }
                 }
@@ -352,13 +352,13 @@ b8 PhysicalDeviceMeetsRequirements(
 
         // Sampler anisotropy
         if (requirements->sampler_anisotropy && !features->samplerAnisotropy) {
-            LOG_INFO("Device does not support samplerAnisotropy, skipping.");
+            LOG_DEBUG("Device does not support samplerAnisotropy, skipping.");
             return false;
         }
 
         // Sampler anisotropy
         if (requirements->wide_lines && !features->wideLines) {
-            LOG_INFO("Device does not support wide lines, this is preffered, not mandatory.");
+            LOG_DEBUG("Device does not support wide lines, this is preffered, not mandatory.");
         }
 
         // Device meets all requirements.
@@ -426,7 +426,7 @@ b8 vulkan_device_create(VkInstance instance, VkSurfaceKHR surface, VulkanDevice&
         }
     }
 
-    LOG_INFO("Creating logical device...");
+    LOG_DEBUG("Creating logical device...");
     // NOTE: Do not create additional queues for shared indices.
     b8 present_shares_graphics_queue = device.graphics_queue_index == device.present_queue_index;
     b8 transfer_shares_graphics_queue = device.graphics_queue_index == device.transfer_queue_index;
@@ -553,7 +553,7 @@ b8 vulkan_device_create(VkInstance instance, VkSurfaceKHR surface, VulkanDevice&
         nullptr,
         &device.logical_device));
 
-    LOG_INFO("Logical device created.");
+    LOG_DEBUG("Logical device created.");
 
     // Get queues.
     vkGetDeviceQueue(
@@ -575,7 +575,7 @@ b8 vulkan_device_create(VkInstance instance, VkSurfaceKHR surface, VulkanDevice&
         device.transfer_queue_index,
         0,
         &device.transfer_queue);
-    LOG_INFO("Queues obtained.");
+    LOG_DEBUG("Queues obtained.");
 
     // Create command pool for graphics queue.
     VkCommandPoolCreateInfo pool_create_info = {VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO};
@@ -586,17 +586,17 @@ b8 vulkan_device_create(VkInstance instance, VkSurfaceKHR surface, VulkanDevice&
         &pool_create_info,
         nullptr,
         &device.graphics_command_pool));
-    LOG_INFO("Graphics command pool created.");
+    LOG_DEBUG("Graphics command pool created.");
 
     return true;
 }
 
 void vulkan_device_destroy(VkInstance instance, VulkanDevice &device)
 {
-    LOG_INFO("Starting vulkan_device_destroy...");
+    LOG_DEBUG("Starting vulkan_device_destroy...");
     
     if (device.logical_device != VK_NULL_HANDLE) {
-        LOG_INFO("Device handle is valid, proceeding with destruction...");
+        LOG_DEBUG("Device handle is valid, proceeding with destruction...");
     } else {
         LOG_WARN("Device logical_device is null, skipping device destruction.");
         return;
@@ -604,7 +604,7 @@ void vulkan_device_destroy(VkInstance instance, VulkanDevice &device)
 
     // Destroy command pool FIRST and MOST IMPORTANT
     if (device.graphics_command_pool != VK_NULL_HANDLE) {
-        LOG_INFO("Destroying graphics command pool (handle: {})...", 
+        LOG_DEBUG("Destroying graphics command pool (handle: {})...", 
                     (unsigned long long)device.graphics_command_pool);
         try {
             vkDestroyCommandPool(
@@ -612,7 +612,7 @@ void vulkan_device_destroy(VkInstance instance, VulkanDevice &device)
                 device.graphics_command_pool,
                 nullptr);
             device.graphics_command_pool = VK_NULL_HANDLE;
-            LOG_INFO("Graphics command pool destroyed successfully.");
+            LOG_DEBUG("Graphics command pool destroyed successfully.");
         } catch (...) {
             LOG_ERROR("Exception occurred while destroying command pool!");
             // Continue anyway
@@ -628,12 +628,12 @@ void vulkan_device_destroy(VkInstance instance, VulkanDevice &device)
 
     // Destroy logical device
     if (device.logical_device != VK_NULL_HANDLE) {
-        LOG_INFO("Destroying logical device (handle: {})...", 
+        LOG_DEBUG("Destroying logical device (handle: {})...", 
                     (unsigned long long)device.logical_device);
         try {
             vkDestroyDevice(device.logical_device, nullptr);
             device.logical_device = VK_NULL_HANDLE;
-            LOG_INFO("Logical device destroyed successfully.");
+            LOG_DEBUG("Logical device destroyed successfully.");
         } catch (...) {
             LOG_ERROR("Exception occurred while destroying logical device!");
             device.logical_device = VK_NULL_HANDLE; // Mark as destroyed anyway
@@ -661,7 +661,7 @@ void vulkan_device_destroy(VkInstance instance, VulkanDevice &device)
     device.present_queue_index = UINT32_MAX;
     device.transfer_queue_index = UINT32_MAX;
 
-    LOG_INFO("vulkan_device_destroy completed.");
+    LOG_DEBUG("vulkan_device_destroy completed.");
 }
 
 b8 vulkan_device_detect_depth_format(VulkanDevice& device) {
