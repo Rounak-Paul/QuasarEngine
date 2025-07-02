@@ -142,8 +142,7 @@ b8 Renderer::begin_frame()
 	VK_CHECK(vkResetFences(_device.logical_device, 1, &get_current_frame().render_fence));
 
     //request image from the swapchain
-	uint32_t swapchain_image_index;
-	VK_CHECK(vkAcquireNextImageKHR(_device.logical_device, _swapchain.handle, 1000000000, get_current_frame().swapchain_semaphore, nullptr, &swapchain_image_index));
+	VK_CHECK(vkAcquireNextImageKHR(_device.logical_device, _swapchain.handle, 1000000000, get_current_frame().swapchain_semaphore, nullptr, &_swapchain.image_index));
 
 	VkCommandBuffer cmd = get_current_frame().main_command_buffer;
 
@@ -157,7 +156,7 @@ b8 Renderer::begin_frame()
 	VK_CHECK(vkBeginCommandBuffer(cmd, &cmdBeginInfo));
 
     //make the swapchain image into writeable mode before rendering
-	transition_image(_device, cmd, _swapchain.images[swapchain_image_index], VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
+	transition_image(_device, cmd, _swapchain.images[_swapchain.image_index], VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
 
 	//make a clear-color from frame number. This will flash with a 120 frame period.
 	VkClearColorValue clearValue;
@@ -167,18 +166,21 @@ b8 Renderer::begin_frame()
 	VkImageSubresourceRange clearRange = image_subresource_range(VK_IMAGE_ASPECT_COLOR_BIT);
 
 	//clear image
-	vkCmdClearColorImage(cmd, _swapchain.images[swapchain_image_index], VK_IMAGE_LAYOUT_GENERAL, &clearValue, 1, &clearRange);
+	vkCmdClearColorImage(cmd, _swapchain.images[_swapchain.image_index], VK_IMAGE_LAYOUT_GENERAL, &clearValue, 1, &clearRange);
 
 	//make the swapchain image into presentable mode
-	transition_image(_device, cmd, _swapchain.images[swapchain_image_index], VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
+	transition_image(_device, cmd, _swapchain.images[_swapchain.image_index], VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
 
-    // TODO:
+    return true;
+}
 
+void Renderer::end_frame()
+{
     //prepare the submission to the queue. 
 	//we want to wait on the _presentSemaphore, as that semaphore is signaled when the swapchain is ready
 	//we will signal the _renderSemaphore, to signal that rendering has finished
 
-    // VkCommandBuffer cmd = get_current_frame().main_command_buffer;
+    VkCommandBuffer cmd = get_current_frame().main_command_buffer;
     //finalize the command buffer 
 	VK_CHECK(vkEndCommandBuffer(cmd));
 
@@ -211,19 +213,12 @@ b8 Renderer::begin_frame()
 	presentInfo.pWaitSemaphores = &get_current_frame().render_semaphore;
 	presentInfo.waitSemaphoreCount = 1;
 
-	presentInfo.pImageIndices = &swapchain_image_index;
+	presentInfo.pImageIndices = &_swapchain.image_index;
 
 	VK_CHECK(vkQueuePresentKHR(_device.graphics_queue, &presentInfo));
 
 	//increase the number of frames drawn
 	_frame_number++;
-
-    return true;
-}
-
-void Renderer::end_frame()
-{
-    
 }
 
 void Renderer::shutdown()
@@ -244,15 +239,6 @@ void Renderer::shutdown()
 
     vulkan_swapchain_destroy(_device, _swapchain);
 
-    // if (_validation_enabled && _debug_messenger != VK_NULL_HANDLE) {
-    //     auto destroy_func = (PFN_vkDestroyDebugUtilsMessengerEXT) 
-    //         vkGetInstanceProcAddr(_instance, "vkDestroyDebugUtilsMessengerEXT");
-    //     if (destroy_func != nullptr) {
-    //         destroy_func(_instance, _debug_messenger, nullptr);
-    //         _debug_messenger = VK_NULL_HANDLE;
-    //     }
-    // }
-
     // Destroy surface
     if (_surface != VK_NULL_HANDLE) {
         vkDestroySurfaceKHR(_instance, _surface, nullptr);
@@ -263,11 +249,20 @@ void Renderer::shutdown()
         vulkan_device_destroy(_instance, _device);
         _device.logical_device = VK_NULL_HANDLE;
     }
+
+    if (_validation_enabled && _debug_messenger != VK_NULL_HANDLE) {
+        auto destroy_func = (PFN_vkDestroyDebugUtilsMessengerEXT) 
+            vkGetInstanceProcAddr(_instance, "vkDestroyDebugUtilsMessengerEXT");
+        if (destroy_func != nullptr) {
+            destroy_func(_instance, _debug_messenger, nullptr);
+            _debug_messenger = VK_NULL_HANDLE;
+        }
+    }
     
-    // if (_instance != VK_NULL_HANDLE) {
-    //     vkDestroyInstance(_instance, nullptr);
-    //     _instance = VK_NULL_HANDLE;
-    // }
+    if (_instance != VK_NULL_HANDLE) {
+        vkDestroyInstance(_instance, nullptr);
+        _instance = VK_NULL_HANDLE;
+    }
     
     // Reset API version info
     _api_major = 0;

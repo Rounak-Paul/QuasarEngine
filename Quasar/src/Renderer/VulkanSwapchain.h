@@ -13,6 +13,8 @@ typedef struct VulkanSwapchain {
 	std::vector<VkImage> images;
 	std::vector<VkImageView> views;
 	VkExtent2D extent;
+
+    u32 image_index;
 } VulkanSwapchain;
 
 void vulkan_swapchain_create(VulkanDevice& device, VkSurfaceKHR surface, u32 width, u32 height, VulkanSwapchain& swapchain);
