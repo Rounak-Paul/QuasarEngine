@@ -30,7 +30,7 @@ bool File::open_if_exists(const std::string& path, Mode mode, Type type) {
     if(exists(path)) {
         open_file(mode, type);
     } else {
-        LOG_WARN("Unable to locate file: %s", path.c_str());
+        LOG_WARN("Unable to locate file: {}", path.c_str());
         return false;
     }
     return true;

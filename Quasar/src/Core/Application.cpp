@@ -11,6 +11,8 @@ b8 Application::init() {
 
     }
     _renderer.init(create_info.app_name, _window);
+
+    return true;
 }
 
 void Application::shutdown() {
