@@ -55,6 +55,28 @@ b8 Renderer::init(const std::string& name, const Window& window) {
 
 b8 Renderer::begin_frame()
 {
+    // imgui new frame
+    ImGui_ImplVulkan_NewFrame();
+    ImGui_ImplGlfw_NewFrame();
+    ImGui::NewFrame();
+		
+    if (ImGui::Begin("background")) {
+        
+        ComputeEffect& selected = backgroundEffects[currentBackgroundEffect];
+    
+        ImGui::Text("Selected effect: %s", selected.name.c_str());
+    
+        ImGui::SliderInt("Effect Index", &currentBackgroundEffect,0, backgroundEffects.size() - 1);
+    
+        ImGui::InputFloat4("data1",(float*)& selected.data.data1);
+        ImGui::InputFloat4("data2",(float*)& selected.data.data2);
+        ImGui::InputFloat4("data3",(float*)& selected.data.data3);
+        ImGui::InputFloat4("data4",(float*)& selected.data.data4);
+    }
+    ImGui::End();
+
+    ImGui::Render();
+
     // wait until the gpu has finished rendering the last frame. Timeout of 1 second
 	VK_CHECK(vkWaitForFences(_device.logical_device, 1, &get_current_frame().render_fence, true, 1000000000));
     get_current_frame().deletion_queue.flush();
@@ -86,11 +108,15 @@ void Renderer::draw_background()
 {
     VkCommandBuffer cmd = get_current_frame().main_command_buffer;
 
-    // bind the gradient drawing compute pipeline
-	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, _gradient_pipeline);
+    ComputeEffect& effect = backgroundEffects[currentBackgroundEffect];
+
+	// bind the background compute pipeline
+	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, effect.pipeline);
 
 	// bind the descriptor set containing the draw image for the compute pipeline
-	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, _gradient_pipeline_layout, 0, 1, &_draw_image_descriptors, 0, nullptr);
+	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, effect.layout, 0, 1, &_draw_image_descriptors, 0, nullptr);
+
+	vkCmdPushConstants(cmd, effect.layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(ComputePushConstants), &effect.data);
 
 	// execute the compute pipeline dispatch. We are using 16x16 workgroup size so we need to divide by it
 	vkCmdDispatch(cmd, std::ceil(_draw_extent.width / 16.0), std::ceil(_draw_extent.height / 16.0), 1);
@@ -162,10 +188,10 @@ void Renderer::end_frame()
 
 void Renderer::immediate_submit(std::function<void(VkCommandBuffer cmd)> &&function)
 {
-    VK_CHECK(vkResetFences(_device.logical_device, 1, &_immFence));
-	VK_CHECK(vkResetCommandBuffer(_immCommandBuffer, 0));
+    VK_CHECK(vkResetFences(_device.logical_device, 1, &_imm_fence));
+	VK_CHECK(vkResetCommandBuffer(_imm_command_buffer, 0));
 
-	VkCommandBuffer cmd = _immCommandBuffer;
+	VkCommandBuffer cmd = _imm_command_buffer;
 
 	VkCommandBufferBeginInfo cmdBeginInfo = command_buffer_begin_info(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
 
@@ -180,9 +206,9 @@ void Renderer::immediate_submit(std::function<void(VkCommandBuffer cmd)> &&funct
 
 	// submit command buffer to the queue and execute it.
 	//  _renderFence will now block until the graphic commands finish execution
-	VK_CHECK(vkQueueSubmit2(_device.graphics_queue, 1, &submit, _immFence));
+	VK_CHECK(vkQueueSubmit2(_device.graphics_queue, 1, &submit, _imm_fence));
 
-	VK_CHECK(vkWaitForFences(_device.logical_device, 1, &_immFence, true, 9999999999));
+	VK_CHECK(vkWaitForFences(_device.logical_device, 1, &_imm_fence, true, 9999999999));
 }
 
 void Renderer::shutdown()
@@ -500,15 +526,15 @@ b8 Renderer::create_command_buffers() {
         VK_CHECK(vkAllocateCommandBuffers(_device.logical_device, &cmd_info, &_frames[i].main_command_buffer));
     }
 
-    VK_CHECK(vkCreateCommandPool(_device.logical_device, &pool_info, nullptr, &_immCommandPool));
+    VK_CHECK(vkCreateCommandPool(_device.logical_device, &pool_info, nullptr, &_imm_command_pool));
 
 	// allocate the command buffer for immediate submits
-	VkCommandBufferAllocateInfo cmdAllocInfo = command_buffer_allocate_info(_immCommandPool, 1);
+	VkCommandBufferAllocateInfo cmdAllocInfo = command_buffer_allocate_info(_imm_command_pool, 1);
 
-	VK_CHECK(vkAllocateCommandBuffers(_device.logical_device, &cmdAllocInfo, &_immCommandBuffer));
+	VK_CHECK(vkAllocateCommandBuffers(_device.logical_device, &cmdAllocInfo, &_imm_command_buffer));
 
 	_main_deletion_queue.push_function([=, this]() { 
-        vkDestroyCommandPool(_device.logical_device, _immCommandPool, nullptr);
+        vkDestroyCommandPool(_device.logical_device, _imm_command_pool, nullptr);
 	});
 
     return true;
@@ -524,8 +550,8 @@ b8 Renderer::create_sync_objects() {
         VK_CHECK(vkCreateSemaphore(_device.logical_device, &semaphore_info, nullptr, &_frames[i].render_semaphore));
     }
 
-    VK_CHECK(vkCreateFence(_device.logical_device, &fence_info, nullptr, &_immFence));
-	_main_deletion_queue.push_function([=, this]() { vkDestroyFence(_device.logical_device, _immFence, nullptr); });
+    VK_CHECK(vkCreateFence(_device.logical_device, &fence_info, nullptr, &_imm_fence));
+	_main_deletion_queue.push_function([=, this]() { vkDestroyFence(_device.logical_device, _imm_fence, nullptr); });
 
     return true;
 }
@@ -578,41 +604,49 @@ void Renderer::create_pipelines()
 }
 void Renderer::create_background_pipelines()
 {
-    VkPipelineLayoutCreateInfo computeLayout{};
-	computeLayout.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-	computeLayout.pNext = nullptr;
-	computeLayout.pSetLayouts = &_draw_image_descriptor_layout;
-	computeLayout.setLayoutCount = 1;
+    // Set up shared pipeline layout
+    VkPushConstantRange push_range{};
+    push_range.offset = 0;
+    push_range.size = sizeof(ComputePushConstants);
+    push_range.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
 
-	VK_CHECK(vkCreatePipelineLayout(_device.logical_device, &computeLayout, nullptr, &_gradient_pipeline_layout));
+    VkDescriptorSetLayout compute_set_layouts[] = { _draw_image_descriptor_layout };
 
-    VkShaderModule computeDrawShader;
-	if (!load_shader_module("../Assets/shaders/gradient.comp", _device.logical_device, &computeDrawShader))
-	{
-		LOG_ERROR("Error when building the compute shader");
-	}
+    ComputePipelineConfig base_cfg{};
+    base_cfg.device = _device.logical_device;
+    base_cfg.shader_path = nullptr; // will set per-shader below
+    base_cfg.set_layouts = compute_set_layouts;
+    base_cfg.set_layout_count = 1;
+    base_cfg.push_constants = &push_range;
+    base_cfg.push_constant_count = 1;
+    base_cfg.deletion_queue = &_main_deletion_queue;
 
-	VkPipelineShaderStageCreateInfo stageinfo{};
-	stageinfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-	stageinfo.pNext = nullptr;
-	stageinfo.stage = VK_SHADER_STAGE_COMPUTE_BIT;
-	stageinfo.module = computeDrawShader;
-	stageinfo.pName = "main";
+    // === Create Gradient Effect ===
+    ComputeEffect gradient{};
+    gradient.name = "gradient";
+    gradient.data.data1 = glm::vec4(1, 0, 0, 1);
+    gradient.data.data2 = glm::vec4(0, 0, 1, 1);
 
-	VkComputePipelineCreateInfo computePipelineCreateInfo{};
-	computePipelineCreateInfo.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
-	computePipelineCreateInfo.pNext = nullptr;
-	computePipelineCreateInfo.layout = _gradient_pipeline_layout;
-	computePipelineCreateInfo.stage = stageinfo;
-	
-	VK_CHECK(vkCreateComputePipelines(_device.logical_device, VK_NULL_HANDLE, 1, &computePipelineCreateInfo, nullptr, &_gradient_pipeline));
+    base_cfg.shader_path = "../Assets/shaders/gradient_color.comp";
 
-    vkDestroyShaderModule(_device.logical_device, computeDrawShader, nullptr);
+    if (!create_compute_pipeline(base_cfg, gradient)) {
+        LOG_FATAL("Failed to create compute pipeline for gradient");
+    }
 
-	_main_deletion_queue.push_function([&]() {
-		vkDestroyPipelineLayout(_device.logical_device, _gradient_pipeline_layout, nullptr);
-		vkDestroyPipeline(_device.logical_device, _gradient_pipeline, nullptr);
-    });
+    // === Create Sky Effect ===
+    ComputeEffect sky{};
+    sky.name = "sky";
+    sky.data.data1 = glm::vec4(0.1, 0.2, 0.4, 0.97);
+
+    base_cfg.shader_path = "../Assets/shaders/sky.comp";
+
+    if (!create_compute_pipeline(base_cfg, sky)) {
+        LOG_FATAL("Failed to create compute pipeline for sky");
+    }
+
+    // === Add to array ===
+    backgroundEffects.push_back(gradient);
+    backgroundEffects.push_back(sky);
 }
 
 void Renderer::init_imgui(const Window& window)

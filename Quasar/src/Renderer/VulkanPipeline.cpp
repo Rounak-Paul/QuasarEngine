@@ -92,4 +92,56 @@ b8 load_shader_module(const std::string& file_path, VkDevice device, VkShaderMod
     return true;
 }
 
+b8 create_compute_pipeline(const ComputePipelineConfig& config, ComputeEffect& out_effect) {
+    // Pipeline layout
+    VkPipelineLayoutCreateInfo layout_info{};
+    layout_info.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+    layout_info.pSetLayouts = config.set_layouts;
+    layout_info.setLayoutCount = config.set_layout_count;
+    layout_info.pPushConstantRanges = config.push_constants;
+    layout_info.pushConstantRangeCount = config.push_constant_count;
+
+    if (vkCreatePipelineLayout(config.device, &layout_info, nullptr, &out_effect.layout) != VK_SUCCESS) {
+        LOG_ERROR("Failed to create compute pipeline layout for effect: {}", out_effect.name);
+        return false;
+    }
+
+    // Load shader
+    VkShaderModule shader_module;
+    if (!load_shader_module(config.shader_path, config.device, &shader_module)) {
+        LOG_ERROR("Failed to load compute shader: {}", config.shader_path);
+        return false;
+    }
+
+    VkPipelineShaderStageCreateInfo stage_info{};
+    stage_info.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    stage_info.stage = VK_SHADER_STAGE_COMPUTE_BIT;
+    stage_info.module = shader_module;
+    stage_info.pName = "main";
+
+    VkComputePipelineCreateInfo pipeline_info{};
+    pipeline_info.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
+    pipeline_info.layout = out_effect.layout;
+    pipeline_info.stage = stage_info;
+
+    if (vkCreateComputePipelines(config.device, VK_NULL_HANDLE, 1, &pipeline_info, nullptr, &out_effect.pipeline) != VK_SUCCESS) {
+        LOG_ERROR("Failed to create compute pipeline for effect: {}", out_effect.name);
+        vkDestroyShaderModule(config.device, shader_module, nullptr);
+        return false;
+    }
+
+    vkDestroyShaderModule(config.device, shader_module, nullptr);
+
+    if (config.deletion_queue) {
+        config.deletion_queue->push_function([device = config.device,
+                                            layout = out_effect.layout,
+                                            pipeline = out_effect.pipeline]() {
+            vkDestroyPipeline(device, pipeline, nullptr);
+            vkDestroyPipelineLayout(device, layout, nullptr);
+        });
+    }
+
+    return true;
+}
+
 } // namespace Quasar

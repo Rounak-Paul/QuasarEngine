@@ -47,17 +47,19 @@ namespace Quasar
         DescriptorAllocator global_descriptor_allocator;
         VkDescriptorSet _draw_image_descriptors;
         VkDescriptorSetLayout _draw_image_descriptor_layout;
-        VkPipeline _gradient_pipeline;
-        VkPipelineLayout _gradient_pipeline_layout;
 
         //draw resources
         VulkanImage _draw_image;
         VkExtent2D _draw_extent;
 
         // immediate submit structures
-        VkFence _immFence;
-        VkCommandBuffer _immCommandBuffer;
-        VkCommandPool _immCommandPool;
+        VkFence _imm_fence;
+        VkCommandBuffer _imm_command_buffer;
+        VkCommandPool _imm_command_pool;
+
+        // Background pipelines
+        std::vector<ComputeEffect> backgroundEffects;
+        i32 currentBackgroundEffect{0};
 
         b8 initialize_validation_layers();
         void fetch_api_version();
