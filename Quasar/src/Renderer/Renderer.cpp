@@ -93,8 +93,8 @@ b8 Renderer::begin_frame()
 	//begin the command buffer recording.
 	VkCommandBufferBeginInfo cmdBeginInfo = command_buffer_begin_info(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
 
-	_draw_extent.width = _draw_image.imageExtent.width;
-	_draw_extent.height = _draw_image.imageExtent.height;
+	_draw_extent.width = _draw_image.extent.width;
+	_draw_extent.height = _draw_image.extent.height;
 
 	VK_CHECK(vkBeginCommandBuffer(cmd, &cmdBeginInfo));	
 
@@ -489,24 +489,24 @@ b8 Renderer::create_draw_image(const Window& window) {
     Extent2D extent = window.get_extent();
     VkExtent3D drawImageExtent = { extent.width, extent.height, 1 };
 
-    _draw_image.imageFormat = VK_FORMAT_R16G16B16A16_SFLOAT;
-    _draw_image.imageExtent = drawImageExtent;
+    _draw_image.format = VK_FORMAT_R16G16B16A16_SFLOAT;
+    _draw_image.extent = drawImageExtent;
 
     VkImageUsageFlags usage = VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT |
                                 VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
 
-    VkImageCreateInfo image_info = image_create_info(_draw_image.imageFormat, usage, drawImageExtent);
+    VkImageCreateInfo image_info = image_create_info(_draw_image.format, usage, drawImageExtent);
     VmaAllocationCreateInfo alloc_info = {};
     alloc_info.usage = VMA_MEMORY_USAGE_GPU_ONLY;
     alloc_info.requiredFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
 
     vmaCreateImage(_allocator, &image_info, &alloc_info, &_draw_image.image, &_draw_image.allocation, nullptr);
 
-    VkImageViewCreateInfo view_info = imageview_create_info(_draw_image.imageFormat, _draw_image.image, VK_IMAGE_ASPECT_COLOR_BIT);
-    VK_CHECK(vkCreateImageView(_device.logical_device, &view_info, nullptr, &_draw_image.imageView));
+    VkImageViewCreateInfo view_info = imageview_create_info(_draw_image.format, _draw_image.image, VK_IMAGE_ASPECT_COLOR_BIT);
+    VK_CHECK(vkCreateImageView(_device.logical_device, &view_info, nullptr, &_draw_image.view));
 
     _main_deletion_queue.push_function([=, this]() {
-        vkDestroyImageView(_device.logical_device, _draw_image.imageView, nullptr);
+        vkDestroyImageView(_device.logical_device, _draw_image.view, nullptr);
         vmaDestroyImage(_allocator, _draw_image.image, _draw_image.allocation);
     });
 
@@ -577,7 +577,7 @@ void Renderer::create_descriptors()
 
 	VkDescriptorImageInfo imgInfo{};
 	imgInfo.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
-	imgInfo.imageView = _draw_image.imageView;
+	imgInfo.imageView = _draw_image.view;
 	
 	VkWriteDescriptorSet drawImageWrite = {};
 	drawImageWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;

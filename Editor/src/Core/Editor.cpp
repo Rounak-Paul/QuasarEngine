@@ -2,7 +2,7 @@
 
 using namespace Quasar;
 
-Quasar::Application* Quasar::CreateApplication()
+Quasar::Engine* Quasar::CreateEngine()
 {
     Quasar::app_create_info info;
     info.width = 800;
@@ -12,7 +12,7 @@ Quasar::Application* Quasar::CreateApplication()
 	return new Editor(info);
 };
 
-Editor::Editor(Quasar::app_create_info info) : Application(info) {
+Editor::Editor(Quasar::app_create_info info) : Engine(info) {
 
 }
 

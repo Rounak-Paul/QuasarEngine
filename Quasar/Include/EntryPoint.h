@@ -1,9 +1,9 @@
 #pragma once 
 
-extern Quasar::Application* Quasar::CreateApplication();
+extern Quasar::Engine* Quasar::CreateEngine();
 
 int main(int argc, char** argv) {
-	Quasar::Application* app = Quasar::CreateApplication(); ;
+	Quasar::Engine* app = Quasar::CreateEngine(); ;
 	app->init();
 	app->run();
 	app->shutdown();

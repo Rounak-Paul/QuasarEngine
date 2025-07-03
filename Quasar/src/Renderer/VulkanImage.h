@@ -8,10 +8,10 @@ namespace Quasar
 {
 struct VulkanImage {
     VkImage image;
-    VkImageView imageView;
+    VkImageView view;
     VmaAllocation allocation;
-    VkExtent3D imageExtent;
-    VkFormat imageFormat;
+    VkExtent3D extent;
+    VkFormat format;
 };
 
 void transition_image(VulkanDevice& device, VkCommandBuffer cmd, VkImage image, VkImageLayout currentLayout, VkImageLayout newLayout);
