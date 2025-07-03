@@ -58,7 +58,7 @@ namespace Quasar
         VkCommandPool _imm_command_pool;
 
         // Background pipelines
-        std::vector<ComputeEffect> backgroundEffects;
+        std::vector<ComputePipeline> backgroundEffects;
         i32 currentBackgroundEffect{0};
 
         b8 initialize_validation_layers();

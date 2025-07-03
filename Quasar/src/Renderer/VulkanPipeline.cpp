@@ -92,7 +92,7 @@ b8 load_shader_module(const std::string& file_path, VkDevice device, VkShaderMod
     return true;
 }
 
-b8 create_compute_pipeline(const ComputePipelineConfig& config, ComputeEffect& out_effect) {
+b8 create_compute_pipeline(const ComputePipelineConfig& config, ComputePipeline& out_effect) {
     // Pipeline layout
     VkPipelineLayoutCreateInfo layout_info{};
     layout_info.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;

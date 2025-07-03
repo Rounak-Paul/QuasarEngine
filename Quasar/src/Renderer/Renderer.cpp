@@ -62,7 +62,7 @@ b8 Renderer::begin_frame()
 		
     if (ImGui::Begin("background")) {
         
-        ComputeEffect& selected = backgroundEffects[currentBackgroundEffect];
+        ComputePipeline& selected = backgroundEffects[currentBackgroundEffect];
     
         ImGui::Text("Selected effect: %s", selected.name.c_str());
     
@@ -108,7 +108,7 @@ void Renderer::draw_background()
 {
     VkCommandBuffer cmd = get_current_frame().main_command_buffer;
 
-    ComputeEffect& effect = backgroundEffects[currentBackgroundEffect];
+    ComputePipeline& effect = backgroundEffects[currentBackgroundEffect];
 
 	// bind the background compute pipeline
 	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, effect.pipeline);
@@ -622,7 +622,7 @@ void Renderer::create_background_pipelines()
     base_cfg.deletion_queue = &_main_deletion_queue;
 
     // === Create Gradient Effect ===
-    ComputeEffect gradient{};
+    ComputePipeline gradient{};
     gradient.name = "gradient";
     gradient.data.data1 = glm::vec4(1, 0, 0, 1);
     gradient.data.data2 = glm::vec4(0, 0, 1, 1);
@@ -634,7 +634,7 @@ void Renderer::create_background_pipelines()
     }
 
     // === Create Sky Effect ===
-    ComputeEffect sky{};
+    ComputePipeline sky{};
     sky.name = "sky";
     sky.data.data1 = glm::vec4(0.1, 0.2, 0.4, 0.97);
 

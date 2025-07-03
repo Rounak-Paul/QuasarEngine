@@ -19,5 +19,5 @@ struct ComputePipelineConfig {
 };
 
 b8 load_shader_module(const std::string& file_path, VkDevice device, VkShaderModule *outShaderModule);
-b8 create_compute_pipeline(const ComputePipelineConfig& config, ComputeEffect& out_effect);
+b8 create_compute_pipeline(const ComputePipelineConfig& config, ComputePipeline& out_effect);
 } // namespace Quasar

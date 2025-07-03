@@ -35,7 +35,7 @@ struct ComputePushConstants {
 	glm::vec4 data4;
 };
 
-struct ComputeEffect {
+struct ComputePipeline {
     std::string name;
 
 	VkPipeline pipeline;
