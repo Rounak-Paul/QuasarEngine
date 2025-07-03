@@ -416,6 +416,7 @@ void query_swapchain_support(
 
 b8 vulkan_device_create(VkInstance instance, VkSurfaceKHR surface, VulkanDevice& device)
 {
+    device = {};
     if (!select_physical_device(instance, surface, true, device)) {
         LOG_WARN("No Discrete GPU with Vulkan support found. Defaulting to Integrated GPU.");
         if (!select_physical_device(instance, surface, false, device)) {
