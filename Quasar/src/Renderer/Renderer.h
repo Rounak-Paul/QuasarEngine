@@ -51,11 +51,13 @@ namespace Quasar
         //draw resources
         VulkanImage _draw_image;
         VkExtent2D _draw_extent;
+        ImTextureID _draw_texture;
 
         // immediate submit structures
         VkFence _imm_fence;
         VkCommandBuffer _imm_command_buffer;
         VkCommandPool _imm_command_pool;
+        VkSampler _imm_sampler;
 
         // Background pipelines
         std::vector<ComputePipeline> backgroundEffects;

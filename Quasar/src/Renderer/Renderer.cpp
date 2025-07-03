@@ -72,6 +72,8 @@ b8 Renderer::begin_frame()
         ImGui::InputFloat4("data2",(float*)& selected.data.data2);
         ImGui::InputFloat4("data3",(float*)& selected.data.data3);
         ImGui::InputFloat4("data4",(float*)& selected.data.data4);
+        
+        ImGui::Image(_draw_texture, {(f32)_draw_extent.width, (f32)_draw_extent.height});
     }
     ImGui::End();
 
@@ -131,14 +133,14 @@ void Renderer::end_frame()
     VkCommandBuffer cmd = get_current_frame().main_command_buffer;
 
     //transition the draw image and the swapchain image into their correct transfer layouts
-	transition_image(_device, cmd, _draw_image.image, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
-	transition_image(_device, cmd, _swapchain.images[_swapchain.image_index], VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+	transition_image(_device, cmd, _draw_image.image, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+	// transition_image(_device, cmd, _swapchain.images[_swapchain.image_index], VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
 
 	// execute a copy from the draw image into the swapchain
-	copy_image_to_image(_device, cmd, _draw_image.image, _swapchain.images[_swapchain.image_index], _draw_extent, _swapchain.extent);
+	// copy_image_to_image(_device, cmd, _draw_image.image, _swapchain.images[_swapchain.image_index], _draw_extent, _swapchain.extent);
 
 	// set swapchain image layout to Attachment Optimal so we can draw it
-	transition_image(_device, cmd, _swapchain.images[_swapchain.image_index], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+	transition_image(_device, cmd, _swapchain.images[_swapchain.image_index], VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
 
 	//draw imgui into the swapchain image
 	draw_imgui(cmd,  _swapchain.views[_swapchain.image_index]);
@@ -493,7 +495,8 @@ b8 Renderer::create_draw_image(const Window& window) {
     _draw_image.extent = drawImageExtent;
 
     VkImageUsageFlags usage = VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT |
-                                VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+                                VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT |
+                                VK_IMAGE_USAGE_SAMPLED_BIT;
 
     VkImageCreateInfo image_info = image_create_info(_draw_image.format, usage, drawImageExtent);
     VmaAllocationCreateInfo alloc_info = {};
@@ -707,8 +710,28 @@ void Renderer::init_imgui(const Window& window)
 
 	ImGui_ImplVulkan_CreateFontsTexture();
 
+    {
+        VkSamplerCreateInfo sampler_info = {};
+        sampler_info.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+        sampler_info.magFilter = VK_FILTER_LINEAR;
+        sampler_info.minFilter = VK_FILTER_LINEAR;
+        sampler_info.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+        sampler_info.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+        sampler_info.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+        sampler_info.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+        sampler_info.minLod = 0.0f;
+        sampler_info.maxLod = 1.0f;
+        sampler_info.borderColor = VK_BORDER_COLOR_INT_OPAQUE_WHITE;
+        sampler_info.unnormalizedCoordinates = VK_FALSE;
+
+        vkCreateSampler(_device.logical_device, &sampler_info, nullptr, &_imm_sampler);
+    }
+
+    _draw_texture = (ImTextureID)ImGui_ImplVulkan_AddTexture(_imm_sampler, _draw_image.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+
 	// add the destroy the imgui created structures
 	_main_deletion_queue.push_function([=, this]() {
+        vkDestroySampler(_device.logical_device, _imm_sampler, nullptr);
 		ImGui_ImplVulkan_Shutdown();
 		vkDestroyDescriptorPool(_device.logical_device, imguiPool, nullptr);
 	});
