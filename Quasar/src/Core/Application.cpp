@@ -25,6 +25,17 @@ void Application::run() {
             continue; 
         }
         _window.poll_events();
+
+        // imgui new frame
+        ImGui_ImplVulkan_NewFrame();
+        ImGui_ImplGlfw_NewFrame();
+        ImGui::NewFrame();
+
+        //some imgui UI to test
+        ImGui::ShowDemoWindow();
+
+        //make imgui calculate internal draw structures
+        ImGui::Render();
         
         if (_renderer.begin_frame()) {
             

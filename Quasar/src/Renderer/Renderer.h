@@ -23,6 +23,7 @@ namespace Quasar
         b8 begin_frame();
         void draw_background();
         void end_frame();
+        void immediate_submit(std::function<void(VkCommandBuffer cmd)>&& function);
 
         void shutdown();
 
@@ -53,6 +54,11 @@ namespace Quasar
         VulkanImage _draw_image;
         VkExtent2D _draw_extent;
 
+        // immediate submit structures
+        VkFence _immFence;
+        VkCommandBuffer _immCommandBuffer;
+        VkCommandPool _immCommandPool;
+
         b8 initialize_validation_layers();
         void fetch_api_version();
         b8 create_instance(const std::string& name);
@@ -67,5 +73,8 @@ namespace Quasar
         void create_descriptors();
         void create_pipelines();
         void create_background_pipelines();
+
+        void init_imgui(const Window& window);
+        void draw_imgui(VkCommandBuffer cmd, VkImageView targetImageView);
     };
 } // namespace Quasar::Renderer

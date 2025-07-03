@@ -6,10 +6,6 @@
 
 #include "VulkanPipeline.h"
 
-#include <imgui.h>
-#include <backends/imgui_impl_glfw.h>
-#include <backends/imgui_impl_vulkan.h>
-
 namespace Quasar {
 
 static const std::vector<const char*> validation_layers = {
@@ -51,6 +47,8 @@ b8 Renderer::init(const std::string& name, const Window& window) {
 
     create_descriptors();
     create_pipelines();
+
+    init_imgui(window);
 
     return true;
 }
@@ -113,10 +111,16 @@ void Renderer::end_frame()
 	// execute a copy from the draw image into the swapchain
 	copy_image_to_image(_device, cmd, _draw_image.image, _swapchain.images[_swapchain.image_index], _draw_extent, _swapchain.extent);
 
-	// set swapchain image layout to Present so we can show it on the screen
-	transition_image(_device, cmd, _swapchain.images[_swapchain.image_index], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
+	// set swapchain image layout to Attachment Optimal so we can draw it
+	transition_image(_device, cmd, _swapchain.images[_swapchain.image_index], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
 
-    //finalize the command buffer 
+	//draw imgui into the swapchain image
+	draw_imgui(cmd,  _swapchain.views[_swapchain.image_index]);
+
+	// set swapchain image layout to Present so we can draw it
+	transition_image(_device, cmd, _swapchain.images[_swapchain.image_index], VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
+
+	//finalize the command buffer (we can no longer add commands, but it can now be executed)
 	VK_CHECK(vkEndCommandBuffer(cmd));
 
 	VkCommandBufferSubmitInfo cmdinfo = command_buffer_submit_info(cmd);	
@@ -154,6 +158,31 @@ void Renderer::end_frame()
 
 	//increase the number of frames drawn
 	_frame_number++;
+}
+
+void Renderer::immediate_submit(std::function<void(VkCommandBuffer cmd)> &&function)
+{
+    VK_CHECK(vkResetFences(_device.logical_device, 1, &_immFence));
+	VK_CHECK(vkResetCommandBuffer(_immCommandBuffer, 0));
+
+	VkCommandBuffer cmd = _immCommandBuffer;
+
+	VkCommandBufferBeginInfo cmdBeginInfo = command_buffer_begin_info(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
+
+	VK_CHECK(vkBeginCommandBuffer(cmd, &cmdBeginInfo));
+
+	function(cmd);
+
+	VK_CHECK(vkEndCommandBuffer(cmd));
+
+	VkCommandBufferSubmitInfo cmdinfo = command_buffer_submit_info(cmd);
+	VkSubmitInfo2 submit = submit_info(&cmdinfo, nullptr, nullptr);
+
+	// submit command buffer to the queue and execute it.
+	//  _renderFence will now block until the graphic commands finish execution
+	VK_CHECK(vkQueueSubmit2(_device.graphics_queue, 1, &submit, _immFence));
+
+	VK_CHECK(vkWaitForFences(_device.logical_device, 1, &_immFence, true, 9999999999));
 }
 
 void Renderer::shutdown()
@@ -471,6 +500,17 @@ b8 Renderer::create_command_buffers() {
         VK_CHECK(vkAllocateCommandBuffers(_device.logical_device, &cmd_info, &_frames[i].main_command_buffer));
     }
 
+    VK_CHECK(vkCreateCommandPool(_device.logical_device, &pool_info, nullptr, &_immCommandPool));
+
+	// allocate the command buffer for immediate submits
+	VkCommandBufferAllocateInfo cmdAllocInfo = command_buffer_allocate_info(_immCommandPool, 1);
+
+	VK_CHECK(vkAllocateCommandBuffers(_device.logical_device, &cmdAllocInfo, &_immCommandBuffer));
+
+	_main_deletion_queue.push_function([=, this]() { 
+        vkDestroyCommandPool(_device.logical_device, _immCommandPool, nullptr);
+	});
+
     return true;
 }
 
@@ -483,6 +523,9 @@ b8 Renderer::create_sync_objects() {
         VK_CHECK(vkCreateSemaphore(_device.logical_device, &semaphore_info, nullptr, &_frames[i].swapchain_semaphore));
         VK_CHECK(vkCreateSemaphore(_device.logical_device, &semaphore_info, nullptr, &_frames[i].render_semaphore));
     }
+
+    VK_CHECK(vkCreateFence(_device.logical_device, &fence_info, nullptr, &_immFence));
+	_main_deletion_queue.push_function([=, this]() { vkDestroyFence(_device.logical_device, _immFence, nullptr); });
 
     return true;
 }
@@ -570,5 +613,91 @@ void Renderer::create_background_pipelines()
 		vkDestroyPipelineLayout(_device.logical_device, _gradient_pipeline_layout, nullptr);
 		vkDestroyPipeline(_device.logical_device, _gradient_pipeline, nullptr);
     });
+}
+
+void Renderer::init_imgui(const Window& window)
+{
+    // 1: create descriptor pool for IMGUI
+	//  the size of the pool is very oversize, but it's copied from imgui demo
+	//  itself.
+	VkDescriptorPoolSize pool_sizes[] = { { VK_DESCRIPTOR_TYPE_SAMPLER, 1000 },
+		{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1000 },
+		{ VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 1000 },
+		{ VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1000 },
+		{ VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER, 1000 },
+		{ VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER, 1000 },
+		{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1000 },
+		{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1000 },
+		{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, 1000 },
+		{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC, 1000 },
+		{ VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, 1000 } };
+
+	VkDescriptorPoolCreateInfo pool_info = {};
+	pool_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+	pool_info.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
+	pool_info.maxSets = 1000;
+	pool_info.poolSizeCount = (uint32_t)std::size(pool_sizes);
+	pool_info.pPoolSizes = pool_sizes;
+
+	VkDescriptorPool imguiPool;
+	VK_CHECK(vkCreateDescriptorPool(_device.logical_device, &pool_info, nullptr, &imguiPool));
+
+	// 2: initialize imgui library
+
+	// this initializes the core structures of imgui
+	ImGui::CreateContext();
+
+	// this initializes imgui for SDL
+	ImGui_ImplGlfw_InitForVulkan(window.get_GLFWwindow(), true);
+
+	// this initializes imgui for Vulkan
+	ImGui_ImplVulkan_InitInfo init_info = {};
+	init_info.Instance = _instance;
+	init_info.PhysicalDevice = _device.physical_device;
+	init_info.Device = _device.logical_device;
+	init_info.Queue = _device.graphics_queue;
+	init_info.DescriptorPool = imguiPool;
+	init_info.MinImageCount = 3;
+	init_info.ImageCount = 3;
+	init_info.UseDynamicRendering = true;
+
+	//dynamic rendering parameters for imgui to use
+	init_info.PipelineRenderingCreateInfo = {.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO};
+	init_info.PipelineRenderingCreateInfo.colorAttachmentCount = 1;
+	init_info.PipelineRenderingCreateInfo.pColorAttachmentFormats = &_swapchain.image_format.format;
+	
+
+	init_info.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
+
+	ImGui_ImplVulkan_Init(&init_info);
+
+	ImGui_ImplVulkan_CreateFontsTexture();
+
+	// add the destroy the imgui created structures
+	_main_deletion_queue.push_function([=, this]() {
+		ImGui_ImplVulkan_Shutdown();
+		vkDestroyDescriptorPool(_device.logical_device, imguiPool, nullptr);
+	});
+}
+void Renderer::draw_imgui(VkCommandBuffer cmd, VkImageView targetImageView)
+{
+    VkRenderingAttachmentInfo colorAttachment = attachment_info(targetImageView, nullptr, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+	VkRenderingInfo renderInfo = rendering_info(_swapchain.extent, &colorAttachment, nullptr);
+
+    if (_device.support_flags & VULKAN_DEVICE_SUPPORT_FLAG_NATIVE_SYNCRONIZATION2_BIT) {
+        vkCmdBeginRendering(cmd, &renderInfo);
+    }
+    else if (_device.support_flags & VULKAN_DEVICE_SUPPORT_FLAG_SYNCRONIZATION2_BIT) {
+        _device.vkCmdBeginRenderingKHR(cmd, &renderInfo);
+    } 
+
+	ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), cmd);
+
+    if (_device.support_flags & VULKAN_DEVICE_SUPPORT_FLAG_NATIVE_SYNCRONIZATION2_BIT) {
+        vkCmdEndRendering(cmd);
+    }
+    else if (_device.support_flags & VULKAN_DEVICE_SUPPORT_FLAG_SYNCRONIZATION2_BIT) {
+        _device.vkCmdEndRenderingKHR(cmd);
+    } 
 }
 } // namespace Quasar
