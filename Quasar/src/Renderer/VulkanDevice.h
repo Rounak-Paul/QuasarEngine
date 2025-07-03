@@ -17,14 +17,10 @@ typedef u32 VulkanDeviceSupportFlags;
 
 typedef enum VulkanDeviceSupportFlagsBits {
     VULKAN_DEVICE_SUPPORT_FLAG_NONE_BIT = 0x00,
-    /** @brief Indicates if the device supports native dynamic state (i.e. using Vulkan API >= 1.3). */
-    VULKAN_DEVICE_SUPPORT_FLAG_NATIVE_DYNAMIC_STATE_BIT = 0x01,
-
-    /** @brief Indicates if this device supports dynamic state. If not, the renderer will need to generate a separate pipeline per topology type. */
-    VULKAN_DEVICE_SUPPORT_FLAG_DYNAMIC_STATE_BIT = 0x02,
-    VULKAN_DEVICE_SUPPORT_FLAG_LINE_SMOOTH_RASTERISATION_BIT = 0x04,
-    VULKAN_DEVICE_SUPPORT_FLAG_SYNCRONIZATION2_BIT = 0x08,
-    VULKAN_DEVICE_SUPPORT_FLAG_NATIVE_SYNCRONIZATION2_BIT = 0x10
+    /** @brief Indicates if the device supports native dynamic state, dynamic rendering, sync2 (i.e. using Vulkan API >= 1.3). */
+    VULKAN_DEVICE_SUPPORT_FLAG_NATIVE_13_FEATURES_BIT = 0x01,
+    VULKAN_DEVICE_SUPPORT_FLAG_NATIVE_12_FEATURES_BIT = 0x02,
+    VULKAN_DEVICE_SUPPORT_FLAG_LINE_SMOOTH_RASTERISATION_BIT = 0x04
 } VulkanDeviceSupportFlagsBits;
 
 typedef struct VulkanDevice {

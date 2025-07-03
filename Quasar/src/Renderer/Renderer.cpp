@@ -132,10 +132,10 @@ void Renderer::end_frame()
 
 	//submit command buffer to the queue and execute it.
 	// _renderFence will now block until the graphic commands finish execution
-    if (_device.support_flags & VULKAN_DEVICE_SUPPORT_FLAG_NATIVE_SYNCRONIZATION2_BIT) {
+    if (_device.support_flags & VULKAN_DEVICE_SUPPORT_FLAG_NATIVE_13_FEATURES_BIT) {
         VK_CHECK(vkQueueSubmit2(_device.graphics_queue, 1, &submit, get_current_frame().render_fence));
     }
-    else if (_device.support_flags & VULKAN_DEVICE_SUPPORT_FLAG_SYNCRONIZATION2_BIT) {
+    else {
         VK_CHECK(_device.vkQueueSubmit2KHR(_device.graphics_queue, 1, &submit, get_current_frame().render_fence));
     } 
     
@@ -684,19 +684,19 @@ void Renderer::draw_imgui(VkCommandBuffer cmd, VkImageView targetImageView)
     VkRenderingAttachmentInfo colorAttachment = attachment_info(targetImageView, nullptr, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
 	VkRenderingInfo renderInfo = rendering_info(_swapchain.extent, &colorAttachment, nullptr);
 
-    if (_device.support_flags & VULKAN_DEVICE_SUPPORT_FLAG_NATIVE_SYNCRONIZATION2_BIT) {
+    if (_device.support_flags & VULKAN_DEVICE_SUPPORT_FLAG_NATIVE_13_FEATURES_BIT) {
         vkCmdBeginRendering(cmd, &renderInfo);
     }
-    else if (_device.support_flags & VULKAN_DEVICE_SUPPORT_FLAG_SYNCRONIZATION2_BIT) {
+    else {
         _device.vkCmdBeginRenderingKHR(cmd, &renderInfo);
     } 
 
 	ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), cmd);
 
-    if (_device.support_flags & VULKAN_DEVICE_SUPPORT_FLAG_NATIVE_SYNCRONIZATION2_BIT) {
+    if (_device.support_flags & VULKAN_DEVICE_SUPPORT_FLAG_NATIVE_13_FEATURES_BIT) {
         vkCmdEndRendering(cmd);
     }
-    else if (_device.support_flags & VULKAN_DEVICE_SUPPORT_FLAG_SYNCRONIZATION2_BIT) {
+    else {
         _device.vkCmdEndRenderingKHR(cmd);
     } 
 }

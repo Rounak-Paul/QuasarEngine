@@ -27,10 +27,10 @@ void transition_image(VulkanDevice& device, VkCommandBuffer cmd, VkImage image, 
     depInfo.imageMemoryBarrierCount = 1;
     depInfo.pImageMemoryBarriers = &imageBarrier;
 
-    if (device.support_flags & VULKAN_DEVICE_SUPPORT_FLAG_NATIVE_SYNCRONIZATION2_BIT) {
+    if (device.support_flags & VULKAN_DEVICE_SUPPORT_FLAG_NATIVE_13_FEATURES_BIT) {
         vkCmdPipelineBarrier2(cmd, &depInfo);
     }
-    else if (device.support_flags & VULKAN_DEVICE_SUPPORT_FLAG_SYNCRONIZATION2_BIT) {
+    else {
         device.vkCmdPipelineBarrier2KHR(cmd, &depInfo);
     } 
 }
@@ -66,10 +66,10 @@ void copy_image_to_image(VulkanDevice& device, VkCommandBuffer cmd, VkImage sour
 	blitInfo.regionCount = 1;
 	blitInfo.pRegions = &blitRegion;
 
-    if (device.support_flags & VULKAN_DEVICE_SUPPORT_FLAG_NATIVE_SYNCRONIZATION2_BIT) {
+    if (device.support_flags & VULKAN_DEVICE_SUPPORT_FLAG_NATIVE_13_FEATURES_BIT) {
         vkCmdBlitImage2(cmd, &blitInfo);
     }
-    else if (device.support_flags & VULKAN_DEVICE_SUPPORT_FLAG_SYNCRONIZATION2_BIT) {
+    else {
         device.vkCmdBlitImage2KHR(cmd, &blitInfo);
     } 
 }
