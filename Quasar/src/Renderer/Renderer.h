@@ -30,6 +30,11 @@ namespace Quasar
 
         FrameData& get_current_frame() { return _frames[_frame_number % FRAME_OVERLAP]; };
 
+        AllocatedBuffer create_buffer(size_t allocSize, VkBufferUsageFlags usage, VmaMemoryUsage memoryUsage);
+        void destroy_buffer(const AllocatedBuffer& buffer);
+
+        GPUMeshBuffers uploadMesh(std::span<uint32_t> indices, std::span<Vertex> vertices);
+
         private:
         u32 _frame_number {0};
         FrameData _frames[FRAME_OVERLAP];
@@ -68,6 +73,11 @@ namespace Quasar
         VkPipelineLayout _trianglePipelineLayout;
         VkPipeline _trianglePipeline;
 
+        VkPipelineLayout _meshPipelineLayout;
+        VkPipeline _meshPipeline;
+
+        GPUMeshBuffers rectangle;
+
         b8 initialize_validation_layers();
         void fetch_api_version();
         b8 create_instance(const std::string& name);
@@ -83,6 +93,8 @@ namespace Quasar
         void create_pipelines();
         void create_background_pipelines();
         void create_triangle_pipeline();
+        void create_mesh_pipeline();
+        void create_default_data();
 
         void init_imgui(const Window& window);
         void draw_imgui(VkCommandBuffer cmd, VkImageView targetImageView);

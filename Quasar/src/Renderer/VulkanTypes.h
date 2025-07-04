@@ -43,4 +43,32 @@ struct ComputePipeline {
 
 	ComputePushConstants data;
 };
+
+struct AllocatedBuffer {
+    VkBuffer buffer;
+    VmaAllocation allocation;
+    VmaAllocationInfo info;
+};
+
+struct Vertex {
+	glm::vec3 position;
+	f32 uv_x;
+	glm::vec3 normal;
+	f32 uv_y;
+	glm::vec4 color;
+};
+
+// holds the resources needed for a mesh
+struct GPUMeshBuffers {
+
+    AllocatedBuffer indexBuffer;
+    AllocatedBuffer vertexBuffer;
+    VkDeviceAddress vertexBufferAddress;
+};
+
+// push constants for our mesh object draws
+struct GPUDrawPushConstants {
+    glm::mat4 worldMatrix;
+    VkDeviceAddress vertexBuffer;
+};
 }
