@@ -22,6 +22,7 @@ namespace Quasar
 
         b8 begin_frame();
         void draw_background();
+        void draw_geometry();
         void end_frame();
         void immediate_submit(std::function<void(VkCommandBuffer cmd)>&& function);
 
@@ -63,6 +64,10 @@ namespace Quasar
         std::vector<ComputePipeline> backgroundEffects;
         i32 currentBackgroundEffect{0};
 
+        // Triangle pipeline
+        VkPipelineLayout _trianglePipelineLayout;
+        VkPipeline _trianglePipeline;
+
         b8 initialize_validation_layers();
         void fetch_api_version();
         b8 create_instance(const std::string& name);
@@ -77,6 +82,7 @@ namespace Quasar
         void create_descriptors();
         void create_pipelines();
         void create_background_pipelines();
+        void create_triangle_pipeline();
 
         void init_imgui(const Window& window);
         void draw_imgui(VkCommandBuffer cmd, VkImageView targetImageView);

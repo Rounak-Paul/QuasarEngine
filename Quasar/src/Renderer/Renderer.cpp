@@ -100,15 +100,16 @@ b8 Renderer::begin_frame()
 
 	VK_CHECK(vkBeginCommandBuffer(cmd, &cmdBeginInfo));	
 
-	// transition our main draw image into general layout so we can write into it
-	// we will overwrite it all so we dont care about what was the older layout
-	transition_image(_device, cmd, _draw_image.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
     return true;
 }
 
 void Renderer::draw_background()
 {
     VkCommandBuffer cmd = get_current_frame().main_command_buffer;
+
+    // transition our main draw image into general layout so we can write into it
+	// we will overwrite it all so we dont care about what was the older layout
+	transition_image(_device, cmd, _draw_image.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
 
     ComputePipeline& effect = backgroundEffects[currentBackgroundEffect];
 
@@ -123,6 +124,57 @@ void Renderer::draw_background()
 	// execute the compute pipeline dispatch. We are using 16x16 workgroup size so we need to divide by it
 	vkCmdDispatch(cmd, std::ceil(_draw_extent.width / 16.0), std::ceil(_draw_extent.height / 16.0), 1);
 
+    //transition the draw image and the swapchain image into their correct transfer layouts
+	transition_image(_device, cmd, _draw_image.image, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+}
+
+void Renderer::draw_geometry()
+{
+    VkCommandBuffer cmd = get_current_frame().main_command_buffer;
+
+    //begin a render pass  connected to our draw image
+	VkRenderingAttachmentInfo colorAttachment = attachment_info(_draw_image.view, nullptr, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+
+	VkRenderingInfo renderInfo = rendering_info(_draw_extent, &colorAttachment, nullptr);
+	if (_device.support_flags & VULKAN_DEVICE_SUPPORT_FLAG_NATIVE_13_FEATURES_BIT) {
+        vkCmdBeginRendering(cmd, &renderInfo);
+    }
+    else {
+        _device.vkCmdBeginRenderingKHR(cmd, &renderInfo);
+    } 
+
+	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _trianglePipeline);
+
+	//set dynamic viewport and scissor
+	VkViewport viewport = {};
+	viewport.x = 0;
+	viewport.y = 0;
+	viewport.width = _draw_extent.width;
+	viewport.height = _draw_extent.height;
+	viewport.minDepth = 0.f;
+	viewport.maxDepth = 1.f;
+
+	vkCmdSetViewport(cmd, 0, 1, &viewport);
+
+	VkRect2D scissor = {};
+	scissor.offset.x = 0;
+	scissor.offset.y = 0;
+	scissor.extent.width = _draw_extent.width;
+	scissor.extent.height = _draw_extent.height;
+
+	vkCmdSetScissor(cmd, 0, 1, &scissor);
+
+	//launch a draw command to draw 3 vertices
+	vkCmdDraw(cmd, 3, 1, 0, 0);
+
+	if (_device.support_flags & VULKAN_DEVICE_SUPPORT_FLAG_NATIVE_13_FEATURES_BIT) {
+        vkCmdEndRendering(cmd);
+    }
+    else {
+        _device.vkCmdEndRenderingKHR(cmd);
+    } 
+
+    transition_image(_device, cmd, _draw_image.image, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 }
 
 void Renderer::end_frame()
@@ -132,8 +184,6 @@ void Renderer::end_frame()
 	//we will signal the _renderSemaphore, to signal that rendering has finished
     VkCommandBuffer cmd = get_current_frame().main_command_buffer;
 
-    //transition the draw image and the swapchain image into their correct transfer layouts
-	transition_image(_device, cmd, _draw_image.image, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 	// transition_image(_device, cmd, _swapchain.images[_swapchain.image_index], VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
 
 	// execute a copy from the draw image into the swapchain
@@ -604,6 +654,7 @@ void Renderer::create_descriptors()
 void Renderer::create_pipelines()
 {
     create_background_pipelines();
+    create_triangle_pipeline();
 }
 void Renderer::create_background_pipelines()
 {
@@ -650,6 +701,65 @@ void Renderer::create_background_pipelines()
     // === Add to array ===
     backgroundEffects.push_back(gradient);
     backgroundEffects.push_back(sky);
+}
+
+void Renderer::create_triangle_pipeline()
+{
+    VkShaderModule triangleFragShader;
+	if (!load_shader_module("../Assets/shaders/colored_triangle.frag", _device.logical_device, SHADER_STAGE_FRAGMENT, &triangleFragShader)) {
+		LOG_ERROR("Error when building the triangle fragment shader module");
+	}
+	else {
+		LOG_DEBUG("Triangle fragment shader succesfully loaded");
+	}
+
+	VkShaderModule triangleVertexShader;
+	if (!load_shader_module("../Assets/shaders/colored_triangle.vert", _device.logical_device, SHADER_STAGE_VERTEX, &triangleVertexShader)) {
+		LOG_ERROR("Error when building the triangle vertex shader module");
+	}
+	else {
+		LOG_DEBUG("Triangle vertex shader succesfully loaded");
+	}
+	
+	//build the pipeline layout that controls the inputs/outputs of the shader
+	//we are not using descriptor sets or other systems yet, so no need to use anything other than empty default
+	VkPipelineLayoutCreateInfo pipeline_layout_info = pipeline_layout_create_info();
+	VK_CHECK(vkCreatePipelineLayout(_device.logical_device, &pipeline_layout_info, nullptr, &_trianglePipelineLayout));
+
+    PipelineBuilder pipelineBuilder;
+
+	//use the triangle layout we created
+	pipelineBuilder._pipelineLayout = _trianglePipelineLayout;
+	//connecting the vertex and pixel shaders to the pipeline
+	pipelineBuilder.set_shaders(triangleVertexShader, triangleFragShader);
+	//it will draw triangles
+	pipelineBuilder.set_input_topology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
+	//filled triangles
+	pipelineBuilder.set_polygon_mode(VK_POLYGON_MODE_FILL);
+	//no backface culling
+	pipelineBuilder.set_cull_mode(VK_CULL_MODE_NONE, VK_FRONT_FACE_CLOCKWISE);
+	//no multisampling
+	pipelineBuilder.set_multisampling_none();
+	//no blending
+	pipelineBuilder.disable_blending();
+	//no depth testing
+	pipelineBuilder.disable_depthtest();
+
+	//connect the image format we will draw into, from draw image
+	pipelineBuilder.set_color_attachment_format(_draw_image.format);
+	pipelineBuilder.set_depth_format(VK_FORMAT_UNDEFINED);
+
+	//finally build the pipeline
+	_trianglePipeline = pipelineBuilder.build_pipeline(_device.logical_device);
+
+	//clean structures
+	vkDestroyShaderModule(_device.logical_device, triangleFragShader, nullptr);
+	vkDestroyShaderModule(_device.logical_device, triangleVertexShader, nullptr);
+
+	_main_deletion_queue.push_function([&]() {
+		vkDestroyPipelineLayout(_device.logical_device, _trianglePipelineLayout, nullptr);
+		vkDestroyPipeline(_device.logical_device, _trianglePipeline, nullptr);
+	});
 }
 
 void Renderer::init_imgui(const Window& window)

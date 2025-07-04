@@ -30,6 +30,8 @@ void Engine::run() {
             
             _renderer.draw_background();
 
+            _renderer.draw_geometry();
+
             _renderer.end_frame();
         }
     }
