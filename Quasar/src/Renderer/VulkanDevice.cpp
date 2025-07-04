@@ -493,6 +493,7 @@ b8 vulkan_device_create(VkInstance instance, VkSurfaceKHR surface, VulkanDevice&
         extension_names.push_back("VK_KHR_synchronization2");  
         extension_names.push_back(VK_EXT_EXTENDED_DYNAMIC_STATE_EXTENSION_NAME);
         extension_names.push_back(VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME);
+        extension_names.push_back(VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME);
     } else {
         LOG_FATAL("Selected device does not support minimum vulkan 1.2.");
         return false;
@@ -529,11 +530,15 @@ b8 vulkan_device_create(VkInstance instance, VkSurfaceKHR surface, VulkanDevice&
     VkPhysicalDeviceSynchronization2Features sync2_features = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES};
     sync2_features.synchronization2 = VK_TRUE;
 
+    VkPhysicalDeviceBufferDeviceAddressFeaturesKHR bdaFeatures = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_BUFFER_DEVICE_ADDRESS_FEATURES_KHR};
+    bdaFeatures.bufferDeviceAddress = VK_TRUE;
+
     // Chain the pNext fields: sync2 → rendering → dyn_state → descriptor → raster
     sync2_features.pNext = &dynamic_rendering_ext;
     dynamic_rendering_ext.pNext = &extended_dynamic_state;
     extended_dynamic_state.pNext = &descriptor_indexing_features;
-    descriptor_indexing_features.pNext = (device.support_flags & VULKAN_DEVICE_SUPPORT_FLAG_LINE_SMOOTH_RASTERISATION_BIT) ? &line_rasterization_ext : nullptr;
+    descriptor_indexing_features.pNext = &bdaFeatures;
+    bdaFeatures.pNext = (device.support_flags & VULKAN_DEVICE_SUPPORT_FLAG_LINE_SMOOTH_RASTERISATION_BIT) ? &line_rasterization_ext : nullptr;;
     device_features.pNext = &sync2_features;
 
 #if defined(QS_PLATFORM_APPLE)

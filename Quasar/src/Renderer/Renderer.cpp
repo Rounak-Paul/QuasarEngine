@@ -324,9 +324,9 @@ static void populate_debug_messenger_create_info(VkDebugUtilsMessengerCreateInfo
     create_info.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
     create_info.messageSeverity = 
         VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT |
-        VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT ;
-        // VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT |
-        // VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT;
+        VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT |
+        VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT |
+        VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT;
     create_info.messageType = 
         VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT |
         VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT |
@@ -523,7 +523,7 @@ b8 Renderer::create_allocator() {
     allocatorInfo.physicalDevice = _device.physical_device;
     allocatorInfo.device = _device.logical_device;
     allocatorInfo.instance = _instance;
-    allocatorInfo.flags = 0;
+    allocatorInfo.flags = VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT; // literally enables c-style pointers for device memory
 
     if (vmaCreateAllocator(&allocatorInfo, &_allocator) != VK_SUCCESS) {
         LOG_ERROR("Failed to create memory allocator!");
