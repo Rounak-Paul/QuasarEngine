@@ -8,6 +8,8 @@
 #include "VulkanImage.h"
 #include "VulkanDescriptor.h"
 
+#include "VulkanLoader.h"
+
 namespace Quasar
 {
     class Renderer {
@@ -56,6 +58,7 @@ namespace Quasar
 
         //draw resources
         VulkanImage _draw_image;
+        VulkanImage _depthImage;
         VkExtent2D _draw_extent;
         ImTextureID _draw_texture;
 
@@ -69,14 +72,10 @@ namespace Quasar
         std::vector<ComputePipeline> backgroundEffects;
         i32 currentBackgroundEffect{0};
 
-        // Triangle pipeline
-        VkPipelineLayout _trianglePipelineLayout;
-        VkPipeline _trianglePipeline;
-
         VkPipelineLayout _meshPipelineLayout;
         VkPipeline _meshPipeline;
 
-        GPUMeshBuffers rectangle;
+        std::vector<std::shared_ptr<MeshAsset>> testMeshes;
 
         b8 initialize_validation_layers();
         void fetch_api_version();
@@ -92,7 +91,6 @@ namespace Quasar
         void create_descriptors();
         void create_pipelines();
         void create_background_pipelines();
-        void create_triangle_pipeline();
         void create_mesh_pipeline();
         void create_default_data();
 

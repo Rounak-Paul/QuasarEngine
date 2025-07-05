@@ -10,3 +10,9 @@
 [submodule "Quasar/vendor/IMGUI/imgui"]
 	path = Quasar/vendor/IMGUI/imgui
 	url = https://github.com/Rounak-Paul/imgui.git
+[submodule "Quasar/vendor/FASTGLTF"]
+	path = Quasar/vendor/FASTGLTF
+	url = https://github.com/Rounak-Paul/fastgltf.git
+[submodule "Quasar/vendor/STB"]
+	path = Quasar/vendor/STB
+	url = https://github.com/Rounak-Paul/stb.git
