@@ -48,6 +48,10 @@ namespace Quasar
 
         GPUMeshBuffers uploadMesh(std::span<uint32_t> indices, std::span<Vertex> vertices);
 
+        VulkanImage create_image(VkExtent3D size, VkFormat format, VkImageUsageFlags usage, bool mipmapped = false);
+        VulkanImage create_image(void* data, VkExtent3D size, VkFormat format, VkImageUsageFlags usage, bool mipmapped = false);
+        void destroy_image(const VulkanImage& img);
+
         private:
         const Window* _window;
         u32 _frame_number {0};
@@ -89,7 +93,20 @@ namespace Quasar
         VkPipelineLayout _meshPipelineLayout;
         VkPipeline _meshPipeline;
 
+        VulkanImage _whiteImage;
+        VulkanImage _blackImage;
+        VulkanImage _greyImage;
+        VulkanImage _errorCheckerboardImage;
+
+        VkSampler _defaultSamplerLinear;
+        VkSampler _defaultSamplerNearest;
+
         std::vector<std::shared_ptr<MeshAsset>> testMeshes;
+
+        GPUSceneData sceneData;
+
+        VkDescriptorSetLayout _gpuSceneDataDescriptorLayout;
+        VkDescriptorSetLayout _singleImageDescriptorLayout;
 
         b8 initialize_validation_layers();
         void fetch_api_version();
