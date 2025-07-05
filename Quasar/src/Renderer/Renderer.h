@@ -12,6 +12,17 @@
 
 namespace Quasar
 {
+    struct FrameData {
+        VkCommandPool command_pool;
+        VkCommandBuffer main_command_buffer;
+
+        VkSemaphore swapchain_semaphore, render_semaphore;
+        VkFence render_fence;
+
+        DeletionQueue deletion_queue;
+        DescriptorAllocatorGrowable _frameDescriptors;
+    };
+
     class Renderer {
         public:
         Renderer() = default;
