@@ -38,8 +38,10 @@ namespace Quasar
         GPUMeshBuffers uploadMesh(std::span<uint32_t> indices, std::span<Vertex> vertices);
 
         private:
+        const Window* _window;
         u32 _frame_number {0};
         FrameData _frames[FRAME_OVERLAP];
+        b8 resize_requested = false;
         DeletionQueue _main_deletion_queue;
 
         u32 _api_major; // The instance-level api major version.
@@ -60,6 +62,7 @@ namespace Quasar
         VulkanImage _draw_image;
         VulkanImage _depthImage;
         VkExtent2D _draw_extent;
+        f32 renderScale = 1.f;
         ImTextureID _draw_texture;
 
         // immediate submit structures

@@ -41,6 +41,8 @@ namespace Quasar
     void Window::resize_callback(GLFWwindow *window, int width, int height)
     {
 		auto w = reinterpret_cast<Window*>(glfwGetWindowUserPointer(window));
+		w->_width = width;
+		w->_height = height;
 	}
 
 	// GLFW window focus callback

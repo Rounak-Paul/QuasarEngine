@@ -29,6 +29,8 @@ static VkResult create_debug_utils_messenger_ext(
 static b8 platform_create_vulkan_surface(VkInstance instance, const Window& window, VkSurfaceKHR* surface);
 
 b8 Renderer::init(const std::string& name, const Window& window) {
+    _window = &window;
+
     if (!initialize_validation_layers()) return false;
     fetch_api_version();
 
@@ -57,6 +59,16 @@ b8 Renderer::init(const std::string& name, const Window& window) {
 
 b8 Renderer::begin_frame()
 {
+    if (resize_requested) {
+        vkDeviceWaitIdle(_device.logical_device);
+        Extent2D ext = _window->get_extent();
+        LOG_TRACE("Backend resized: {}x{}", ext.width, ext.height);
+        vulkan_swapchain_recreate(_device, _surface, ext.width, ext.height, _swapchain);
+        resize_requested = false;
+        LOG_TRACE("Recreating swapchain, booting.");
+        return false;
+    }
+
     // imgui new frame
     ImGui_ImplVulkan_NewFrame();
     ImGui_ImplGlfw_NewFrame();
@@ -65,6 +77,8 @@ b8 Renderer::begin_frame()
     if (ImGui::Begin("background")) {
         
         ComputePipeline& selected = backgroundEffects[currentBackgroundEffect];
+
+        ImGui::SliderFloat("Render Scale",&renderScale, 0.3f, 1.f);
     
         ImGui::Text("Selected effect: %s", selected.name.c_str());
     
@@ -84,10 +98,18 @@ b8 Renderer::begin_frame()
     // wait until the gpu has finished rendering the last frame. Timeout of 1 second
 	VK_CHECK(vkWaitForFences(_device.logical_device, 1, &get_current_frame().render_fence, true, 1000000000));
     get_current_frame().deletion_queue.flush();
-	VK_CHECK(vkResetFences(_device.logical_device, 1, &get_current_frame().render_fence));
 
     //request image from the swapchain
-	VK_CHECK(vkAcquireNextImageKHR(_device.logical_device, _swapchain.handle, 1000000000, get_current_frame().swapchain_semaphore, nullptr, &_swapchain.image_index));
+	VkResult e = vkAcquireNextImageKHR(_device.logical_device, _swapchain.handle, 1000000000, get_current_frame().swapchain_semaphore, nullptr, &_swapchain.image_index);
+    if (e == VK_ERROR_OUT_OF_DATE_KHR || e == VK_SUBOPTIMAL_KHR) {
+        resize_requested = true;       
+		return false;
+	}
+
+    VK_CHECK(vkResetFences(_device.logical_device, 1, &get_current_frame().render_fence));
+
+    _draw_extent.height = std::min(_swapchain.extent.height, _draw_image.extent.height) * renderScale;
+    _draw_extent.width= std::min(_swapchain.extent.width, _draw_image.extent.width) * renderScale;
 
 	VkCommandBuffer cmd = get_current_frame().main_command_buffer;
 
@@ -96,9 +118,6 @@ b8 Renderer::begin_frame()
 
 	//begin the command buffer recording.
 	VkCommandBufferBeginInfo cmdBeginInfo = command_buffer_begin_info(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
-
-	_draw_extent.width = _draw_image.extent.width;
-	_draw_extent.height = _draw_image.extent.height;
 
 	VK_CHECK(vkBeginCommandBuffer(cmd, &cmdBeginInfo));	
 
@@ -249,7 +268,11 @@ void Renderer::end_frame()
 
 	presentInfo.pImageIndices = &_swapchain.image_index;
 
-	VK_CHECK(vkQueuePresentKHR(_device.graphics_queue, &presentInfo));
+	VkResult e = (vkQueuePresentKHR(_device.graphics_queue, &presentInfo));
+    if (e == VK_ERROR_OUT_OF_DATE_KHR || e == VK_SUBOPTIMAL_KHR) {
+        resize_requested = true;
+        return;
+    }
 
 	//increase the number of frames drawn
 	_frame_number++;
@@ -875,6 +898,8 @@ void Renderer::create_mesh_pipeline()
 	pipelineBuilder.disable_blending();
 	//no depth testing
 	pipelineBuilder.disable_depthtest();
+    //pipelineBuilder.disable_blending();
+    pipelineBuilder.enable_blending_additive();
 
     //pipelineBuilder.disable_depthtest();
 	pipelineBuilder.enable_depthtest(true, VK_COMPARE_OP_GREATER_OR_EQUAL);
