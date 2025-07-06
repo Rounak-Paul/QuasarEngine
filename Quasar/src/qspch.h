@@ -15,4 +15,5 @@
 
 // Custom
 #include <Core/Logger.h>
+#include <Core/Platform.h>
 #include <Containers/DeletionQueue.h>

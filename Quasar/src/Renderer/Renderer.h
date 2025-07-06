@@ -8,8 +8,64 @@
 #include "VulkanImage.h"
 #include "VulkanDescriptor.h"
 
+#include "VulkanLoader.h"
+
 namespace Quasar
 {
+    class Renderer;
+
+    struct FrameData {
+        VkCommandPool command_pool;
+        VkCommandBuffer main_command_buffer;
+
+        VkSemaphore swapchain_semaphore, render_semaphore;
+        VkFence render_fence;
+
+        DeletionQueue deletion_queue;
+        DescriptorAllocatorGrowable _frameDescriptors;
+    };
+
+    struct GLTFMetallic_Roughness {
+        MaterialPipeline opaquePipeline;
+        MaterialPipeline transparentPipeline;
+
+        VkDescriptorSetLayout materialLayout;
+
+        struct MaterialConstants {
+            glm::vec4 colorFactors;
+            glm::vec4 metal_rough_factors;
+            //padding, we need it anyway for uniform buffers
+            glm::vec4 extra[14];
+        };
+
+        struct MaterialResources {
+            VulkanImage colorImage;
+            VkSampler colorSampler;
+            VulkanImage metalRoughImage;
+            VkSampler metalRoughSampler;
+            VkBuffer dataBuffer;
+            uint32_t dataBufferOffset;
+        };
+
+        DescriptorWriter writer;
+
+        void build_pipelines(Renderer* engine);
+        void clear_resources(VkDevice device);
+
+        MaterialInstance write_material(VkDevice device, MaterialPass pass, const MaterialResources& resources, DescriptorAllocatorGrowable& descriptorAllocator);
+    };
+
+    struct RenderObject {
+        uint32_t indexCount;
+        uint32_t firstIndex;
+        VkBuffer indexBuffer;
+        
+        MaterialInstance* material;
+
+        glm::mat4 transform;
+        VkDeviceAddress vertexBufferAddress;
+    };
+
     class Renderer {
         public:
         Renderer() = default;
@@ -35,9 +91,15 @@ namespace Quasar
 
         GPUMeshBuffers uploadMesh(std::span<uint32_t> indices, std::span<Vertex> vertices);
 
+        VulkanImage create_image(VkExtent3D size, VkFormat format, VkImageUsageFlags usage, bool mipmapped = false);
+        VulkanImage create_image(void* data, VkExtent3D size, VkFormat format, VkImageUsageFlags usage, bool mipmapped = false);
+        void destroy_image(const VulkanImage& img);
+
         private:
+        const Window* _window;
         u32 _frame_number {0};
         FrameData _frames[FRAME_OVERLAP];
+        b8 resize_requested = false;
         DeletionQueue _main_deletion_queue;
 
         u32 _api_major; // The instance-level api major version.
@@ -56,7 +118,9 @@ namespace Quasar
 
         //draw resources
         VulkanImage _draw_image;
+        VulkanImage _depthImage;
         VkExtent2D _draw_extent;
+        f32 renderScale = 1.f;
         ImTextureID _draw_texture;
 
         // immediate submit structures
@@ -69,14 +133,23 @@ namespace Quasar
         std::vector<ComputePipeline> backgroundEffects;
         i32 currentBackgroundEffect{0};
 
-        // Triangle pipeline
-        VkPipelineLayout _trianglePipelineLayout;
-        VkPipeline _trianglePipeline;
-
         VkPipelineLayout _meshPipelineLayout;
         VkPipeline _meshPipeline;
 
-        GPUMeshBuffers rectangle;
+        VulkanImage _whiteImage;
+        VulkanImage _blackImage;
+        VulkanImage _greyImage;
+        VulkanImage _errorCheckerboardImage;
+
+        VkSampler _defaultSamplerLinear;
+        VkSampler _defaultSamplerNearest;
+
+        std::vector<std::shared_ptr<MeshAsset>> testMeshes;
+
+        GPUSceneData sceneData;
+
+        VkDescriptorSetLayout _gpuSceneDataDescriptorLayout;
+        VkDescriptorSetLayout _singleImageDescriptorLayout;
 
         b8 initialize_validation_layers();
         void fetch_api_version();
@@ -92,7 +165,6 @@ namespace Quasar
         void create_descriptors();
         void create_pipelines();
         void create_background_pipelines();
-        void create_triangle_pipeline();
         void create_mesh_pipeline();
         void create_default_data();
 

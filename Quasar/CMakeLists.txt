@@ -13,6 +13,7 @@ add_subdirectory(Vendor/GLFW)
 add_subdirectory(Vendor/GLM)
 add_subdirectory(Vendor/VMA)
 add_subdirectory(Vendor/IMGUI)
+add_subdirectory(Vendor/FASTGLTF)
 
 target_precompile_headers(Quasar PUBLIC src/qspch.h)
 target_precompile_headers(Quasar PUBLIC src/defines.h)
@@ -24,7 +25,9 @@ target_include_directories(Quasar PUBLIC
     vendor/GLFW/include
     vendor/GLM
     vendor/VMA/include
-    Vendor/IMGUI/imgui
+    vendor/IMGUI/imgui
+    vendor/FASTGLTF/include
+    vendor/STB
 )
 
 # Link directories
@@ -35,6 +38,7 @@ target_link_libraries(Quasar PRIVATE
     glfw
     glm
     ImGui
+    fastgltf
 )
 
 if(APPLE)
