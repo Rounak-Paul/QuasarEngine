@@ -12,6 +12,8 @@
 
 namespace Quasar
 {
+    class Renderer;
+
     struct FrameData {
         VkCommandPool command_pool;
         VkCommandBuffer main_command_buffer;
@@ -21,6 +23,36 @@ namespace Quasar
 
         DeletionQueue deletion_queue;
         DescriptorAllocatorGrowable _frameDescriptors;
+    };
+
+    struct GLTFMetallic_Roughness {
+        MaterialPipeline opaquePipeline;
+        MaterialPipeline transparentPipeline;
+
+        VkDescriptorSetLayout materialLayout;
+
+        struct MaterialConstants {
+            glm::vec4 colorFactors;
+            glm::vec4 metal_rough_factors;
+            //padding, we need it anyway for uniform buffers
+            glm::vec4 extra[14];
+        };
+
+        struct MaterialResources {
+            VulkanImage colorImage;
+            VkSampler colorSampler;
+            VulkanImage metalRoughImage;
+            VkSampler metalRoughSampler;
+            VkBuffer dataBuffer;
+            uint32_t dataBufferOffset;
+        };
+
+        DescriptorWriter writer;
+
+        void build_pipelines(Renderer* engine);
+        void clear_resources(VkDevice device);
+
+        MaterialInstance write_material(VkDevice device, MaterialPass pass, const MaterialResources& resources, DescriptorAllocatorGrowable& descriptorAllocator);
     };
 
     struct RenderObject {
