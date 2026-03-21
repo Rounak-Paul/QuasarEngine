@@ -24,9 +24,17 @@ int main(void)
     });
     if (!window) { ca_instance_destroy(instance); qs_engine_destroy(engine); return 1; }
 
-    Qs_Renderer *renderer = qs_renderer_create(&(Qs_RendererDesc){
-        .device      = ca_gpu_device(instance),
+    Qs_SystemDesc render_desc = qs_render_system_desc(instance);
+    if (!qs_system_register(qs_engine_systems(engine), &render_desc)) {
+        ca_instance_destroy(instance);
+        qs_engine_destroy(engine);
+        return 1;
+    }
+
+    Qs_Renderer *renderer = qs_renderer_create(engine, &(Qs_RendererDesc){
+        .name        = "main",
         .clear_color = {{ 0.05f, 0.05f, 0.10f, 1.0f }},
+        .depth_test  = true,
     });
 
     ca_ui_begin(window, &(Ca_DivDesc){
@@ -38,7 +46,6 @@ int main(void)
 
     int result = ca_instance_exec(instance);
 
-    qs_renderer_destroy(renderer);
     qs_engine_destroy(engine);
     return result;
 }

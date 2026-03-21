@@ -194,9 +194,20 @@ Editor *editor_create(const EditorDesc *desc)
         return NULL;
     }
 
-    ed->scene_renderer = qs_renderer_create(&(Qs_RendererDesc){
-        .device      = ca_gpu_device(ed->instance),
+    Qs_SystemDesc render_desc = qs_render_system_desc(ed->instance);
+    if (!qs_system_register(qs_engine_systems(ed->engine), &render_desc)) {
+        ca_window_destroy(ed->window);
+        if (ed->stylesheet) ca_css_destroy(ed->stylesheet);
+        ca_instance_destroy(ed->instance);
+        qs_engine_destroy(ed->engine);
+        free(ed);
+        return NULL;
+    }
+
+    ed->scene_renderer = qs_renderer_create(ed->engine, &(Qs_RendererDesc){
+        .name        = "scene",
         .clear_color = {{ 0.06f, 0.06f, 0.12f, 1.0f }},
+        .depth_test  = true,
     });
 
     editor_build_ui(ed);
@@ -238,7 +249,8 @@ Qs_Engine *editor_engine(Editor *ed)
 void editor_destroy(Editor *ed)
 {
     if (!ed) return;
-    qs_renderer_destroy(ed->scene_renderer);
+    /* Renderers are destroyed by the render system shutdown via qs_engine_destroy.
+       Just destroy the stylesheet before the engine. */
     if (ed->stylesheet) ca_css_destroy(ed->stylesheet);
     qs_engine_destroy(ed->engine);
     free(ed);
