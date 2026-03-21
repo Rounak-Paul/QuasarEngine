@@ -1,7 +1,4 @@
 #include "quasar/quasar.h"
-#include <stdlib.h>
-#include <string.h>
-#include <stdio.h>
 
 #define QS_VERSION_MAJOR 0
 #define QS_VERSION_MINOR 1

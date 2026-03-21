@@ -1,3 +1,19 @@
 [submodule "Quasar/vendors/causality"]
 	path = Quasar/vendors/causality
 	url = https://github.com/Rounak-Paul/causality.git
+[submodule "Quasar/vendors/openal-soft"]
+	path = Quasar/vendors/openal-soft
+	url = https://github.com/Rounak-Paul/openal-soft.git
+[submodule "Quasar/vendors/meshoptimizer"]
+	path = Quasar/vendors/meshoptimizer
+	url = https://github.com/Rounak-Paul/meshoptimizer.git
+[submodule "Quasar/vendors/stb"]
+	path = Quasar/vendors/stb
+	url = https://github.com/Rounak-Paul/stb.git
+[submodule "Quasar/vendors/cjson"]
+	path = Quasar/vendors/cjson
+	url = https://github.com/Rounak-Paul/cJSON.git
+[submodule "Quasar/vendors/cgltf"]
+	path = Quasar/vendors/cgltf
+	url = https://github.com/Rounak-Paul/cgltf.git
+ 
