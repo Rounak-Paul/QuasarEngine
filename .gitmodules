@@ -1,0 +1,3 @@
+[submodule "Quasar/vendors/causality"]
+	path = Quasar/vendors/causality
+	url = https://github.com/Rounak-Paul/causality.git
