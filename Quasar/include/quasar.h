@@ -2,6 +2,8 @@
 #define QUASAR_H
 
 #include <stdint.h>
+#include "qs_event.h"
+#include "qs_job.h"
 
 typedef struct Qs_Engine Qs_Engine;
 
@@ -17,6 +19,12 @@ Qs_Engine* qs_engine_create(const Qs_EngineDesc* desc);
 
 /// Destroys a Quasar Engine instance and frees all resources.
 void qs_engine_destroy(Qs_Engine* engine);
+
+/// Returns the engine's event bus.
+Qs_EventBus* qs_engine_event_bus(Qs_Engine* engine);
+
+/// Returns the engine's job system.
+Qs_JobSystem* qs_engine_job_system(Qs_Engine* engine);
 
 /// Returns the engine version string.
 const char* qs_version_string(void);

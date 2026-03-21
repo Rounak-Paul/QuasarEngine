@@ -1,4 +1,4 @@
-#include "quasar/quasar.h"
+#include "quasar.h"
 
 int main(void) {
     Qs_Engine* engine = qs_engine_create(&(Qs_EngineDesc){
