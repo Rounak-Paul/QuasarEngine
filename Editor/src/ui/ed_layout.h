@@ -5,4 +5,7 @@
 
 void ed_layout(Ca_Window *window, void *editor);
 
+/// Refreshes the console panel with latest log entries.
+void ed_console_update(void *editor);
+
 #endif

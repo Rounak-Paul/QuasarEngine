@@ -1,13 +1,38 @@
 #include "ed_layout.h"
 #include "editor.h"
 
+#include <stdio.h>
+#include <string.h>
+
 #define SPLIT_BAR_COLOR       ca_color(0.14f, 0.14f, 0.20f, 1.0f)
 #define SPLIT_BAR_HOVER_COLOR ca_color(0.30f, 0.50f, 0.85f, 1.0f)
 
+/* ---- Console ---- */
+#define CONSOLE_MAX_LINES 100
+
+static Ca_Window *s_console_window;
+static Ca_Label  *s_console_lines[CONSOLE_MAX_LINES];
+static uint32_t   s_prev_log_count;
+static bool        s_needs_scroll;
+
+static uint32_t log_level_color(Qs_LogLevel level)
+{
+    switch (level) {
+    case QS_LOG_DEBUG: return ca_color(0.40f, 0.40f, 0.50f, 1.0f);
+    case QS_LOG_TRACE: return ca_color(0.27f, 0.67f, 0.80f, 1.0f);
+    case QS_LOG_INFO:  return ca_color(0.27f, 0.80f, 0.40f, 1.0f);
+    case QS_LOG_WARN:  return ca_color(0.80f, 0.67f, 0.27f, 1.0f);
+    case QS_LOG_ERROR: return ca_color(0.80f, 0.27f, 0.27f, 1.0f);
+    case QS_LOG_FATAL: return ca_color(0.80f, 0.27f, 0.80f, 1.0f);
+    default:           return ca_color(0.40f, 0.40f, 0.50f, 1.0f);
+    }
+}
+
 void ed_layout(Ca_Window *window, void *editor)
 {
-    (void)window;
     (void)editor;
+
+    s_console_window = window;
 
     /* Vertical split: top three-panel area | bottom panel (full width) */
     ca_split_begin(&(Ca_SplitDesc){
@@ -106,8 +131,67 @@ void ed_layout(Ca_Window *window, void *editor)
                 .active_bg     = ca_color(0.09f, 0.09f, 0.18f, 1.0f),
                 .inactive_bg   = ca_color(0.07f, 0.07f, 0.13f, 0.0f),
             });
+
+            /* Console content — scrollable log lines */
+            ca_div_begin(&(Ca_DivDesc){
+                .direction = CA_VERTICAL,
+                .style     = "console-scroll",
+                .id        = "console",
+            });
+            for (uint32_t i = 0; i < CONSOLE_MAX_LINES; i++) {
+                s_console_lines[i] = ca_text(&(Ca_TextDesc){
+                    .text  = "",
+                    .style = "console-line",
+                });
+                ca_label_set_hidden(s_console_lines[i], true);
+            }
+            ca_div_end();
         }
         ca_div_end();
     }
     ca_split_end();
+}
+
+void ed_console_update(void *editor)
+{
+    (void)editor;
+
+    uint32_t count = 0;
+    const Qs_LogEntry *entries = qs_log_entries(&count);
+
+    /* Scroll to bottom on the NEXT frame so content_h is up to date */
+    if (s_needs_scroll) {
+        s_needs_scroll = false;
+        ca_scroll_to_bottom(s_console_window, "console");
+    }
+
+    if (count == s_prev_log_count) return;
+    s_prev_log_count = count;
+    s_needs_scroll   = true;   /* scroll after next layout pass */
+
+    /* Show the most recent entries that fit in the label pool */
+    uint32_t start   = count > CONSOLE_MAX_LINES ? count - CONSOLE_MAX_LINES : 0;
+    uint32_t visible = count - start;
+
+    char line_buf[512];
+    for (uint32_t i = 0; i < CONSOLE_MAX_LINES; i++) {
+        if (i < visible) {
+            const Qs_LogEntry *e = &entries[start + i];
+            int hrs = (int)(e->timestamp / 3600.0);
+            int min = (int)(e->timestamp / 60.0) % 60;
+            int sec = (int)e->timestamp % 60;
+            int ms  = (int)((e->timestamp - (int)e->timestamp) * 1000.0);
+
+            snprintf(line_buf, sizeof(line_buf),
+                     "[%02d:%02d:%02d.%03d] [%s] %s",
+                     hrs, min, sec, ms,
+                     qs_log_level_str(e->level), e->message);
+
+            ca_label_set_text(s_console_lines[i], line_buf);
+            ca_label_set_color(s_console_lines[i], log_level_color(e->level));
+            ca_label_set_hidden(s_console_lines[i], false);
+        } else {
+            ca_label_set_hidden(s_console_lines[i], true);
+        }
+    }
 }

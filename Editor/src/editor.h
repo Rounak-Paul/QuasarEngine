@@ -24,6 +24,9 @@ void editor_request_exit(Editor *editor);
 /// Returns the editor's scene renderer.
 Qs_Renderer *editor_scene_renderer(Editor *editor);
 
+/// Returns the editor's engine instance.
+Qs_Engine *editor_engine(Editor *editor);
+
 /// Destroys the editor and all owned resources.
 void editor_destroy(Editor *editor);
 

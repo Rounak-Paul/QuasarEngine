@@ -1,5 +1,8 @@
 #include "qs_job.h"
+#include "qs_log.h"
+#include "qs_system.h"
 #include <causality.h>
+#include <stdlib.h>
 
 #ifdef _WIN32
 #include <windows.h>
@@ -126,7 +129,6 @@ static void* worker_fn(void* arg) {
         }
     }
 
-    /* Drain remaining jobs on shutdown */
     while (queue_pop(&sys->queue, &entry)) {
         execute_job(&entry);
     }
@@ -153,11 +155,15 @@ static uint32_t get_cpu_count(void) {
 #endif
 }
 
-/* ── Public API ─────────────────────────────────────────────── */
+/* ── System callbacks ───────────────────────────────────────── */
 
-Qs_JobSystem* qs_job_system_create(const Qs_JobSystemDesc* desc) {
-    Qs_JobSystem* sys = calloc(1, sizeof(Qs_JobSystem));
-    if (!sys) return NULL;
+static bool job_system_init(Qs_System *system, Qs_Engine *engine)
+{
+    (void)engine;
+    Qs_JobSystem **slot = (Qs_JobSystem **)qs_system_data(system);
+
+    Qs_JobSystem *sys = calloc(1, sizeof(Qs_JobSystem));
+    if (!sys) return false;
 
     sys->queue.mutex = ca_mutex_create();
     sys->queue.cond  = ca_condvar_create();
@@ -165,50 +171,64 @@ Qs_JobSystem* qs_job_system_create(const Qs_JobSystemDesc* desc) {
         ca_condvar_destroy(sys->queue.cond);
         ca_mutex_destroy(sys->queue.mutex);
         free(sys);
-        return NULL;
+        return false;
     }
 
-    uint32_t n = (desc && desc->num_threads > 0)
-                 ? desc->num_threads
-                 : get_cpu_count() - 1;
+    uint32_t n = get_cpu_count() - 1;
     if (n < 1) n = 1;
     sys->num_threads = n;
 
-    sys->threads = calloc(n, sizeof(Ca_Thread*));
+    sys->threads = calloc(n, sizeof(Ca_Thread *));
     if (!sys->threads) {
         ca_condvar_destroy(sys->queue.cond);
         ca_mutex_destroy(sys->queue.mutex);
         free(sys);
-        return NULL;
+        return false;
     }
 
     sys->running = 1;
-    for (uint32_t i = 0; i < n; ++i) {
+    for (uint32_t i = 0; i < n; ++i)
         sys->threads[i] = ca_thread_create(worker_fn, sys);
-    }
 
-    return sys;
+    *slot = sys;
+    QS_LOG_DEBUG("%u worker threads spawned", n);
+    return true;
 }
 
-void qs_job_system_destroy(Qs_JobSystem* sys) {
+static void job_system_shutdown(Qs_System *system, Qs_Engine *engine)
+{
+    (void)engine;
+    Qs_JobSystem **slot = (Qs_JobSystem **)qs_system_data(system);
+    Qs_JobSystem *sys = *slot;
     if (!sys) return;
 
     sys->running = 0;
 
-    /* Wake all workers so they can exit */
     ca_mutex_lock(sys->queue.mutex);
     ca_condvar_broadcast(sys->queue.cond);
     ca_mutex_unlock(sys->queue.mutex);
 
-    for (uint32_t i = 0; i < sys->num_threads; ++i) {
+    for (uint32_t i = 0; i < sys->num_threads; ++i)
         ca_thread_join(sys->threads[i]);
-    }
 
     free(sys->threads);
     ca_condvar_destroy(sys->queue.cond);
     ca_mutex_destroy(sys->queue.mutex);
     free(sys);
+    *slot = NULL;
 }
+
+Qs_SystemDesc qs_job_system_desc(void)
+{
+    return (Qs_SystemDesc){
+        .name      = "Job",
+        .data_size = sizeof(Qs_JobSystem *),
+        .init      = job_system_init,
+        .shutdown  = job_system_shutdown,
+    };
+}
+
+/* ── Public API ─────────────────────────────────────────────── */
 
 Qs_JobCounter* qs_job_counter_create(Qs_JobSystem* system) {
     (void)system;
@@ -251,9 +271,8 @@ void qs_job_dispatch_batch(Qs_JobSystem* sys, const Qs_JobDesc* jobs,
                            uint32_t count, Qs_JobCounter* counter) {
     if (!sys || !jobs) return;
 
-    for (uint32_t i = 0; i < count; ++i) {
+    for (uint32_t i = 0; i < count; ++i)
         qs_job_dispatch(sys, &jobs[i], counter);
-    }
 }
 
 void qs_job_wait(Qs_JobSystem* sys, Qs_JobCounter* counter) {

@@ -65,6 +65,21 @@ static const char *g_editor_css =
     "  background: #16162a;"
     "}"
 
+    /* Console */
+    ".console-scroll {"
+    "  overflow-y: scroll;"
+    "  padding: 4px;"
+    "  flex-grow: 1;"
+    "  align-items: flex-start;"
+    "}"
+
+    ".console-line {"
+    "  font-size: 11px;"
+    "  height: 14px;"
+    "  width: 100%;"
+    "  text-align: left;"
+    "}"
+
     /* Panel tab bars (row of tabs at top of each panel) */
     ".panel-tab-bar {"
     "  background: #12122a;"
@@ -117,6 +132,25 @@ static void editor_build_ui(Editor *ed)
     ca_ui_end();
 }
 
+static void on_key_event(const Ca_Event *event, void *userdata)
+{
+    (void)userdata;
+    qs_input_key_event((Qs_Key)event->key.key,
+                       (Qs_KeyAction)event->key.action,
+                       event->key.mods);
+}
+
+static void on_frame(void *userdata)
+{
+    ed_console_update(userdata);
+}
+
+static void on_log(void *userdata)
+{
+    (void)userdata;
+    ca_instance_wake();
+}
+
 Editor *editor_create(const EditorDesc *desc)
 {
     Editor *ed = calloc(1, sizeof(Editor));
@@ -166,6 +200,16 @@ Editor *editor_create(const EditorDesc *desc)
     });
 
     editor_build_ui(ed);
+
+    /* Feed keyboard events from Causality into the engine input system */
+    ca_event_set_handler(ed->instance, CA_EVENT_KEY, on_key_event, ed);
+
+    /* Per-frame callback updates the console */
+    ca_window_set_on_frame(ed->window, on_frame, ed);
+
+    /* Wake the event loop when new log entries arrive from background threads */
+    qs_log_set_listener(on_log, ed);
+
     return ed;
 }
 
@@ -184,6 +228,11 @@ void editor_request_exit(Editor *ed)
 Qs_Renderer *editor_scene_renderer(Editor *ed)
 {
     return ed ? ed->scene_renderer : NULL;
+}
+
+Qs_Engine *editor_engine(Editor *ed)
+{
+    return ed ? ed->engine : NULL;
 }
 
 void editor_destroy(Editor *ed)

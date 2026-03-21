@@ -2,9 +2,12 @@
 #define QUASAR_H
 
 #include <stdint.h>
+#include "qs_log.h"
 #include "qs_event.h"
 #include "qs_job.h"
+#include "qs_system.h"
 #include "qs_renderer.h"
+#include "qs_input.h"
 
 typedef struct Qs_Engine Qs_Engine;
 
@@ -26,6 +29,12 @@ Qs_EventBus* qs_engine_event_bus(Qs_Engine* engine);
 
 /// Returns the engine's job system.
 Qs_JobSystem* qs_engine_job_system(Qs_Engine* engine);
+
+/// Returns the engine's system manager.
+Qs_SystemManager* qs_engine_systems(Qs_Engine* engine);
+
+/// Updates all engine systems (call once per frame).
+void qs_engine_update(Qs_Engine* engine, float dt);
 
 /// Returns the engine version string.
 const char* qs_version_string(void);

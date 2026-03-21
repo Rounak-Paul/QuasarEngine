@@ -5,12 +5,11 @@
 #define QS_VERSION_PATCH 0
 
 struct Qs_Engine {
-    char* app_name;
-    uint32_t version_major;
-    uint32_t version_minor;
-    uint32_t version_patch;
-    Qs_EventBus* event_bus;
-    Qs_JobSystem* job_system;
+    char*             app_name;
+    uint32_t          version_major;
+    uint32_t          version_minor;
+    uint32_t          version_patch;
+    Qs_SystemManager* systems;
 };
 
 Qs_Engine* qs_engine_create(const Qs_EngineDesc* desc) {
@@ -31,45 +30,83 @@ Qs_Engine* qs_engine_create(const Qs_EngineDesc* desc) {
         engine->version_patch = desc->version_patch;
     }
 
-    engine->event_bus = qs_event_bus_create();
-    if (!engine->event_bus) {
+    engine->systems = qs_system_manager_create(engine);
+    if (!engine->systems) {
         free(engine->app_name);
         free(engine);
         return NULL;
     }
 
-    engine->job_system = qs_job_system_create(&(Qs_JobSystemDesc){ .num_threads = 0 });
-    if (!engine->job_system) {
-        qs_event_bus_destroy(engine->event_bus);
+    Qs_SystemDesc log_desc = qs_log_system_desc();
+    if (!qs_system_register(engine->systems, &log_desc)) {
+        qs_system_manager_destroy(engine->systems);
         free(engine->app_name);
         free(engine);
         return NULL;
     }
 
-    printf("Quasar Engine %s initialized (%s) [%u worker threads]\n",
-           qs_version_string(),
-           engine->app_name ? engine->app_name : "unnamed",
-           qs_job_system_thread_count(engine->job_system));
+    Qs_SystemDesc job_desc = qs_job_system_desc();
+    if (!qs_system_register(engine->systems, &job_desc)) {
+        qs_system_manager_destroy(engine->systems);
+        free(engine->app_name);
+        free(engine);
+        return NULL;
+    }
 
-    qs_event_fire(engine->event_bus, QS_EVENT_ENGINE_INIT, NULL, 0);
+    Qs_SystemDesc event_desc = qs_event_system_desc();
+    if (!qs_system_register(engine->systems, &event_desc)) {
+        qs_system_manager_destroy(engine->systems);
+        free(engine->app_name);
+        free(engine);
+        return NULL;
+    }
+
+    Qs_SystemDesc input_desc = qs_input_system_desc();
+    if (!qs_system_register(engine->systems, &input_desc)) {
+        qs_system_manager_destroy(engine->systems);
+        free(engine->app_name);
+        free(engine);
+        return NULL;
+    }
+
+    QS_LOG_INFO("Quasar Engine %s initialized (%s) [%u worker threads]",
+                qs_version_string(),
+                engine->app_name ? engine->app_name : "unnamed",
+                qs_job_system_thread_count(qs_engine_job_system(engine)));
+
+    qs_event_fire(qs_engine_event_bus(engine), QS_EVENT_ENGINE_INIT, NULL, 0);
     return engine;
 }
 
 void qs_engine_destroy(Qs_Engine* engine) {
     if (!engine) return;
-    qs_event_fire(engine->event_bus, QS_EVENT_ENGINE_SHUTDOWN, NULL, 0);
-    qs_job_system_destroy(engine->job_system);
-    qs_event_bus_destroy(engine->event_bus);
+    qs_event_fire(qs_engine_event_bus(engine), QS_EVENT_ENGINE_SHUTDOWN, NULL, 0);
+    qs_system_manager_destroy(engine->systems);
     free(engine->app_name);
     free(engine);
 }
 
 Qs_EventBus* qs_engine_event_bus(Qs_Engine* engine) {
-    return engine ? engine->event_bus : NULL;
+    if (!engine) return NULL;
+    Qs_System *s = qs_system_find(engine->systems, "Event");
+    return s ? (Qs_EventBus *)qs_system_data(s) : NULL;
 }
 
 Qs_JobSystem* qs_engine_job_system(Qs_Engine* engine) {
-    return engine ? engine->job_system : NULL;
+    if (!engine) return NULL;
+    Qs_System *s = qs_system_find(engine->systems, "Job");
+    if (!s) return NULL;
+    Qs_JobSystem **slot = (Qs_JobSystem **)qs_system_data(s);
+    return slot ? *slot : NULL;
+}
+
+Qs_SystemManager* qs_engine_systems(Qs_Engine* engine) {
+    return engine ? engine->systems : NULL;
+}
+
+void qs_engine_update(Qs_Engine* engine, float dt) {
+    if (!engine) return;
+    qs_system_manager_update(engine->systems, dt);
 }
 
 const char* qs_version_string(void) {

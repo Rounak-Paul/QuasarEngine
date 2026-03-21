@@ -12,22 +12,17 @@ typedef struct Qs_JobCounter Qs_JobCounter;
 /// Job function signature.
 typedef void (*Qs_JobFn)(void* data);
 
-/// Descriptor for creating a job system.
-typedef struct Qs_JobSystemDesc {
-    uint32_t num_threads;   ///< 0 = auto (logical cores - 1, minimum 1)
-} Qs_JobSystemDesc;
-
 /// Descriptor for submitting a job.
 typedef struct Qs_JobDesc {
     Qs_JobFn  fn;           ///< Function to execute.
     void*     data;         ///< User data passed to fn.
 } Qs_JobDesc;
 
-/// Creates a job system and spawns worker threads.
-Qs_JobSystem* qs_job_system_create(const Qs_JobSystemDesc* desc);
+typedef struct Qs_SystemDesc Qs_SystemDesc;
 
-/// Shuts down worker threads and destroys the job system.
-void qs_job_system_destroy(Qs_JobSystem* system);
+/// Returns the system descriptor for the job system.
+/// Register with qs_system_register() — the engine does this automatically.
+Qs_SystemDesc qs_job_system_desc(void);
 
 /// Allocates a counter for tracking job completion.
 Qs_JobCounter* qs_job_counter_create(Qs_JobSystem* system);

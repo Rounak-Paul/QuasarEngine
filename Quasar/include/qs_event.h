@@ -40,11 +40,11 @@ typedef struct Qs_Event {
 /// Listener callback signature. Return true to consume the event.
 typedef bool (*Qs_EventFn)(const Qs_Event* event, void* user_data);
 
-/// Creates a new event bus.
-Qs_EventBus* qs_event_bus_create(void);
+typedef struct Qs_SystemDesc Qs_SystemDesc;
 
-/// Destroys an event bus and all registered listeners.
-void qs_event_bus_destroy(Qs_EventBus* bus);
+/// Returns the system descriptor for the event system.
+/// Register with qs_system_register() — the engine does this automatically.
+Qs_SystemDesc qs_event_system_desc(void);
 
 /// Subscribes a listener to an event ID. Returns a handle for unsubscribing.
 uint32_t qs_event_subscribe(Qs_EventBus* bus, Qs_EventId id,
