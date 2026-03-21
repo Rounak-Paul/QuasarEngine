@@ -31,6 +31,21 @@ int main(void)
         return 1;
     }
 
+    Qs_SystemDesc tex_desc = qs_texture_system_desc(instance);
+    qs_system_register(qs_engine_systems(engine), &tex_desc);
+
+    Qs_SystemDesc mesh_desc = qs_mesh_system_desc(instance);
+    qs_system_register(qs_engine_systems(engine), &mesh_desc);
+
+    Qs_SystemDesc mat_desc = qs_material_system_desc(instance);
+    qs_system_register(qs_engine_systems(engine), &mat_desc);
+
+    Qs_SystemDesc light_desc = qs_light_system_desc();
+    qs_system_register(qs_engine_systems(engine), &light_desc);
+
+    Qs_SystemDesc scene_desc = qs_scene_system_desc();
+    qs_system_register(qs_engine_systems(engine), &scene_desc);
+
     Qs_Renderer *renderer = qs_renderer_create(engine, &(Qs_RendererDesc){
         .name        = "main",
         .clear_color = {{ 0.05f, 0.05f, 0.10f, 1.0f }},

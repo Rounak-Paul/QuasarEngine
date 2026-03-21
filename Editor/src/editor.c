@@ -204,11 +204,168 @@ Editor *editor_create(const EditorDesc *desc)
         return NULL;
     }
 
+    Qs_SystemDesc tex_desc = qs_texture_system_desc(ed->instance);
+    qs_system_register(qs_engine_systems(ed->engine), &tex_desc);
+
+    Qs_SystemDesc mesh_desc = qs_mesh_system_desc(ed->instance);
+    qs_system_register(qs_engine_systems(ed->engine), &mesh_desc);
+
+    Qs_SystemDesc mat_desc = qs_material_system_desc(ed->instance);
+    qs_system_register(qs_engine_systems(ed->engine), &mat_desc);
+
+    Qs_SystemDesc light_desc = qs_light_system_desc();
+    qs_system_register(qs_engine_systems(ed->engine), &light_desc);
+
+    Qs_SystemDesc scene_desc = qs_scene_system_desc();
+    qs_system_register(qs_engine_systems(ed->engine), &scene_desc);
+
     ed->scene_renderer = qs_renderer_create(ed->engine, &(Qs_RendererDesc){
         .name        = "scene",
         .clear_color = {{ 0.06f, 0.06f, 0.12f, 1.0f }},
         .depth_test  = true,
     });
+
+    /* Position camera for a good view of the test scene */
+    Qs_Camera *cam = qs_renderer_camera(ed->scene_renderer);
+    cam->position[0] =  5.0f;
+    cam->position[1] =  4.0f;
+    cam->position[2] =  8.0f;
+    cam->target[0]   =  0.0f;
+    cam->target[1]   =  0.5f;
+    cam->target[2]   =  0.0f;
+
+    /* Initialize forward rendering pipeline */
+    qs_forward_init(ed->engine, ed->scene_renderer);
+
+    /* ---- Test scene ---- */
+    Qs_Scene *scene = qs_scene_create(ed->engine, &(Qs_SceneDesc){
+        .name = "TestScene",
+    });
+    qs_scene_set_active(scene);
+
+    /* Create shared primitive meshes */
+    Qs_Mesh *plane_mesh  = qs_primitive_plane(ed->engine, 12.0f, 1);
+    Qs_Mesh *cube_mesh   = qs_primitive_cube(ed->engine, 1.0f);
+    Qs_Mesh *sphere_mesh = qs_primitive_sphere(ed->engine, 0.5f, 24, 16);
+
+    /* Create some materials with different colors */
+    Qs_Material *mat_floor = qs_material_create(ed->engine, &(Qs_MaterialDesc){
+        .name              = "floor",
+        .base_color_factor = { 0.3f, 0.3f, 0.35f, 1.0f },
+        .roughness_factor  = 0.9f,
+        .metallic_factor   = 0.0f,
+    });
+    Qs_Material *mat_red = qs_material_create(ed->engine, &(Qs_MaterialDesc){
+        .name              = "red",
+        .base_color_factor = { 0.8f, 0.15f, 0.1f, 1.0f },
+        .roughness_factor  = 0.5f,
+        .metallic_factor   = 0.1f,
+    });
+    Qs_Material *mat_blue = qs_material_create(ed->engine, &(Qs_MaterialDesc){
+        .name              = "blue",
+        .base_color_factor = { 0.1f, 0.3f, 0.85f, 1.0f },
+        .roughness_factor  = 0.4f,
+        .metallic_factor   = 0.2f,
+    });
+    Qs_Material *mat_green = qs_material_create(ed->engine, &(Qs_MaterialDesc){
+        .name              = "green",
+        .base_color_factor = { 0.15f, 0.7f, 0.2f, 1.0f },
+        .roughness_factor  = 0.6f,
+        .metallic_factor   = 0.0f,
+    });
+    Qs_Material *mat_gold = qs_material_create(ed->engine, &(Qs_MaterialDesc){
+        .name              = "gold",
+        .base_color_factor = { 0.9f, 0.75f, 0.2f, 1.0f },
+        .roughness_factor  = 0.3f,
+        .metallic_factor   = 0.9f,
+    });
+
+    /* Floor platform */
+    {
+        Qs_Entity e = qs_entity_create(scene, "Floor");
+        Qs_MeshComp *mc = (Qs_MeshComp *)qs_entity_add(scene, e, qs_mesh_comp_type());
+        mc->mesh     = plane_mesh;
+        mc->material = mat_floor;
+    }
+
+    /* Red cube — left */
+    {
+        Qs_Entity e = qs_entity_create(scene, "RedCube");
+        Qs_Transform *tf = (Qs_Transform *)qs_entity_get(scene, e, qs_transform_type());
+        tf->position[0] = -2.0f;
+        tf->position[1] =  0.5f;
+        tf->position[2] =  0.0f;
+        Qs_MeshComp *mc = (Qs_MeshComp *)qs_entity_add(scene, e, qs_mesh_comp_type());
+        mc->mesh     = cube_mesh;
+        mc->material = mat_red;
+    }
+
+    /* Blue cube — right */
+    {
+        Qs_Entity e = qs_entity_create(scene, "BlueCube");
+        Qs_Transform *tf = (Qs_Transform *)qs_entity_get(scene, e, qs_transform_type());
+        tf->position[0] =  2.0f;
+        tf->position[1] =  0.5f;
+        tf->position[2] =  0.0f;
+        Qs_MeshComp *mc = (Qs_MeshComp *)qs_entity_add(scene, e, qs_mesh_comp_type());
+        mc->mesh     = cube_mesh;
+        mc->material = mat_blue;
+    }
+
+    /* Green sphere — center back */
+    {
+        Qs_Entity e = qs_entity_create(scene, "GreenSphere");
+        Qs_Transform *tf = (Qs_Transform *)qs_entity_get(scene, e, qs_transform_type());
+        tf->position[0] =  0.0f;
+        tf->position[1] =  0.5f;
+        tf->position[2] = -2.0f;
+        Qs_MeshComp *mc = (Qs_MeshComp *)qs_entity_add(scene, e, qs_mesh_comp_type());
+        mc->mesh     = sphere_mesh;
+        mc->material = mat_green;
+    }
+
+    /* Gold sphere — center front */
+    {
+        Qs_Entity e = qs_entity_create(scene, "GoldSphere");
+        Qs_Transform *tf = (Qs_Transform *)qs_entity_get(scene, e, qs_transform_type());
+        tf->position[0] =  0.0f;
+        tf->position[1] =  0.8f;
+        tf->position[2] =  2.0f;
+        tf->scale[0]    =  1.5f;
+        tf->scale[1]    =  1.5f;
+        tf->scale[2]    =  1.5f;
+        Qs_MeshComp *mc = (Qs_MeshComp *)qs_entity_add(scene, e, qs_mesh_comp_type());
+        mc->mesh     = sphere_mesh;
+        mc->material = mat_gold;
+    }
+
+    /* Small stacked cubes — right-back */
+    {
+        Qs_Entity e = qs_entity_create(scene, "SmallCube1");
+        Qs_Transform *tf = (Qs_Transform *)qs_entity_get(scene, e, qs_transform_type());
+        tf->position[0] =  3.0f;
+        tf->position[1] =  0.3f;
+        tf->position[2] = -2.5f;
+        tf->scale[0]    =  0.6f;
+        tf->scale[1]    =  0.6f;
+        tf->scale[2]    =  0.6f;
+        Qs_MeshComp *mc = (Qs_MeshComp *)qs_entity_add(scene, e, qs_mesh_comp_type());
+        mc->mesh     = cube_mesh;
+        mc->material = mat_gold;
+    }
+    {
+        Qs_Entity e = qs_entity_create(scene, "SmallCube2");
+        Qs_Transform *tf = (Qs_Transform *)qs_entity_get(scene, e, qs_transform_type());
+        tf->position[0] =  3.0f;
+        tf->position[1] =  0.9f;
+        tf->position[2] = -2.5f;
+        tf->scale[0]    =  0.4f;
+        tf->scale[1]    =  0.4f;
+        tf->scale[2]    =  0.4f;
+        Qs_MeshComp *mc = (Qs_MeshComp *)qs_entity_add(scene, e, qs_mesh_comp_type());
+        mc->mesh     = cube_mesh;
+        mc->material = mat_red;
+    }
 
     editor_build_ui(ed);
 
@@ -227,7 +384,8 @@ Editor *editor_create(const EditorDesc *desc)
 int editor_run(Editor *ed)
 {
     if (!ed) return 1;
-    return ca_instance_exec(ed->instance);
+    while (ca_instance_tick(ed->instance)) { }
+    return 0;
 }
 
 void editor_request_exit(Editor *ed)
@@ -249,9 +407,9 @@ Qs_Engine *editor_engine(Editor *ed)
 void editor_destroy(Editor *ed)
 {
     if (!ed) return;
-    /* Renderers are destroyed by the render system shutdown via qs_engine_destroy.
-       Just destroy the stylesheet before the engine. */
-    if (ed->stylesheet) ca_css_destroy(ed->stylesheet);
+    qs_forward_shutdown();
     qs_engine_destroy(ed->engine);
+    if (ed->stylesheet) ca_css_destroy(ed->stylesheet);
+    ca_instance_destroy(ed->instance);
     free(ed);
 }

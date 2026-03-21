@@ -7,6 +7,13 @@
 #include "qs_job.h"
 #include "qs_system.h"
 #include "qs_renderer.h"
+#include "qs_texture.h"
+#include "qs_mesh.h"
+#include "qs_material.h"
+#include "qs_light.h"
+#include "qs_scene.h"
+#include "qs_primitives.h"
+#include "qs_forward.h"
 #include "qs_input.h"
 
 typedef struct Qs_Engine Qs_Engine;
