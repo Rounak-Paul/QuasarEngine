@@ -1,13 +1,14 @@
-#include "quasar.h"
+#include "editor.h"
 
 int main(void) {
-    Qs_Engine* engine = qs_engine_create(&(Qs_EngineDesc){
-        .app_name      = "Quasar Editor",
-        .version_major = 0,
-        .version_minor = 1,
-        .version_patch = 0,
+    Editor *editor = editor_create(&(EditorDesc){
+        .title  = "Quasar Editor",
+        .width  = 1280,
+        .height = 720,
     });
+    if (!editor) return 1;
 
-    qs_engine_destroy(engine);
-    return 0;
+    int result = editor_run(editor);
+    editor_destroy(editor);
+    return result;
 }
