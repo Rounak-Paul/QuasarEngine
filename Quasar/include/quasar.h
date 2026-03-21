@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include "qs_event.h"
 #include "qs_job.h"
+#include "qs_renderer.h"
 
 typedef struct Qs_Engine Qs_Engine;
 

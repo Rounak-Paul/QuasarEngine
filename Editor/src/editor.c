@@ -11,6 +11,7 @@ struct Editor {
     Ca_Instance   *instance;
     Ca_Window     *window;
     Ca_Stylesheet *stylesheet;
+    Qs_Renderer   *scene_renderer;
 };
 
 /* ---- Editor CSS theme ---- */
@@ -159,6 +160,11 @@ Editor *editor_create(const EditorDesc *desc)
         return NULL;
     }
 
+    ed->scene_renderer = qs_renderer_create(&(Qs_RendererDesc){
+        .device      = ca_gpu_device(ed->instance),
+        .clear_color = {{ 0.06f, 0.06f, 0.12f, 1.0f }},
+    });
+
     editor_build_ui(ed);
     return ed;
 }
@@ -175,9 +181,15 @@ void editor_request_exit(Editor *ed)
         ca_window_close(ed->window);
 }
 
+Qs_Renderer *editor_scene_renderer(Editor *ed)
+{
+    return ed ? ed->scene_renderer : NULL;
+}
+
 void editor_destroy(Editor *ed)
 {
     if (!ed) return;
+    qs_renderer_destroy(ed->scene_renderer);
     if (ed->stylesheet) ca_css_destroy(ed->stylesheet);
     qs_engine_destroy(ed->engine);
     free(ed);

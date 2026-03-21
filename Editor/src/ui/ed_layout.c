@@ -1,4 +1,5 @@
 #include "ed_layout.h"
+#include "editor.h"
 
 #define SPLIT_BAR_COLOR       ca_color(0.14f, 0.14f, 0.20f, 1.0f)
 #define SPLIT_BAR_HOVER_COLOR ca_color(0.30f, 0.50f, 0.85f, 1.0f)
@@ -65,6 +66,10 @@ void ed_layout(Ca_Window *window, void *editor)
                 });
                 ca_text(&(Ca_TextDesc){ .text = "Scene", .style = "panel-tab active" });
                 ca_div_end();
+                {
+                    Ca_Viewport *vp = ca_viewport(&(Ca_ViewportDesc){ 0 });
+                    qs_renderer_bind(editor_scene_renderer(editor), vp);
+                }
                 ca_div_end();
 
                 /* Right panel — Inspector */
