@@ -23,6 +23,8 @@
 #define ICON_TRANSFORM  "\xEF\x82\xB2"   /* U+F0B2 arrows    */
 #define ICON_MESH       "\xEF\x86\xB2"   /* U+F1B2 cube      */
 #define ICON_LIGHT      "\xEF\x83\xAB"   /* U+F0EB lightbulb */
+#define ICON_ID         "\xEF\x8A\x92"   /* U+F292 hashtag    */
+#define ICON_TAG        "\xEF\x81\x84"   /* U+F044 pencil     */
 
 /* ---- Binding data for on_change callbacks ---- */
 
@@ -213,19 +215,14 @@ void ed_inspector(void *editor)
             .hidden    = true,
         });
         {
-            s_entity_name_input = ca_input(&(Ca_InputDesc){
-                .text      = "",
-                .style     = "inspector-entity-input",
-                .on_change = on_entity_name_input,
-            });
-
+            /* ID row — shown first */
             ca_div_begin(&(Ca_DivDesc){
                 .direction = CA_HORIZONTAL,
                 .style     = "inspector-meta-row",
             });
             ca_text(&(Ca_TextDesc){
-                .text  = "ID",
-                .style = "inspector-meta-label",
+                .text  = ICON_ID,
+                .style = "inspector-id-icon",
             });
             s_id_value = ca_text(&(Ca_TextDesc){
                 .text  = "0",
@@ -233,13 +230,21 @@ void ed_inspector(void *editor)
             });
             ca_div_end();
 
+            /* Entity name */
+            s_entity_name_input = ca_input(&(Ca_InputDesc){
+                .text      = "",
+                .style     = "inspector-entity-input",
+                .on_change = on_entity_name_input,
+            });
+
+            /* Tag row with pencil icon */
             ca_div_begin(&(Ca_DivDesc){
                 .direction = CA_HORIZONTAL,
                 .style     = "inspector-meta-row",
             });
             ca_text(&(Ca_TextDesc){
-                .text  = "Tag",
-                .style = "inspector-meta-label",
+                .text  = ICON_TAG,
+                .style = "inspector-tag-icon",
             });
             s_tag_input = ca_input(&(Ca_InputDesc){
                 .text        = "",
@@ -274,7 +279,7 @@ static void build_field(Qs_ComponentType *ct, const Qs_FieldInfo *fi,
     char buf[64];
 
     ca_div_begin(&(Ca_DivDesc){
-        .direction = CA_HORIZONTAL,
+        .direction = CA_VERTICAL,
         .style     = "inspector-field-row",
     });
 

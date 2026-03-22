@@ -407,19 +407,16 @@ static const char *g_editor_css =
     ".inspector-field-row {"
     "  width: 100%;"
     "  padding: 2px 6px 2px 12px;"
-    "  gap: 8px;"
-    "  align-items: center;"
+    "  gap: 2px;"
     "}"
 
     ".inspector-field-name {"
     "  color: #808080;"
     "  font-size: 13px;"
-    "  min-width: 70px;"
-    "  width: 70px;"
     "}"
 
     ".inspector-vec-row {"
-    "  flex-grow: 1;"
+    "  width: 100%;"
     "  gap: 3px;"
     "  align-items: center;"
     "}"
@@ -437,6 +434,7 @@ static const char *g_editor_css =
 
     ".inspector-vec-input {"
     "  flex-grow: 1;"
+    "  min-width: 30px;"
     "  height: 20px;"
     "  background: #0d0d0d;"
     "  color: #cccccc;"
@@ -448,7 +446,7 @@ static const char *g_editor_css =
     "}"
 
     ".inspector-scalar-input {"
-    "  flex-grow: 1;"
+    "  width: 100%;"
     "  height: 20px;"
     "  background: #0d0d0d;"
     "  color: #cccccc;"
@@ -462,6 +460,16 @@ static const char *g_editor_css =
     ".inspector-field-value {"
     "  color: #bbbbbb;"
     "  font-size: 13px;"
+    "}"
+
+    ".inspector-id-icon {"
+    "  color: #6666aa;"
+    "  font-size: 14px;"
+    "}"
+
+    ".inspector-tag-icon {"
+    "  color: #66aa66;"
+    "  font-size: 14px;"
     "}"
 
     ".hierarchy-selected {"
