@@ -66,6 +66,7 @@ struct Qs_Scene {
     uint64_t          alive[QS_ENTITY_MASK_WORDS];
     uint64_t          enabled[QS_ENTITY_MASK_WORDS];
     uint32_t          entity_count;
+    uint32_t          next_entity_id;  /* Auto-increment for Qs_IdComp */
 
     /* Component storage — one per registered type */
     ComponentStore    stores[QS_MAX_COMPONENT_TYPES];
@@ -248,6 +249,20 @@ static void mesh_comp_init(void *comp, Qs_Scene *scene, Qs_Entity entity)
     mc->visible = true;
 }
 
+static void id_comp_init(void *comp, Qs_Scene *scene, Qs_Entity entity)
+{
+    (void)entity;
+    Qs_IdComp *id = (Qs_IdComp *)comp;
+    id->id = scene->next_entity_id++;
+}
+
+static void tag_comp_init(void *comp, Qs_Scene *scene, Qs_Entity entity)
+{
+    (void)scene; (void)entity;
+    Qs_TagComp *tag = (Qs_TagComp *)comp;
+    snprintf(tag->tag, sizeof(tag->tag), "Untagged");
+}
+
 /* ================================================================
    BUILT-IN REFLECTION INFO
    ================================================================ */
@@ -278,6 +293,28 @@ static const Qs_TypeInfo s_mesh_comp_type_info = {
     .field_count = QS_COUNTOF(s_mesh_comp_fields),
 };
 
+static const Qs_FieldInfo s_id_comp_fields[] = {
+    QS_FIELD(Qs_IdComp, id, QS_FIELD_UINT32),
+};
+
+static const Qs_TypeInfo s_id_comp_type_info = {
+    .name        = "IdComp",
+    .data_size   = sizeof(Qs_IdComp),
+    .fields      = s_id_comp_fields,
+    .field_count = QS_COUNTOF(s_id_comp_fields),
+};
+
+static const Qs_FieldInfo s_tag_comp_fields[] = {
+    QS_FIELD(Qs_TagComp, tag, QS_FIELD_STRING),
+};
+
+static const Qs_TypeInfo s_tag_comp_type_info = {
+    .name        = "TagComp",
+    .data_size   = sizeof(Qs_TagComp),
+    .fields      = s_tag_comp_fields,
+    .field_count = QS_COUNTOF(s_tag_comp_fields),
+};
+
 /* ================================================================
    BUILT-IN TYPE HANDLES
    ================================================================ */
@@ -285,16 +322,36 @@ static const Qs_TypeInfo s_mesh_comp_type_info = {
 static Qs_ComponentType *s_transform_type;
 static Qs_ComponentType *s_mesh_comp_type;
 static Qs_ComponentType *s_light_comp_type;
+static Qs_ComponentType *s_id_comp_type;
+static Qs_ComponentType *s_tag_comp_type;
 
 Qs_ComponentType *qs_transform_type(void)  { return s_transform_type; }
 Qs_ComponentType *qs_mesh_comp_type(void)  { return s_mesh_comp_type; }
 Qs_ComponentType *qs_light_comp_type(void) { return s_light_comp_type; }
+Qs_ComponentType *qs_id_comp_type(void)    { return s_id_comp_type; }
+Qs_ComponentType *qs_tag_comp_type(void)   { return s_tag_comp_type; }
 
 static void register_builtin_types(Qs_Engine *engine)
 {
     /* Register reflection type infos */
     qs_type_register(&s_transform_type_info);
     qs_type_register(&s_mesh_comp_type_info);
+    qs_type_register(&s_id_comp_type_info);
+    qs_type_register(&s_tag_comp_type_info);
+
+    s_id_comp_type = qs_component_register(engine, &(Qs_ComponentTypeDesc){
+        .name      = "IdComp",
+        .data_size = sizeof(Qs_IdComp),
+        .type_info = &s_id_comp_type_info,
+        .init      = id_comp_init,
+    });
+
+    s_tag_comp_type = qs_component_register(engine, &(Qs_ComponentTypeDesc){
+        .name      = "TagComp",
+        .data_size = sizeof(Qs_TagComp),
+        .type_info = &s_tag_comp_type_info,
+        .init      = tag_comp_init,
+    });
 
     s_transform_type = qs_component_register(engine, &(Qs_ComponentTypeDesc){
         .name      = "Transform",
@@ -457,7 +514,11 @@ Qs_Entity qs_entity_create(Qs_Scene *scene, const char *name)
     else
         snprintf(scene->entity_names[e], 32, "entity_%u", e);
 
-    /* Auto-add Transform component */
+    /* Auto-add default components: Id, Tag, Transform */
+    if (s_id_comp_type)
+        qs_entity_add(scene, e, s_id_comp_type);
+    if (s_tag_comp_type)
+        qs_entity_add(scene, e, s_tag_comp_type);
     if (s_transform_type)
         qs_entity_add(scene, e, s_transform_type);
 
@@ -497,6 +558,16 @@ const char *qs_entity_name(const Qs_Scene *scene, Qs_Entity entity)
         !bit_test(scene->alive, entity))
         return NULL;
     return scene->entity_names[entity];
+}
+
+void qs_entity_set_name(Qs_Scene *scene, Qs_Entity entity, const char *name)
+{
+    if (!scene || entity >= QS_MAX_ENTITIES ||
+        !bit_test(scene->alive, entity))
+        return;
+    snprintf(scene->entity_names[entity],
+             sizeof(scene->entity_names[entity]),
+             "%s", name ? name : "");
 }
 
 void qs_entity_set_enabled(Qs_Scene *scene, Qs_Entity entity, bool enabled)
@@ -657,6 +728,8 @@ cJSON *qs_scene_to_json(const Qs_Scene *scene)
 
     cJSON *root = cJSON_CreateObject();
     cJSON_AddStringToObject(root, "name", scene->name);
+    cJSON_AddNumberToObject(root, "next_entity_id",
+                            (double)scene->next_entity_id);
 
     cJSON *entities = cJSON_CreateArray();
     cJSON_AddItemToObject(root, "entities", entities);
@@ -704,6 +777,12 @@ bool qs_scene_from_json(Qs_Scene *scene, Qs_Engine *engine,
     const cJSON *entities = cJSON_GetObjectItemCaseSensitive(json, "entities");
     if (!cJSON_IsArray(entities)) return false;
 
+    /* Restore next_entity_id counter */
+    const cJSON *next_id_json =
+        cJSON_GetObjectItemCaseSensitive(json, "next_entity_id");
+    if (cJSON_IsNumber(next_id_json))
+        scene->next_entity_id = (uint32_t)next_id_json->valueint;
+
     const cJSON *ent_json;
     cJSON_ArrayForEach(ent_json, entities) {
         const cJSON *name_val =
@@ -741,6 +820,19 @@ bool qs_scene_from_json(Qs_Scene *scene, Qs_Engine *engine,
 
             if (type->type_info)
                 qs_reflect_from_json(comp, type->type_info, comp_json);
+        }
+    }
+
+    /* Sync next_entity_id past the highest loaded ID */
+    if (s_id_comp_type) {
+        for (Qs_Entity e = qs_scene_first(scene, s_id_comp_type);
+             e != QS_ENTITY_INVALID;
+             e = qs_scene_next(scene, s_id_comp_type, e))
+        {
+            Qs_IdComp *id = (Qs_IdComp *)qs_entity_get(
+                                scene, e, s_id_comp_type);
+            if (id && id->id >= scene->next_entity_id)
+                scene->next_entity_id = id->id + 1;
         }
     }
 
@@ -782,6 +874,8 @@ static void scene_system_shutdown(Qs_System *system, Qs_Engine *engine)
     s_transform_type  = NULL;
     s_mesh_comp_type  = NULL;
     s_light_comp_type = NULL;
+    s_id_comp_type    = NULL;
+    s_tag_comp_type   = NULL;
 
     QS_LOG_INFO("Scene system shut down");
 }

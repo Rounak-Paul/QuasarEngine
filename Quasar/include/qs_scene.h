@@ -90,6 +90,16 @@ typedef struct Qs_LightComp {
     Qs_Light *light;
 } Qs_LightComp;
 
+/// Persistent entity ID (auto-assigned on creation, survives serialization).
+typedef struct Qs_IdComp {
+    uint32_t id;
+} Qs_IdComp;
+
+/// Entity tag for categorization / grouping.
+typedef struct Qs_TagComp {
+    char tag[64];
+} Qs_TagComp;
+
 /// Returns the built-in Transform component type handle.
 Qs_ComponentType *qs_transform_type(void);
 
@@ -98,6 +108,12 @@ Qs_ComponentType *qs_mesh_comp_type(void);
 
 /// Returns the built-in LightComp component type handle.
 Qs_ComponentType *qs_light_comp_type(void);
+
+/// Returns the built-in IdComp component type handle.
+Qs_ComponentType *qs_id_comp_type(void);
+
+/// Returns the built-in TagComp component type handle.
+Qs_ComponentType *qs_tag_comp_type(void);
 
 /* ================================================================
    SCENE
@@ -144,6 +160,9 @@ bool qs_entity_valid(const Qs_Scene *scene, Qs_Entity entity);
 
 /// Returns the entity's name.
 const char *qs_entity_name(const Qs_Scene *scene, Qs_Entity entity);
+
+/// Sets the entity's display name.
+void qs_entity_set_name(Qs_Scene *scene, Qs_Entity entity, const char *name);
 
 /// Enables or disables an entity.  Disabled entities skip component updates.
 void qs_entity_set_enabled(Qs_Scene *scene, Qs_Entity entity, bool enabled);
