@@ -6,23 +6,17 @@
 #include <string.h>
 
 /* ================================================================
-   INSPECTOR PANEL — editable component property inspector
+   INSPECTOR PANEL — dynamic component property inspector
    ================================================================
 
-   Pre-allocates widget pools for component sections and field rows.
-   Values are populated when entity selection changes.  Each field
-   type renders the appropriate widget (input, checkbox, vec row).
-   On-change callbacks write edited values back to component data
-   immediately through the reflection / ECS layer.
-
-   IdComp and TagComp are shown in the entity header (not as
-   component sections) since they are always-present metadata.
+   Builds a static shell once (scroll, header, placeholder).
+   Component sections and field widgets are created on-demand when
+   the entity selection changes — old content is torn down via
+   ca_div_clear() + ca_div_end() for teardown/rebuild.  No fixed
+   pool limits; scales to any number of components and fields.
    ================================================================ */
 
-/* Pool sizes */
-#define MAX_SECTIONS        8
-#define MAX_FIELDS          8
-#define MAX_VEC_ELEMS       4
+#define MAX_VEC_ELEMS 4
 
 /* Nerd Font / FA icons */
 #define ICON_COMPONENT  "\xEF\x80\x93"   /* U+F013 cog       */
@@ -40,46 +34,21 @@ typedef struct InputBinding {
     Qs_FieldType      field_type;
 } InputBinding;
 
-/* ---- Per-field widget set ---- */
-
-typedef struct FieldWidget {
-    Ca_Div       *row;
-    Ca_Label     *name_label;
-
-    Ca_TextInput *scalar_input;
-    InputBinding  scalar_bind;
-
-    Ca_Div       *vec_div;
-    Ca_Div       *axis_groups[MAX_VEC_ELEMS];
-    Ca_Label     *axis_labels[MAX_VEC_ELEMS];
-    Ca_TextInput *axis_inputs[MAX_VEC_ELEMS];
-    InputBinding  axis_binds[MAX_VEC_ELEMS];
-
-    Ca_Checkbox  *bool_check;
-    InputBinding  bool_bind;
-
-    Ca_Label     *entity_label;
-} FieldWidget;
-
-/* ---- Component section ---- */
-
-typedef struct InspectorSection {
-    Ca_Div     *header_div;
-    Ca_Label   *header_icon;
-    Ca_Label   *header_name;
-    FieldWidget fields[MAX_FIELDS];
-} InspectorSection;
-
 /* ---- Module state ---- */
 
-static Editor           *s_editor;
-static Ca_Label         *s_no_selection;
-static Ca_Div           *s_header_div;
-static Ca_TextInput     *s_entity_name_input;
-static Ca_Label         *s_id_value;
-static Ca_TextInput     *s_tag_input;
-static InspectorSection  s_sections[MAX_SECTIONS];
-static Qs_Entity         s_prev_entity;
+static Editor       *s_editor;
+static Ca_Label     *s_no_selection;
+static Ca_Div       *s_header_div;
+static Ca_TextInput *s_entity_name_input;
+static Ca_Label     *s_id_value;
+static Ca_TextInput *s_tag_input;
+static Ca_Div       *s_content_div;      /* dynamic section container */
+static Qs_Entity     s_prev_entity;
+
+/* Heap-allocated bindings — freed + rebuilt on each entity change */
+static InputBinding *s_bindings;
+static uint32_t      s_binding_count;
+static uint32_t      s_binding_cap;
 
 /* ---- Axis label text and CSS classes ---- */
 
@@ -88,6 +57,27 @@ static const char *s_axis_style[4] = {
     "inspector-axis-x", "inspector-axis-y",
     "inspector-axis-z", "inspector-axis-w"
 };
+
+/* ---- Binding allocator ---- */
+
+static InputBinding *alloc_binding(void)
+{
+    if (s_binding_count == s_binding_cap) {
+        s_binding_cap = s_binding_cap ? s_binding_cap * 2 : 32;
+        s_bindings = realloc(s_bindings, s_binding_cap * sizeof(InputBinding));
+    }
+    InputBinding *b = &s_bindings[s_binding_count++];
+    memset(b, 0, sizeof(*b));
+    return b;
+}
+
+static void free_bindings(void)
+{
+    free(s_bindings);
+    s_bindings     = NULL;
+    s_binding_count = 0;
+    s_binding_cap   = 0;
+}
 
 /* ---- Icon helpers ---- */
 
@@ -223,14 +213,12 @@ void ed_inspector(void *editor)
             .hidden    = true,
         });
         {
-            /* Entity name input */
             s_entity_name_input = ca_input(&(Ca_InputDesc){
                 .text      = "",
                 .style     = "inspector-entity-input",
                 .on_change = on_entity_name_input,
             });
 
-            /* ID row: "ID  123" */
             ca_div_begin(&(Ca_DivDesc){
                 .direction = CA_HORIZONTAL,
                 .style     = "inspector-meta-row",
@@ -245,7 +233,6 @@ void ed_inspector(void *editor)
             });
             ca_div_end();
 
-            /* Tag row: "Tag [_____]" */
             ca_div_begin(&(Ca_DivDesc){
                 .direction = CA_HORIZONTAL,
                 .style     = "inspector-meta-row",
@@ -267,172 +254,60 @@ void ed_inspector(void *editor)
         /* Separator */
         ca_hr(&(Ca_HrDesc){ .color = ca_color(0.10f, 0.10f, 0.10f, 1.0f) });
 
-        /* ---- Component sections ---- */
-        for (int s = 0; s < MAX_SECTIONS; s++) {
-            InspectorSection *sec = &s_sections[s];
-
-            /* Section header: icon + name */
-            sec->header_div = ca_div_begin(&(Ca_DivDesc){
-                .direction = CA_HORIZONTAL,
-                .style     = "inspector-section-header",
-                .hidden    = true,
-            });
-            sec->header_icon = ca_text(&(Ca_TextDesc){
-                .text  = "",
-                .style = "inspector-section-icon",
-            });
-            sec->header_name = ca_text(&(Ca_TextDesc){
-                .text  = "",
-                .style = "inspector-section-name",
-            });
-            ca_div_end();
-
-            /* Field widgets */
-            for (int f = 0; f < MAX_FIELDS; f++) {
-                FieldWidget *fw = &sec->fields[f];
-
-                fw->row = ca_div_begin(&(Ca_DivDesc){
-                    .direction = CA_HORIZONTAL,
-                    .style     = "inspector-field-row",
-                    .hidden    = true,
-                });
-                {
-                    /* Field name label */
-                    fw->name_label = ca_text(&(Ca_TextDesc){
-                        .text  = "",
-                        .style = "inspector-field-name",
-                    });
-
-                    /* Scalar input (float, int, uint, string) */
-                    fw->scalar_input = ca_input(&(Ca_InputDesc){
-                        .text        = "",
-                        .style       = "inspector-scalar-input",
-                        .on_change   = on_field_input,
-                        .change_data = &fw->scalar_bind,
-                        .hidden      = true,
-                    });
-
-                    /* Vec row container (float2, float3, float4) */
-                    fw->vec_div = ca_div_begin(&(Ca_DivDesc){
-                        .direction = CA_HORIZONTAL,
-                        .style     = "inspector-vec-row",
-                        .hidden    = true,
-                    });
-                    for (int v = 0; v < MAX_VEC_ELEMS; v++) {
-                        fw->axis_groups[v] = ca_div_begin(&(Ca_DivDesc){
-                            .direction = CA_HORIZONTAL,
-                            .style     = "inspector-axis-group",
-                        });
-                        fw->axis_labels[v] = ca_text(&(Ca_TextDesc){
-                            .text  = s_axis_text[v],
-                            .style = s_axis_style[v],
-                        });
-                        fw->axis_inputs[v] = ca_input(&(Ca_InputDesc){
-                            .text        = "0.000",
-                            .style       = "inspector-vec-input",
-                            .on_change   = on_field_input,
-                            .change_data = &fw->axis_binds[v],
-                        });
-                        ca_div_end();
-                    }
-                    ca_div_end(); /* vec_div */
-
-                    /* Bool checkbox */
-                    fw->bool_check = ca_checkbox(&(Ca_CheckboxDesc){
-                        .text        = "",
-                        .on_change   = on_bool_input,
-                        .change_data = &fw->bool_bind,
-                        .hidden      = true,
-                    });
-
-                    /* Entity reference (read-only) */
-                    fw->entity_label = ca_text(&(Ca_TextDesc){
-                        .text   = "",
-                        .style  = "inspector-field-value",
-                        .hidden = true,
-                    });
-                }
-                ca_div_end(); /* row */
-            }
-        }
+        /* Dynamic content container — rebuilt on entity change */
+        s_content_div = ca_div_begin(&(Ca_DivDesc){
+            .direction = CA_VERTICAL,
+        });
+        ca_div_end();
     }
     ca_div_end(); /* inspector-scroll */
 }
 
 /* ================================================================
-   HIDE ALL — reset pool visibility
+   BUILD FIELD — create the right widget for a field type
    ================================================================ */
 
-static void hide_all(void)
+static void build_field(Qs_ComponentType *ct, const Qs_FieldInfo *fi,
+                        const void *comp)
 {
-    ca_div_set_hidden(s_header_div, true);
-    ca_label_set_hidden(s_no_selection, true);
-
-    for (int s = 0; s < MAX_SECTIONS; s++) {
-        InspectorSection *sec = &s_sections[s];
-        ca_div_set_hidden(sec->header_div, true);
-        for (int f = 0; f < MAX_FIELDS; f++)
-            ca_div_set_hidden(sec->fields[f].row, true);
-    }
-}
-
-/* ================================================================
-   POPULATE FIELD — show the right widget for a field type
-   ================================================================ */
-
-static void populate_field(FieldWidget *fw, Qs_ComponentType *ct,
-                           const Qs_FieldInfo *fi, const void *comp)
-{
-    ca_div_set_hidden(fw->row, false);
-    ca_label_set_text(fw->name_label, fi->name);
-
     const void *field_ptr = (const char *)comp + fi->offset;
     char buf[64];
 
-    /* Reset sub-widget visibility */
-    ca_input_set_hidden(fw->scalar_input, true);
-    ca_div_set_hidden(fw->vec_div, true);
-    ca_checkbox_set_hidden(fw->bool_check, true);
-    ca_label_set_hidden(fw->entity_label, true);
+    ca_div_begin(&(Ca_DivDesc){
+        .direction = CA_HORIZONTAL,
+        .style     = "inspector-field-row",
+    });
+
+    ca_text(&(Ca_TextDesc){
+        .text  = fi->name,
+        .style = "inspector-field-name",
+    });
 
     switch (fi->type) {
-    case QS_FIELD_FLOAT: {
-        fw->scalar_bind = (InputBinding){
-            .comp_type = ct, .field_offset = fi->offset,
-            .field_size = fi->size, .field_type = fi->type,
-        };
-        snprintf(buf, sizeof(buf), "%.3f", *(const float *)field_ptr);
-        ca_input_set_text(fw->scalar_input, buf);
-        ca_input_set_hidden(fw->scalar_input, false);
-        break;
-    }
-    case QS_FIELD_INT32: {
-        fw->scalar_bind = (InputBinding){
-            .comp_type = ct, .field_offset = fi->offset,
-            .field_size = fi->size, .field_type = fi->type,
-        };
-        snprintf(buf, sizeof(buf), "%d", *(const int32_t *)field_ptr);
-        ca_input_set_text(fw->scalar_input, buf);
-        ca_input_set_hidden(fw->scalar_input, false);
-        break;
-    }
-    case QS_FIELD_UINT32: {
-        fw->scalar_bind = (InputBinding){
-            .comp_type = ct, .field_offset = fi->offset,
-            .field_size = fi->size, .field_type = fi->type,
-        };
-        snprintf(buf, sizeof(buf), "%u", *(const uint32_t *)field_ptr);
-        ca_input_set_text(fw->scalar_input, buf);
-        ca_input_set_hidden(fw->scalar_input, false);
-        break;
-    }
+    case QS_FIELD_FLOAT:
+    case QS_FIELD_INT32:
+    case QS_FIELD_UINT32:
     case QS_FIELD_STRING: {
-        fw->scalar_bind = (InputBinding){
+        InputBinding *b = alloc_binding();
+        *b = (InputBinding){
             .comp_type = ct, .field_offset = fi->offset,
             .field_size = fi->size, .field_type = fi->type,
         };
-        ca_input_set_text(fw->scalar_input, (const char *)field_ptr);
-        ca_input_set_hidden(fw->scalar_input, false);
+
+        if (fi->type == QS_FIELD_FLOAT)
+            snprintf(buf, sizeof(buf), "%.3f", *(const float *)field_ptr);
+        else if (fi->type == QS_FIELD_INT32)
+            snprintf(buf, sizeof(buf), "%d", *(const int32_t *)field_ptr);
+        else if (fi->type == QS_FIELD_UINT32)
+            snprintf(buf, sizeof(buf), "%u", *(const uint32_t *)field_ptr);
+
+        ca_input(&(Ca_InputDesc){
+            .text        = (fi->type == QS_FIELD_STRING)
+                            ? (const char *)field_ptr : buf,
+            .style       = "inspector-scalar-input",
+            .on_change   = on_field_input,
+            .change_data = b,
+        });
         break;
     }
     case QS_FIELD_FLOAT2:
@@ -442,28 +317,50 @@ static void populate_field(FieldWidget *fw, Qs_ComponentType *ct,
                      fi->type == QS_FIELD_FLOAT3 ? 3 : 4;
         const float *v = (const float *)field_ptr;
 
-        ca_div_set_hidden(fw->vec_div, false);
-        for (uint32_t i = 0; i < MAX_VEC_ELEMS; i++) {
-            ca_div_set_hidden(fw->axis_groups[i], i >= n);
-            if (i < n) {
-                fw->axis_binds[i] = (InputBinding){
-                    .comp_type = ct, .field_offset = fi->offset,
-                    .field_size = fi->size, .vec_index = i,
-                    .field_type = fi->type,
-                };
-                snprintf(buf, sizeof(buf), "%.3f", v[i]);
-                ca_input_set_text(fw->axis_inputs[i], buf);
-            }
+        ca_div_begin(&(Ca_DivDesc){
+            .direction = CA_HORIZONTAL,
+            .style     = "inspector-vec-row",
+        });
+        for (uint32_t i = 0; i < n; i++) {
+            InputBinding *b = alloc_binding();
+            *b = (InputBinding){
+                .comp_type = ct, .field_offset = fi->offset,
+                .field_size = fi->size, .vec_index = i,
+                .field_type = fi->type,
+            };
+            snprintf(buf, sizeof(buf), "%.3f", v[i]);
+
+            ca_div_begin(&(Ca_DivDesc){
+                .direction = CA_HORIZONTAL,
+                .style     = "inspector-axis-group",
+            });
+            ca_text(&(Ca_TextDesc){
+                .text  = s_axis_text[i],
+                .style = s_axis_style[i],
+            });
+            ca_input(&(Ca_InputDesc){
+                .text        = buf,
+                .style       = "inspector-vec-input",
+                .on_change   = on_field_input,
+                .change_data = b,
+            });
+            ca_div_end();
         }
+        ca_div_end();
         break;
     }
     case QS_FIELD_BOOL: {
-        fw->bool_bind = (InputBinding){
+        InputBinding *b = alloc_binding();
+        *b = (InputBinding){
             .comp_type = ct, .field_offset = fi->offset,
             .field_size = fi->size, .field_type = fi->type,
         };
-        ca_checkbox_set(fw->bool_check, *(const bool *)field_ptr);
-        ca_checkbox_set_hidden(fw->bool_check, false);
+        ca_checkbox(&(Ca_CheckboxDesc){
+            .text        = "",
+            .checked     = *(const bool *)field_ptr,
+            .on_change   = on_bool_input,
+            .change_data = b,
+        });
         break;
     }
     case QS_FIELD_ENTITY: {
@@ -472,11 +369,60 @@ static void populate_field(FieldWidget *fw, Qs_ComponentType *ct,
             snprintf(buf, sizeof(buf), "(none)");
         else
             snprintf(buf, sizeof(buf), "Entity %u", ref);
-        ca_label_set_text(fw->entity_label, buf);
-        ca_label_set_hidden(fw->entity_label, false);
+        ca_text(&(Ca_TextDesc){
+            .text  = buf,
+            .style = "inspector-field-value",
+        });
         break;
     }
     default: break;
+    }
+
+    ca_div_end(); /* field row */
+}
+
+/* ================================================================
+   BUILD SECTIONS — rebuild dynamic content for selected entity
+   ================================================================ */
+
+static void build_sections(Qs_Scene *scene, Qs_Entity entity)
+{
+    uint32_t type_count = qs_component_type_count();
+
+    for (uint32_t t = 0; t < type_count; t++) {
+        Qs_ComponentType *ct = qs_component_type_at(t);
+        if (!ct) continue;
+        if (!qs_entity_has(scene, entity, ct)) continue;
+
+        const char *comp_name = qs_component_type_name(ct);
+        if (strcmp(comp_name, "IdComp") == 0 ||
+            strcmp(comp_name, "TagComp") == 0)
+            continue;
+
+        /* Section header */
+        ca_div_begin(&(Ca_DivDesc){
+            .direction = CA_HORIZONTAL,
+            .style     = "inspector-section-header",
+        });
+        ca_text(&(Ca_TextDesc){
+            .text  = component_icon(comp_name),
+            .style = "inspector-section-icon",
+            .color = component_icon_color(comp_name),
+        });
+        ca_text(&(Ca_TextDesc){
+            .text  = comp_name,
+            .style = "inspector-section-name",
+        });
+        ca_div_end();
+
+        /* Fields */
+        const Qs_TypeInfo *info = qs_component_type_info(ct);
+        void *data = qs_entity_get(scene, entity, ct);
+
+        if (info && data) {
+            for (uint32_t f = 0; f < info->field_count; f++)
+                build_field(ct, &info->fields[f], data);
+        }
     }
 }
 
@@ -495,18 +441,24 @@ void ed_inspector_update(void *editor)
         !qs_entity_valid(scene, entity))
     {
         if (s_prev_entity != QS_ENTITY_INVALID) {
-            hide_all();
+            ca_div_set_hidden(s_header_div, true);
             ca_label_set_hidden(s_no_selection, false);
+            ca_div_clear(s_content_div);
+            ca_div_end();
+            free_bindings();
             s_prev_entity = QS_ENTITY_INVALID;
         }
         return;
     }
 
-    /* Only refresh when entity selection changes */
+    /* Only rebuild when entity selection changes */
     if (entity == s_prev_entity)
         return;
 
-    hide_all();
+    /* Tear down old content and enter for rebuild */
+    ca_div_clear(s_content_div);
+    free_bindings();
+
     ca_label_set_hidden(s_no_selection, true);
 
     /* ---- Entity header ---- */
@@ -515,7 +467,6 @@ void ed_inspector_update(void *editor)
     const char *name = qs_entity_name(scene, entity);
     ca_input_set_text(s_entity_name_input, name ? name : "");
 
-    /* ID (read-only) */
     Qs_IdComp *id_comp = (Qs_IdComp *)qs_entity_get(
                               scene, entity, qs_id_comp_type());
     if (id_comp) {
@@ -524,51 +475,14 @@ void ed_inspector_update(void *editor)
         ca_label_set_text(s_id_value, id_buf);
     }
 
-    /* Tag */
     Qs_TagComp *tag_comp = (Qs_TagComp *)qs_entity_get(
                                 scene, entity, qs_tag_comp_type());
     if (tag_comp)
         ca_input_set_text(s_tag_input, tag_comp->tag);
 
-    /* ---- Component sections ---- */
-    uint32_t type_count = qs_component_type_count();
-    uint32_t sec_idx = 0;
-
-    for (uint32_t t = 0; t < type_count && sec_idx < MAX_SECTIONS; t++) {
-        Qs_ComponentType *ct = qs_component_type_at(t);
-        if (!ct) continue;
-        if (!qs_entity_has(scene, entity, ct)) continue;
-
-        /* Skip IdComp and TagComp — shown in header */
-        const char *comp_name = qs_component_type_name(ct);
-        if (strcmp(comp_name, "IdComp") == 0 ||
-            strcmp(comp_name, "TagComp") == 0)
-            continue;
-
-        InspectorSection *sec = &s_sections[sec_idx];
-
-        /* Section header */
-        ca_div_set_hidden(sec->header_div, false);
-        ca_label_set_text(sec->header_icon, component_icon(comp_name));
-        ca_label_set_color(sec->header_icon, component_icon_color(comp_name));
-        ca_label_set_text(sec->header_name, comp_name);
-
-        /* Populate fields using reflection */
-        const Qs_TypeInfo *info = qs_component_type_info(ct);
-        void *data = qs_entity_get(scene, entity, ct);
-
-        if (info && data) {
-            uint32_t field_count = info->field_count;
-            if (field_count > MAX_FIELDS)
-                field_count = MAX_FIELDS;
-
-            for (uint32_t f = 0; f < field_count; f++)
-                populate_field(&sec->fields[f], ct,
-                               &info->fields[f], data);
-        }
-
-        sec_idx++;
-    }
+    /* ---- Build component sections dynamically ---- */
+    build_sections(scene, entity);
+    ca_div_end();
 
     s_prev_entity = entity;
 }
