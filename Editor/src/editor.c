@@ -289,15 +289,17 @@ static const char *g_editor_css =
 
     ".hierarchy-tree {"
     "  overflow-y: scroll;"
-    "  padding: 4px;"
+    "  padding-left: 4px;"
+    "  padding-right: 2px;"
+    "  padding-top: 2px;"
     "  gap: 0px;"
     "  flex-grow: 1;"
     "  align-items: flex-start;"
     "}"
 
     ".hierarchy-scene {"
-    "  color: #c0c0d8;"
-    "  font-size: 12px;"
+    "  color: #c8c8e0;"
+    "  font-size: 11px;"
     "}"
 
     ".hierarchy-entity {"
@@ -306,7 +308,15 @@ static const char *g_editor_css =
     "}"
 
     ".hierarchy-component {"
-    "  color: #6a6a88;"
+    "  color: #606080;"
+    "  font-size: 10px;"
+    "}"
+
+    ".hierarchy-add-btn {"
+    "  width: 100%;"
+    "  height: 22px;"
+    "  background: transparent;"
+    "  color: #444460;"
     "  font-size: 10px;"
     "}"
 ;

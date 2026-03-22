@@ -9,8 +9,8 @@ int main(void) {
     Editor *editor = editor_create(&(EditorDesc){
         .title        = "Quasar Editor",
         .project_path = project_path,
-        .width        = 1280,
-        .height       = 720,
+        .width        = 800,
+        .height       = 480,
     });
     if (!editor) return 1;
 
