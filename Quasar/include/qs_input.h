@@ -4,8 +4,6 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-typedef struct Qs_SystemDesc Qs_SystemDesc;
-
 /// Key action types.
 typedef enum Qs_KeyAction {
     QS_KEY_RELEASE = 0,
@@ -87,9 +85,6 @@ typedef enum Qs_Key {
 } Qs_Key;
 
 #define QS_KEY_MAX 349
-
-/// Returns the system descriptor for the input system.
-Qs_SystemDesc qs_input_system_desc(void);
 
 /// Feed a key event into the input system. Called by the platform layer.
 void qs_input_key_event(Qs_Key key, Qs_KeyAction action, int mods);

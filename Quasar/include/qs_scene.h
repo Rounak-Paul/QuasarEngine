@@ -5,7 +5,6 @@
 #include <stdint.h>
 #include <stddef.h>
 
-typedef struct Qs_SystemDesc     Qs_SystemDesc;
 typedef struct Qs_Engine         Qs_Engine;
 typedef struct Qs_Scene          Qs_Scene;
 typedef struct Qs_ComponentType  Qs_ComponentType;
@@ -170,12 +169,5 @@ Qs_Entity qs_scene_first(const Qs_Scene *scene,
 Qs_Entity qs_scene_next(const Qs_Scene *scene,
                          const Qs_ComponentType *type,
                          Qs_Entity after);
-
-/* ================================================================
-   SCENE SYSTEM
-   ================================================================ */
-
-/// Returns the system descriptor for registration with the engine.
-Qs_SystemDesc qs_scene_system_desc(void);
 
 #endif

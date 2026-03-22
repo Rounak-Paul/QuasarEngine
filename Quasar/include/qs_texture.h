@@ -5,9 +5,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-typedef struct Qs_SystemDesc   Qs_SystemDesc;
 typedef struct Qs_Engine       Qs_Engine;
-typedef struct Ca_Instance     Ca_Instance;
 typedef struct Qs_Texture      Qs_Texture;
 
 /* ================================================================
@@ -79,12 +77,5 @@ void qs_texture_extents(const Qs_Texture *texture,
 
 /// Returns the mip level count.
 uint32_t qs_texture_mip_levels(const Qs_Texture *texture);
-
-/* ================================================================
-   TEXTURE SYSTEM
-   ================================================================ */
-
-/// Returns the system descriptor for registration with the engine.
-Qs_SystemDesc qs_texture_system_desc(Ca_Instance *ca_instance);
 
 #endif

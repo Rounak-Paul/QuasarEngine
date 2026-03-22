@@ -4,7 +4,6 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-typedef struct Qs_SystemDesc Qs_SystemDesc;
 typedef struct Qs_Engine     Qs_Engine;
 typedef struct Qs_Renderer   Qs_Renderer;
 typedef struct Qs_Light      Qs_Light;
@@ -116,12 +115,5 @@ void qs_renderer_clear_lights(Qs_Renderer *renderer);
 /// The pointer is valid until the next clear_lights call.
 const Qs_LightGPU *qs_renderer_lights(const Qs_Renderer *renderer,
                                        uint32_t *out_count);
-
-/* ================================================================
-   LIGHT SYSTEM
-   ================================================================ */
-
-/// Returns the system descriptor for registration with the engine.
-Qs_SystemDesc qs_light_system_desc(void);
 
 #endif

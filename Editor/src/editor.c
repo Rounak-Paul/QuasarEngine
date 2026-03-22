@@ -8,9 +8,6 @@
 
 struct Editor {
     Qs_Engine     *engine;
-    Ca_Instance   *instance;
-    Ca_Window     *window;
-    Ca_Stylesheet *stylesheet;
     Qs_Renderer   *scene_renderer;
     Ca_Viewport   *scene_viewport;
 };
@@ -120,15 +117,17 @@ static const char *g_editor_css =
 
 static void editor_build_ui(Editor *ed)
 {
-    ca_ui_begin(ed->window, &(Ca_DivDesc){
+    Ca_Window *window = qs_engine_window(ed->engine);
+
+    ca_ui_begin(window, &(Ca_DivDesc){
         .direction = CA_VERTICAL,
         .style     = "editor-root",
     });
 
-    ed_menu_bar(ed->window, ed);
-    ed_toolbar(ed->window, ed);
-    ed_layout(ed->window, ed);
-    ed_status_bar(ed->window, ed);
+    ed_menu_bar(window, ed);
+    ed_toolbar(window, ed);
+    ed_layout(window, ed);
+    ed_status_bar(window, ed);
 
     ca_ui_end();
 }
@@ -141,8 +140,9 @@ static void on_key_event(const Ca_Event *event, void *userdata)
                        event->key.mods);
 }
 
-static void on_frame(void *userdata)
+static void on_frame(Qs_Engine *engine, void *userdata)
 {
+    (void)engine;
     Editor *ed = userdata;
     if (ed->scene_viewport)
         ca_viewport_request_redraw(ed->scene_viewport);
@@ -152,7 +152,7 @@ static void on_frame(void *userdata)
 static void on_log(void *userdata)
 {
     (void)userdata;
-    ca_instance_wake();
+    qs_engine_wake();
 }
 
 Editor *editor_create(const EditorDesc *desc)
@@ -165,63 +165,15 @@ Editor *editor_create(const EditorDesc *desc)
         .version_major = 0,
         .version_minor = 1,
         .version_patch = 0,
+        .window_width  = desc->width,
+        .window_height = desc->height,
     });
     if (!ed->engine) {
         free(ed);
         return NULL;
     }
 
-    ed->instance = ca_instance_create(&(Ca_InstanceDesc){
-        .app_name     = desc->title ? desc->title : "Quasar Editor",
-        .font_size_px = 14.0f,
-    });
-    if (!ed->instance) {
-        qs_engine_destroy(ed->engine);
-        free(ed);
-        return NULL;
-    }
-
-    ed->stylesheet = ca_css_parse(g_editor_css);
-    if (ed->stylesheet)
-        ca_instance_set_stylesheet(ed->instance, ed->stylesheet);
-
-    ed->window = ca_window_create(ed->instance, &(Ca_WindowDesc){
-        .title  = desc->title ? desc->title : "Quasar Editor",
-        .width  = desc->width  > 0 ? desc->width  : 1280,
-        .height = desc->height > 0 ? desc->height : 720,
-    });
-    if (!ed->window) {
-        if (ed->stylesheet) ca_css_destroy(ed->stylesheet);
-        ca_instance_destroy(ed->instance);
-        qs_engine_destroy(ed->engine);
-        free(ed);
-        return NULL;
-    }
-
-    Qs_SystemDesc render_desc = qs_render_system_desc(ed->instance);
-    if (!qs_system_register(qs_engine_systems(ed->engine), &render_desc)) {
-        ca_window_destroy(ed->window);
-        if (ed->stylesheet) ca_css_destroy(ed->stylesheet);
-        ca_instance_destroy(ed->instance);
-        qs_engine_destroy(ed->engine);
-        free(ed);
-        return NULL;
-    }
-
-    Qs_SystemDesc tex_desc = qs_texture_system_desc(ed->instance);
-    qs_system_register(qs_engine_systems(ed->engine), &tex_desc);
-
-    Qs_SystemDesc mesh_desc = qs_mesh_system_desc(ed->instance);
-    qs_system_register(qs_engine_systems(ed->engine), &mesh_desc);
-
-    Qs_SystemDesc mat_desc = qs_material_system_desc(ed->instance);
-    qs_system_register(qs_engine_systems(ed->engine), &mat_desc);
-
-    Qs_SystemDesc light_desc = qs_light_system_desc();
-    qs_system_register(qs_engine_systems(ed->engine), &light_desc);
-
-    Qs_SystemDesc scene_desc = qs_scene_system_desc();
-    qs_system_register(qs_engine_systems(ed->engine), &scene_desc);
+    qs_engine_set_stylesheet(ed->engine, g_editor_css);
 
     ed->scene_renderer = qs_renderer_create(ed->engine, &(Qs_RendererDesc){
         .name        = "scene",
@@ -373,13 +325,8 @@ Editor *editor_create(const EditorDesc *desc)
 
     editor_build_ui(ed);
 
-    /* Feed keyboard events from Causality into the engine input system */
-    ca_event_set_handler(ed->instance, CA_EVENT_KEY, on_key_event, ed);
-
-    /* Per-frame callback updates the console */
-    ca_window_set_on_frame(ed->window, on_frame, ed);
-
-    /* Wake the event loop when new log entries arrive from background threads */
+    qs_engine_set_event_handler(ed->engine, CA_EVENT_KEY, on_key_event, ed);
+    qs_engine_set_on_frame(ed->engine, on_frame, ed);
     qs_log_set_listener(on_log, ed);
 
     return ed;
@@ -388,14 +335,12 @@ Editor *editor_create(const EditorDesc *desc)
 int editor_run(Editor *ed)
 {
     if (!ed) return 1;
-    while (ca_instance_tick(ed->instance)) { }
-    return 0;
+    return qs_engine_run(ed->engine);
 }
 
 void editor_request_exit(Editor *ed)
 {
-    if (ed && ed->window)
-        ca_window_close(ed->window);
+    if (ed) qs_engine_request_exit(ed->engine);
 }
 
 Qs_Renderer *editor_scene_renderer(Editor *ed)
@@ -418,7 +363,5 @@ void editor_destroy(Editor *ed)
     if (!ed) return;
     qs_forward_shutdown();
     qs_engine_destroy(ed->engine);
-    if (ed->stylesheet) ca_css_destroy(ed->stylesheet);
-    ca_instance_destroy(ed->instance);
     free(ed);
 }

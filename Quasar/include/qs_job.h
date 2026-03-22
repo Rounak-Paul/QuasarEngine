@@ -18,12 +18,6 @@ typedef struct Qs_JobDesc {
     void*     data;         ///< User data passed to fn.
 } Qs_JobDesc;
 
-typedef struct Qs_SystemDesc Qs_SystemDesc;
-
-/// Returns the system descriptor for the job system.
-/// Register with qs_system_register() — the engine does this automatically.
-Qs_SystemDesc qs_job_system_desc(void);
-
 /// Allocates a counter for tracking job completion.
 Qs_JobCounter* qs_job_counter_create(Qs_JobSystem* system);
 

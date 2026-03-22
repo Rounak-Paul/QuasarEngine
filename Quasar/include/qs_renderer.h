@@ -5,10 +5,8 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-typedef struct Qs_SystemDesc    Qs_SystemDesc;
 typedef struct Qs_Engine        Qs_Engine;
 typedef struct Ca_Viewport      Ca_Viewport;
-typedef struct Ca_Instance      Ca_Instance;
 typedef struct Qs_Renderer      Qs_Renderer;
 
 /* ================================================================
@@ -107,13 +105,5 @@ VkDevice qs_renderer_device(const Qs_Renderer *renderer);
 /// Returns the current framebuffer dimensions (0 if unbound).
 void qs_renderer_extents(const Qs_Renderer *renderer,
                          uint32_t *out_width, uint32_t *out_height);
-
-/* ================================================================
-   RENDER SYSTEM — engine system that manages all renderers
-   ================================================================ */
-
-/// Returns the system descriptor for registration with the engine.
-/// Requires a Ca_Instance pointer as context (stored in the system data).
-Qs_SystemDesc qs_render_system_desc(Ca_Instance *ca_instance);
 
 #endif

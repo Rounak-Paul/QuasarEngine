@@ -2,7 +2,6 @@
 #define EDITOR_H
 
 #include "quasar.h"
-#include "causality.h"
 
 typedef struct Editor Editor;
 

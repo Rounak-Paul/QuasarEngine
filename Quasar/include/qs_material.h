@@ -5,9 +5,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-typedef struct Qs_SystemDesc Qs_SystemDesc;
 typedef struct Qs_Engine     Qs_Engine;
-typedef struct Ca_Instance   Ca_Instance;
 typedef struct Qs_Material   Qs_Material;
 typedef struct Qs_Texture    Qs_Texture;
 
@@ -106,12 +104,5 @@ Qs_AlphaMode qs_material_alpha_mode(const Qs_Material *material);
 
 /// Returns true if the material is double-sided.
 bool qs_material_double_sided(const Qs_Material *material);
-
-/* ================================================================
-   MATERIAL SYSTEM
-   ================================================================ */
-
-/// Returns the system descriptor for registration with the engine.
-Qs_SystemDesc qs_material_system_desc(Ca_Instance *ca_instance);
 
 #endif

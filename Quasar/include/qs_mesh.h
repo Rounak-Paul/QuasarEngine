@@ -5,9 +5,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-typedef struct Qs_SystemDesc Qs_SystemDesc;
 typedef struct Qs_Engine     Qs_Engine;
-typedef struct Ca_Instance   Ca_Instance;
 typedef struct Qs_Mesh       Qs_Mesh;
 
 /* ================================================================
@@ -75,12 +73,5 @@ void qs_mesh_bind(const Qs_Mesh *mesh, VkCommandBuffer cmd);
 
 /// Binds and issues the draw call (indexed or non-indexed as appropriate).
 void qs_mesh_draw(const Qs_Mesh *mesh, VkCommandBuffer cmd);
-
-/* ================================================================
-   MESH SYSTEM
-   ================================================================ */
-
-/// Returns the system descriptor for registration with the engine.
-Qs_SystemDesc qs_mesh_system_desc(Ca_Instance *ca_instance);
 
 #endif
