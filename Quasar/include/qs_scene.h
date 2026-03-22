@@ -58,6 +58,13 @@ const Qs_TypeInfo *qs_component_type_info(const Qs_ComponentType *type);
 /// Returns the name of a component type.
 const char *qs_component_type_name(const Qs_ComponentType *type);
 
+/// Returns the number of registered component types.
+uint32_t qs_component_type_count(void);
+
+/// Returns the i-th registered component type (0-based dense index).
+/// Returns NULL if index >= count.
+Qs_ComponentType *qs_component_type_at(uint32_t index);
+
 /* ================================================================
    BUILT-IN COMPONENT TYPES
    ================================================================ */

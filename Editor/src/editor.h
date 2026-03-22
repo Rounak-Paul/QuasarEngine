@@ -30,6 +30,12 @@ void editor_set_scene_viewport(Editor *editor, Ca_Viewport *viewport);
 /// Returns the editor's engine instance.
 Qs_Engine *editor_engine(Editor *editor);
 
+/// Returns the currently selected entity, or QS_ENTITY_INVALID.
+Qs_Entity editor_selected_entity(const Editor *editor);
+
+/// Sets the selected entity.
+void editor_set_selected_entity(Editor *editor, Qs_Entity entity);
+
 /// Destroys the editor and all owned resources.
 void editor_destroy(Editor *editor);
 

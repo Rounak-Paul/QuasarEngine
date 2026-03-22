@@ -51,11 +51,11 @@ void ed_menu_bar(Ca_Window *window, void *editor)
         .menus            = menus,
         .menu_count       = 1,
         .style            = "menu-bar",
-        .header_highlight = ca_color(0.12f, 0.12f, 0.22f, 1.0f),
-        .dropdown_bg      = ca_color(0.08f, 0.08f, 0.14f, 0.98f),
-        .dropdown_border  = ca_color(0.16f, 0.16f, 0.26f, 1.0f),
-        .dropdown_hover   = ca_color(0.16f, 0.16f, 0.28f, 1.0f),
+        .header_highlight = ca_color(0.10f, 0.10f, 0.10f, 1.0f),
+        .dropdown_bg      = ca_color(0.05f, 0.05f, 0.05f, 0.98f),
+        .dropdown_border  = ca_color(0.12f, 0.12f, 0.12f, 1.0f),
+        .dropdown_hover   = ca_color(0.12f, 0.12f, 0.12f, 1.0f),
         .dropdown_text    = ca_color(0.85f, 0.85f, 0.85f, 1.0f),
-        .text_color       = ca_color(0.80f, 0.80f, 0.82f, 1.0f),
+        .text_color       = ca_color(0.80f, 0.80f, 0.80f, 1.0f),
     });
 }

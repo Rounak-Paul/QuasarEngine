@@ -355,6 +355,8 @@ static void navigate_to(const char *path)
     path_normalize(s_fb.current_path);
     history_push(s_fb.current_path);
     scan_directory(s_fb.current_path);
+    if (s_fb.window)
+        ca_scroll_to_top(s_fb.window, "fb-file-list");
     sync_widgets();
 }
 
@@ -372,6 +374,8 @@ static void navigate_back(void)
     strncpy(s_fb.current_path, s_fb.history[s_fb.history_pos], FB_MAX_PATH - 1);
     s_fb.current_path[FB_MAX_PATH - 1] = '\0';
     scan_directory(s_fb.current_path);
+    if (s_fb.window)
+        ca_scroll_to_top(s_fb.window, "fb-file-list");
     sync_widgets();
 }
 
@@ -382,6 +386,8 @@ static void navigate_forward(void)
     strncpy(s_fb.current_path, s_fb.history[s_fb.history_pos], FB_MAX_PATH - 1);
     s_fb.current_path[FB_MAX_PATH - 1] = '\0';
     scan_directory(s_fb.current_path);
+    if (s_fb.window)
+        ca_scroll_to_top(s_fb.window, "fb-file-list");
     sync_widgets();
 }
 
@@ -555,6 +561,7 @@ static void build_window_ui(void)
         /* ---- File list (scrollable) ---- */
         ca_div_begin(&(Ca_DivDesc){
             .direction = CA_VERTICAL,
+            .id        = "fb-file-list",
             .style     = "fb-file-list",
         });
 

@@ -1,12 +1,13 @@
 #include "ed_layout.h"
 #include "ed_hierarchy.h"
+#include "ed_inspector.h"
 #include "editor.h"
 
 #include <stdio.h>
 #include <string.h>
 
-#define SPLIT_BAR_COLOR       ca_color(0.14f, 0.14f, 0.20f, 1.0f)
-#define SPLIT_BAR_HOVER_COLOR ca_color(0.30f, 0.50f, 0.85f, 1.0f)
+#define SPLIT_BAR_COLOR       ca_color(0.08f, 0.08f, 0.08f, 1.0f)
+#define SPLIT_BAR_HOVER_COLOR ca_color(0.20f, 0.45f, 0.85f, 1.0f)
 
 /* ---- Console ---- */
 #define CONSOLE_MAX_LINES 100
@@ -19,13 +20,13 @@ static bool        s_needs_scroll;
 static uint32_t log_level_color(Qs_LogLevel level)
 {
     switch (level) {
-    case QS_LOG_DEBUG: return ca_color(0.40f, 0.40f, 0.50f, 1.0f);
+    case QS_LOG_DEBUG: return ca_color(0.40f, 0.40f, 0.40f, 1.0f);
     case QS_LOG_TRACE: return ca_color(0.27f, 0.67f, 0.80f, 1.0f);
     case QS_LOG_INFO:  return ca_color(0.27f, 0.80f, 0.40f, 1.0f);
     case QS_LOG_WARN:  return ca_color(0.80f, 0.67f, 0.27f, 1.0f);
     case QS_LOG_ERROR: return ca_color(0.80f, 0.27f, 0.27f, 1.0f);
     case QS_LOG_FATAL: return ca_color(0.80f, 0.27f, 0.80f, 1.0f);
-    default:           return ca_color(0.40f, 0.40f, 0.50f, 1.0f);
+    default:           return ca_color(0.40f, 0.40f, 0.40f, 1.0f);
     }
 }
 
@@ -111,6 +112,7 @@ void ed_layout(Ca_Window *window, void *editor)
                 });
                 ca_text(&(Ca_TextDesc){ .text = "Inspector", .style = "panel-tab active" });
                 ca_div_end();
+                ed_inspector(editor);
                 ca_div_end();
             }
             ca_split_end();

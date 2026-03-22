@@ -3,6 +3,7 @@
 #include "ui/ed_toolbar.h"
 #include "ui/ed_layout.h"
 #include "ui/ed_status_bar.h"
+#include "ui/ed_inspector.h"
 
 #include "ui/ed_file_browser.h"
 
@@ -16,22 +17,23 @@ struct Editor {
     Qs_Project    *project;
     Qs_Renderer   *scene_renderer;
     Ca_Viewport   *scene_viewport;
+    Qs_Entity      selected_entity;
 };
 
 /* ---- Editor CSS theme ---- */
 
 static const char *g_editor_css =
 
-    /* Root — dark indigo background */
+    /* Root — OLED black background */
     ".editor-root {"
-    "  background: #1a1a2e;"
+    "  background: #000000;"
     "  gap: 0px;"
     "  overflow: hidden;"
     "}"
 
     /* Menu bar — slim, dark */
     ".menu-bar {"
-    "  background: #16162a;"
+    "  background: #0a0a0a;"
     "  width: 100%;"
     "  height: 22px;"
     "}"
@@ -45,28 +47,28 @@ static const char *g_editor_css =
 
     /* Toolbar — icon row */
     ".toolbar {"
-    "  background: #16162a;"
+    "  background: #0a0a0a;"
     "  width: 100%;"
     "  height: 18px;"
     "  align-items: center;"
     "  padding-left: 4px;"
     "  padding-right: 4px;"
     "  border-width: 1px;"
-    "  border-color: #12122a;"
+    "  border-color: #050505;"
     "}"
 
     /* Panels */
     ".panel {"
-    "  background: #16162a;"
+    "  background: #0a0a0a;"
     "  overflow: hidden;"
     "}"
 
     ".panel-viewport {"
-    "  background: #1a1a2e;"
+    "  background: #000000;"
     "}"
 
     ".panel-bottom {"
-    "  background: #16162a;"
+    "  background: #0a0a0a;"
     "}"
 
     /* Console */
@@ -78,15 +80,16 @@ static const char *g_editor_css =
     "}"
 
     ".console-line {"
-    "  font-size: 11px;"
-    "  height: 14px;"
+    "  font-size: 14px;"
+    "  height: 18px;"
     "  width: 100%;"
     "  text-align: left;"
     "}"
 
+
     /* Panel tab bars (row of tabs at top of each panel) */
     ".panel-tab-bar {"
-    "  background: #12122a;"
+    "  background: #050505;"
     "  height: 24px;"
     "  width: 100%;"
     "  align-items: center;"
@@ -96,19 +99,19 @@ static const char *g_editor_css =
 
     /* Panel tabs (individual tab labels) */
     ".panel-tab {"
-    "  color: #555566;"
-    "  font-size: 11px;"
+    "  color: #555555;"
+    "  font-size: 14px;"
     "  padding-left: 8px;"
     "  padding-right: 8px;"
     "}"
 
     ".active {"
-    "  color: #b0b0cc;"
+    "  color: #cccccc;"
     "}"
 
     /* Status bar */
     ".status-bar {"
-    "  background: #12122a;"
+    "  background: #050505;"
     "  width: 100%;"
     "  height: 20px;"
     "  align-items: center;"
@@ -116,8 +119,8 @@ static const char *g_editor_css =
     "}"
 
     ".status-text {"
-    "  color: #6a6a88;"
-    "  font-size: 11px;"
+    "  color: #666666;"
+    "  font-size: 14px;"
     "}"
 
     /* ---- File browser ---- */
@@ -128,7 +131,7 @@ static const char *g_editor_css =
     "}"
 
     ".fb-title-bar {"
-    "  background: #14142a;"
+    "  background: #080808;"
     "  height: 32px;"
     "  width: 100%;"
     "  padding-left: 10px;"
@@ -137,8 +140,8 @@ static const char *g_editor_css =
     "}"
 
     ".fb-title {"
-    "  color: #c0c0d8;"
-    "  font-size: 12px;"
+    "  color: #cccccc;"
+    "  font-size: 15px;"
     "}"
 
     ".fb-spacer-grow {"
@@ -147,15 +150,15 @@ static const char *g_editor_css =
 
     ".fb-close-btn {"
     "  width: 28px;"
-    "  height: 24px;"
+    "  height: 28px;"
     "  background: transparent;"
-    "  color: #7777aa;"
-    "  font-size: 12px;"
+    "  color: #888888;"
+    "  font-size: 15px;"
     "  corner-radius: 3px;"
     "}"
 
     ".fb-nav-bar {"
-    "  background: #18182e;"
+    "  background: #0c0c0c;"
     "  height: 34px;"
     "  width: 100%;"
     "  padding-left: 4px;"
@@ -165,20 +168,20 @@ static const char *g_editor_css =
     "}"
 
     ".fb-nav-btn {"
-    "  width: 28px;"
-    "  height: 24px;"
-    "  background: #222240;"
-    "  color: #8888aa;"
-    "  font-size: 12px;"
+    "  width: 32px;"
+    "  height: 28px;"
+    "  background: #1a1a1a;"
+    "  color: #888888;"
+    "  font-size: 15px;"
     "  corner-radius: 3px;"
     "}"
 
     ".fb-path-input {"
     "  flex-grow: 1;"
-    "  height: 24px;"
-    "  background: #10102a;"
-    "  color: #c0c0d8;"
-    "  font-size: 11px;"
+    "  height: 28px;"
+    "  background: #050505;"
+    "  color: #cccccc;"
+    "  font-size: 14px;"
     "  padding-left: 6px;"
     "  corner-radius: 3px;"
     "}"
@@ -189,19 +192,19 @@ static const char *g_editor_css =
     "  padding-left: 12px;"
     "  padding-right: 12px;"
     "  align-items: center;"
-    "  background: #16162c;"
+    "  background: #0a0a0a;"
     "}"
 
     ".fb-col-name {"
-    "  color: #666688;"
-    "  font-size: 10px;"
+    "  color: #666666;"
+    "  font-size: 14px;"
     "  flex-grow: 1;"
     "  text-align: left;"
     "}"
 
     ".fb-col-size {"
-    "  color: #666688;"
-    "  font-size: 10px;"
+    "  color: #666666;"
+    "  font-size: 14px;"
     "  width: 80px;"
     "  text-align: right;"
     "}"
@@ -216,31 +219,31 @@ static const char *g_editor_css =
 
     ".fb-entry {"
     "  width: 100%;"
-    "  height: 22px;"
+    "  height: 26px;"
     "  background: transparent;"
-    "  color: #b0b0cc;"
-    "  font-size: 11px;"
+    "  color: #bbbbbb;"
+    "  font-size: 14px;"
     "  text-align: left;"
     "  padding-left: 4px;"
     "  corner-radius: 2px;"
     "}"
 
     ".fb-entry-selected {"
-    "  background: #2a2a55;"
+    "  background: #1a1a1a;"
     "}"
 
     ".fb-entry-dir {"
-    "  color: #7799dd;"
+    "  color: #6699cc;"
     "}"
 
     ".fb-empty {"
-    "  color: #555570;"
-    "  font-size: 11px;"
+    "  color: #555555;"
+    "  font-size: 14px;"
     "  padding: 8px;"
     "}"
 
     ".fb-bottom {"
-    "  background: #18182e;"
+    "  background: #0c0c0c;"
     "  width: 100%;"
     "  padding: 6px 8px;"
     "  gap: 4px;"
@@ -254,15 +257,15 @@ static const char *g_editor_css =
     "}"
 
     ".fb-label {"
-    "  color: #8888aa;"
-    "  font-size: 11px;"
-    "  width: 44px;"
+    "  color: #888888;"
+    "  font-size: 14px;"
+    "  width: 50px;"
     "  text-align: right;"
     "}"
 
     ".fb-selected-name {"
-    "  color: #c0c0d8;"
-    "  font-size: 11px;"
+    "  color: #cccccc;"
+    "  font-size: 14px;"
     "  flex-grow: 1;"
     "  text-align: left;"
     "}"
@@ -272,17 +275,17 @@ static const char *g_editor_css =
     "}"
 
     ".fb-btn {"
-    "  width: 90px;"
-    "  height: 24px;"
-    "  background: #252540;"
-    "  color: #b0b0cc;"
-    "  font-size: 11px;"
+    "  width: 100px;"
+    "  height: 28px;"
+    "  background: #1a1a1a;"
+    "  color: #bbbbbb;"
+    "  font-size: 14px;"
     "  corner-radius: 3px;"
     "}"
 
     ".fb-btn-primary {"
-    "  background: #3355aa;"
-    "  color: #e0e0f0;"
+    "  background: #2a6adf;"
+    "  color: #e8e8e8;"
     "}"
 
     /* ---- Hierarchy panel ---- */
@@ -298,26 +301,88 @@ static const char *g_editor_css =
     "}"
 
     ".hierarchy-scene {"
-    "  color: #c8c8e0;"
-    "  font-size: 11px;"
+    "  color: #cccccc;"
+    "  font-size: 14px;"
     "}"
 
     ".hierarchy-entity {"
-    "  color: #b0b0cc;"
-    "  font-size: 11px;"
+    "  color: #bbbbbb;"
+    "  font-size: 14px;"
     "}"
 
     ".hierarchy-component {"
-    "  color: #606080;"
-    "  font-size: 10px;"
+    "  color: #606060;"
+    "  font-size: 14px;"
     "}"
 
     ".hierarchy-add-btn {"
     "  width: 100%;"
-    "  height: 22px;"
+    "  height: 26px;"
     "  background: transparent;"
-    "  color: #444460;"
-    "  font-size: 10px;"
+    "  color: #444444;"
+    "  font-size: 14px;"
+    "}"
+
+    /* ---- Inspector panel ---- */
+
+    ".inspector-scroll {"
+    "  overflow-y: scroll;"
+    "  padding: 6px;"
+    "  gap: 2px;"
+    "  flex-grow: 1;"
+    "}"
+
+    ".inspector-placeholder {"
+    "  color: #444444;"
+    "  font-size: 14px;"
+    "  padding-top: 12px;"
+    "  text-align: center;"
+    "}"
+
+    ".inspector-entity-name {"
+    "  color: #dddddd;"
+    "  font-size: 16px;"
+    "  padding-bottom: 4px;"
+    "  padding-top: 2px;"
+    "}"
+
+    ".inspector-section-header {"
+    "  background: #111111;"
+    "  padding: 4px 6px;"
+    "  gap: 6px;"
+    "  margin-top: 4px;"
+    "  corner-radius: 3px;"
+    "  align-items: center;"
+    "}"
+
+    ".inspector-section-icon {"
+    "  font-size: 14px;"
+    "}"
+
+    ".inspector-section-name {"
+    "  color: #cccccc;"
+    "  font-size: 14px;"
+    "}"
+
+    ".inspector-field-row {"
+    "  padding: 2px 6px 2px 12px;"
+    "  gap: 8px;"
+    "  align-items: center;"
+    "}"
+
+    ".inspector-field-name {"
+    "  color: #808080;"
+    "  font-size: 14px;"
+    "  min-width: 80px;"
+    "}"
+
+    ".inspector-field-value {"
+    "  color: #bbbbbb;"
+    "  font-size: 14px;"
+    "}"
+
+    ".hierarchy-selected {"
+    "  background: #1a1a1a;"
     "}"
 ;
 
@@ -353,6 +418,7 @@ static void on_frame(Qs_Engine *engine, void *userdata)
     if (ed->scene_viewport)
         ca_viewport_request_redraw(ed->scene_viewport);
     ed_console_update(ed);
+    ed_inspector_update(ed);
     ed_file_browser_update();
 }
 
@@ -534,6 +600,7 @@ Editor *editor_create(const EditorDesc *desc)
 {
     Editor *ed = calloc(1, sizeof(Editor));
     if (!ed) return NULL;
+    ed->selected_entity = QS_ENTITY_INVALID;
 
     /* Open project */
     if (desc->project_path) {
@@ -571,7 +638,7 @@ Editor *editor_create(const EditorDesc *desc)
 
     ed->scene_renderer = qs_renderer_create(ed->engine, &(Qs_RendererDesc){
         .name        = "scene",
-        .clear_color = {{ 0.06f, 0.06f, 0.12f, 1.0f }},
+        .clear_color = {{ 0.0f, 0.0f, 0.0f, 1.0f }},
         .depth_test  = true,
     });
 
@@ -630,6 +697,16 @@ void editor_set_scene_viewport(Editor *ed, Ca_Viewport *viewport)
 Qs_Engine *editor_engine(Editor *ed)
 {
     return ed ? ed->engine : NULL;
+}
+
+Qs_Entity editor_selected_entity(const Editor *ed)
+{
+    return ed ? ed->selected_entity : QS_ENTITY_INVALID;
+}
+
+void editor_set_selected_entity(Editor *ed, Qs_Entity entity)
+{
+    if (ed) ed->selected_entity = entity;
 }
 
 void editor_destroy(Editor *ed)

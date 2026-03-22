@@ -5,7 +5,7 @@
 #include <stdio.h>
 
 /* ================================================================
-   HIERARCHY PANEL — polished scene tree
+   HIERARCHY PANEL — scene entity tree
    ================================================================ */
 
 /* Nerd Font icons (Font Awesome range F000–F2E0) */
@@ -13,14 +13,34 @@
 #define ICON_ENTITY     "\xEF\x84\x91"   /* U+F111 circle    */
 #define ICON_MESH       "\xEF\x86\xB2"   /* U+F1B2 cube      */
 #define ICON_LIGHT      "\xEF\x83\xAB"   /* U+F0EB lightbulb */
-#define ICON_COMPONENT  "\xEF\x80\x93"   /* U+F013 cog       */
+
+/* We need a way to pass both the editor pointer and entity ID to the callback.
+   Use a small static ring buffer of callback contexts. */
+#define MAX_ENTITY_NODES 256
+
+typedef struct {
+    Editor   *editor;
+    Qs_Entity entity;
+} HierarchyClickCtx;
+
+static HierarchyClickCtx s_click_ctx[MAX_ENTITY_NODES];
+static uint32_t           s_click_idx;
+
+static void on_entity_select(Ca_TreeNode *tn, void *user_data)
+{
+    (void)tn;
+    HierarchyClickCtx *ctx = (HierarchyClickCtx *)user_data;
+    if (ctx && ctx->editor)
+        editor_set_selected_entity(ctx->editor, ctx->entity);
+}
 
 void ed_hierarchy(void *editor)
 {
-    (void)editor;
-
+    Editor   *ed    = (Editor *)editor;
     Qs_Scene *scene = qs_scene_active();
     if (!scene) return;
+
+    s_click_idx = 0;
 
     /* ---- Tree ---- */
     ca_tree_begin(&(Ca_DivDesc){
@@ -34,9 +54,11 @@ void ed_hierarchy(void *editor)
             .expanded = true,
             .style    = "hierarchy-scene",
             .icon     = ICON_SCENE,
-            .icon_color = ca_color(0.45f, 0.55f, 0.85f, 1.0f),
+            .icon_color = ca_color(0.45f, 0.55f, 0.75f, 1.0f),
         });
         {
+            Qs_Entity selected = editor_selected_entity(ed);
+
             /* Iterate all entities */
             for (Qs_Entity e = qs_scene_first(scene, qs_transform_type());
                  e != QS_ENTITY_INVALID;
@@ -45,7 +67,7 @@ void ed_hierarchy(void *editor)
                 const char *name = qs_entity_name(scene, e);
                 if (!name) name = "(unnamed)";
 
-                /* Pick icon color based on entity type */
+                /* Pick icon based on entity's primary component */
                 bool has_mesh  = qs_entity_has(scene, e, qs_mesh_comp_type());
                 bool has_light = qs_entity_has(scene, e, qs_light_comp_type());
 
@@ -58,72 +80,32 @@ void ed_hierarchy(void *editor)
                     dot_color = ca_color(0.45f, 0.75f, 0.55f, 1.0f);
                     dot_icon  = ICON_MESH;
                 } else {
-                    dot_color = ca_color(0.55f, 0.55f, 0.70f, 1.0f);
+                    dot_color = ca_color(0.55f, 0.55f, 0.60f, 1.0f);
                     dot_icon  = ICON_ENTITY;
                 }
 
-                /* Count child components to determine if entity has expandable content */
-                int comp_count = 0;
-                if (qs_entity_has(scene, e, qs_transform_type())) comp_count++;
-                if (has_mesh)  comp_count++;
-                if (has_light) comp_count++;
-                bool is_leaf = (comp_count <= 1); /* only Transform = nothing interesting to expand */
+                /* Set up click context */
+                HierarchyClickCtx *ctx = NULL;
+                if (s_click_idx < MAX_ENTITY_NODES) {
+                    ctx = &s_click_ctx[s_click_idx++];
+                    ctx->editor = ed;
+                    ctx->entity = e;
+                }
+
+                /* Highlight selected entity */
+                const char *style = (e == selected)
+                    ? "hierarchy-entity hierarchy-selected"
+                    : "hierarchy-entity";
 
                 ca_tree_node_begin(&(Ca_TreeNodeDesc){
-                    .text       = name,
-                    .expanded   = false,
-                    .style      = "hierarchy-entity",
-                    .icon       = dot_icon,
-                    .icon_color = dot_color,
-                    .is_leaf    = is_leaf,
+                    .text        = name,
+                    .style       = style,
+                    .icon        = dot_icon,
+                    .icon_color  = dot_color,
+                    .is_leaf     = true,
+                    .on_toggle   = ctx ? on_entity_select : NULL,
+                    .toggle_data = ctx,
                 });
-                {
-                    /* Component children (only shown when expanded) */
-                    Qs_Transform *tf = (Qs_Transform *)qs_entity_get(
-                                           scene, e, qs_transform_type());
-                    if (tf) {
-                        char buf[128];
-                        snprintf(buf, sizeof(buf),
-                                 "Transform  (%.1f, %.1f, %.1f)",
-                                 tf->position[0], tf->position[1],
-                                 tf->position[2]);
-                        ca_tree_node_begin(&(Ca_TreeNodeDesc){
-                            .text     = buf,
-                            .style    = "hierarchy-component",
-                            .is_leaf  = true,
-                            .icon     = ICON_COMPONENT,
-                            .icon_color = ca_color(0.40f, 0.40f, 0.55f, 0.8f),
-                        });
-                        ca_tree_node_end();
-                    }
-
-                    if (has_mesh) {
-                        Qs_MeshComp *mc = (Qs_MeshComp *)qs_entity_get(
-                                              scene, e, qs_mesh_comp_type());
-                        char buf[128];
-                        snprintf(buf, sizeof(buf), "Mesh  [%s]",
-                                 mc->mesh_name[0] ? mc->mesh_name : "none");
-                        ca_tree_node_begin(&(Ca_TreeNodeDesc){
-                            .text     = buf,
-                            .style    = "hierarchy-component",
-                            .is_leaf  = true,
-                            .icon     = ICON_MESH,
-                            .icon_color = ca_color(0.40f, 0.60f, 0.45f, 0.8f),
-                        });
-                        ca_tree_node_end();
-                    }
-
-                    if (has_light) {
-                        ca_tree_node_begin(&(Ca_TreeNodeDesc){
-                            .text     = "Light",
-                            .style    = "hierarchy-component",
-                            .is_leaf  = true,
-                            .icon     = ICON_LIGHT,
-                            .icon_color = ca_color(0.80f, 0.70f, 0.30f, 0.8f),
-                        });
-                        ca_tree_node_end();
-                    }
-                }
                 ca_tree_node_end();
             }
         }

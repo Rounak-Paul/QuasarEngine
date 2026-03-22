@@ -209,6 +209,24 @@ const char *qs_component_type_name(const Qs_ComponentType *type)
     return type ? type->name : NULL;
 }
 
+uint32_t qs_component_type_count(void)
+{
+    return g_scene_system ? g_scene_system->type_count : 0;
+}
+
+Qs_ComponentType *qs_component_type_at(uint32_t index)
+{
+    if (!g_scene_system) return NULL;
+    uint32_t found = 0;
+    for (uint32_t i = 0; i < QS_MAX_COMPONENT_TYPES; i++) {
+        if (g_scene_system->types[i].in_use) {
+            if (found == index) return &g_scene_system->types[i];
+            found++;
+        }
+    }
+    return NULL;
+}
+
 /* ================================================================
    BUILT-IN COMPONENT INIT CALLBACKS
    ================================================================ */
