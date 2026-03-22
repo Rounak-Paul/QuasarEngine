@@ -118,7 +118,7 @@ static void mat4_perspective(float out[16],
     memset(out, 0, 16 * sizeof(float));
     float tan_half = tanf(fov_rad * 0.5f);
     out[0]  = 1.0f / (aspect * tan_half);
-    out[5]  = 1.0f / tan_half;
+    out[5]  = -1.0f / tan_half;
     out[10] = -(far_p + near_p) / (far_p - near_p);
     out[11] = -1.0f;
     out[14] = -(2.0f * far_p * near_p) / (far_p - near_p);
@@ -131,7 +131,7 @@ static void mat4_ortho(float out[16],
     memset(out, 0, 16 * sizeof(float));
     float half_w = half_h * aspect;
     out[0]  =  1.0f / half_w;
-    out[5]  =  1.0f / half_h;
+    out[5]  = -1.0f / half_h;
     out[10] = -2.0f / (far_p - near_p);
     out[14] = -(far_p + near_p) / (far_p - near_p);
     out[15] =  1.0f;

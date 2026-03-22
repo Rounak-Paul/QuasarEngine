@@ -12,6 +12,7 @@ struct Editor {
     Ca_Window     *window;
     Ca_Stylesheet *stylesheet;
     Qs_Renderer   *scene_renderer;
+    Ca_Viewport   *scene_viewport;
 };
 
 /* ---- Editor CSS theme ---- */
@@ -142,7 +143,10 @@ static void on_key_event(const Ca_Event *event, void *userdata)
 
 static void on_frame(void *userdata)
 {
-    ed_console_update(userdata);
+    Editor *ed = userdata;
+    if (ed->scene_viewport)
+        ca_viewport_request_redraw(ed->scene_viewport);
+    ed_console_update(ed);
 }
 
 static void on_log(void *userdata)
@@ -397,6 +401,11 @@ void editor_request_exit(Editor *ed)
 Qs_Renderer *editor_scene_renderer(Editor *ed)
 {
     return ed ? ed->scene_renderer : NULL;
+}
+
+void editor_set_scene_viewport(Editor *ed, Ca_Viewport *viewport)
+{
+    if (ed) ed->scene_viewport = viewport;
 }
 
 Qs_Engine *editor_engine(Editor *ed)

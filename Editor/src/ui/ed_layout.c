@@ -94,6 +94,7 @@ void ed_layout(Ca_Window *window, void *editor)
                 {
                     Ca_Viewport *vp = ca_viewport(&(Ca_ViewportDesc){ 0 });
                     qs_renderer_bind(editor_scene_renderer(editor), vp);
+                    editor_set_scene_viewport(editor, vp);
                 }
                 ca_div_end();
 

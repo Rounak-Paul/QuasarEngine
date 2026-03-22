@@ -24,6 +24,9 @@ void editor_request_exit(Editor *editor);
 /// Returns the editor's scene renderer.
 Qs_Renderer *editor_scene_renderer(Editor *editor);
 
+/// Sets the editor's scene viewport.
+void editor_set_scene_viewport(Editor *editor, Ca_Viewport *viewport);
+
 /// Returns the editor's engine instance.
 Qs_Engine *editor_engine(Editor *editor);
 

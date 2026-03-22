@@ -1,6 +1,15 @@
 #include "quasar.h"
 #include "causality.h"
 
+static Ca_Viewport *s_vp;
+
+static void on_frame(void *userdata)
+{
+    Qs_Engine *engine = userdata;
+    qs_engine_update(engine, 1.0f / 60.0f);
+    ca_viewport_request_redraw(s_vp);
+}
+
 int main(void)
 {
     Qs_Engine *engine = qs_engine_create(&(Qs_EngineDesc){
@@ -55,12 +64,15 @@ int main(void)
     ca_ui_begin(window, &(Ca_DivDesc){
         .direction = CA_VERTICAL,
     });
-    Ca_Viewport *vp = ca_viewport(&(Ca_ViewportDesc){ 0 });
-    qs_renderer_bind(renderer, vp);
+    s_vp = ca_viewport(&(Ca_ViewportDesc){ 0 });
+    qs_renderer_bind(renderer, s_vp);
     ca_ui_end();
 
-    int result = ca_instance_exec(instance);
+    ca_window_set_on_frame(window, on_frame, engine);
+
+    while (ca_instance_tick(instance)) { }
 
     qs_engine_destroy(engine);
-    return result;
+    ca_instance_destroy(instance);
+    return 0;
 }
