@@ -49,6 +49,7 @@ target_include_directories(Quasar
         ${CMAKE_CURRENT_SOURCE_DIR}/vendors/stb
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src
+        ${CMAKE_CURRENT_SOURCE_DIR}/vendors/cjson
 )
 
 target_link_libraries(Quasar

@@ -8,9 +8,11 @@
 typedef struct Qs_Engine         Qs_Engine;
 typedef struct Qs_Scene          Qs_Scene;
 typedef struct Qs_ComponentType  Qs_ComponentType;
+typedef struct Qs_TypeInfo       Qs_TypeInfo;
 typedef struct Qs_Mesh           Qs_Mesh;
 typedef struct Qs_Material       Qs_Material;
 typedef struct Qs_Light          Qs_Light;
+struct cJSON;
 
 /* ================================================================
    ENTITY — lightweight index handle
@@ -29,6 +31,9 @@ typedef struct Qs_ComponentTypeDesc {
     const char *name;           ///< Unique type name (e.g. "RigidBody", "AudioSource").
     size_t      data_size;      ///< Size in bytes of one component instance.
 
+    /// Reflection metadata for auto-serialization.  May be NULL.
+    const Qs_TypeInfo *type_info;
+
     /// Called when a component is added to an entity.  May be NULL.
     void (*init)(void *component, Qs_Scene *scene, Qs_Entity entity);
 
@@ -46,6 +51,12 @@ Qs_ComponentType *qs_component_register(Qs_Engine *engine,
 
 /// Finds a registered component type by name.  Returns NULL if not found.
 Qs_ComponentType *qs_component_find(const char *name);
+
+/// Returns the reflection type info linked to a component type, or NULL.
+const Qs_TypeInfo *qs_component_type_info(const Qs_ComponentType *type);
+
+/// Returns the name of a component type.
+const char *qs_component_type_name(const Qs_ComponentType *type);
 
 /* ================================================================
    BUILT-IN COMPONENT TYPES
@@ -169,5 +180,18 @@ Qs_Entity qs_scene_first(const Qs_Scene *scene,
 Qs_Entity qs_scene_next(const Qs_Scene *scene,
                          const Qs_ComponentType *type,
                          Qs_Entity after);
+
+/* ================================================================
+   SCENE SERIALIZATION
+   ================================================================ */
+
+/// Serializes the entire scene to a cJSON object.  Caller owns the result.
+/// Components with reflection type_info are auto-serialized.
+struct cJSON *qs_scene_to_json(const Qs_Scene *scene);
+
+/// Deserializes a cJSON object into a scene, creating entities and components.
+/// The scene should be empty or newly created.  Returns true on success.
+bool qs_scene_from_json(Qs_Scene *scene, Qs_Engine *engine,
+                        const struct cJSON *json);
 
 #endif

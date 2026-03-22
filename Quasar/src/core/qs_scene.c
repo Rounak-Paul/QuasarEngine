@@ -1,6 +1,8 @@
 #include "qs_scene.h"
+#include "qs_reflect.h"
 #include "qs_log.h"
 #include "qs_system.h"
+#include "cJSON.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -27,6 +29,7 @@ struct Qs_ComponentType {
     bool     in_use;
     uint32_t index;
     size_t   data_size;
+    const Qs_TypeInfo *type_info;
     void (*init)(void *comp, Qs_Scene *scene, Qs_Entity entity);
     void (*destroy)(void *comp, Qs_Scene *scene, Qs_Entity entity);
     void (*update)(void *comp, Qs_Scene *scene, Qs_Entity entity, float dt);
@@ -157,6 +160,7 @@ Qs_ComponentType *qs_component_register(Qs_Engine *engine,
 
     ct->in_use    = true;
     ct->data_size = desc->data_size;
+    ct->type_info = desc->type_info;
     ct->init      = desc->init;
     ct->destroy   = desc->destroy;
     ct->update    = desc->update;
@@ -176,6 +180,16 @@ Qs_ComponentType *qs_component_find(const char *name)
             return &g_scene_system->types[i];
     }
     return NULL;
+}
+
+const Qs_TypeInfo *qs_component_type_info(const Qs_ComponentType *type)
+{
+    return type ? type->type_info : NULL;
+}
+
+const char *qs_component_type_name(const Qs_ComponentType *type)
+{
+    return type ? type->name : NULL;
 }
 
 /* ================================================================
@@ -200,6 +214,34 @@ static void mesh_comp_init(void *comp, Qs_Scene *scene, Qs_Entity entity)
 }
 
 /* ================================================================
+   BUILT-IN REFLECTION INFO
+   ================================================================ */
+
+static const Qs_FieldInfo s_transform_fields[] = {
+    QS_FIELD(Qs_Transform, position, QS_FIELD_FLOAT3),
+    QS_FIELD(Qs_Transform, rotation, QS_FIELD_FLOAT4),
+    QS_FIELD(Qs_Transform, scale,    QS_FIELD_FLOAT3),
+};
+
+static const Qs_TypeInfo s_transform_type_info = {
+    .name        = "Transform",
+    .data_size   = sizeof(Qs_Transform),
+    .fields      = s_transform_fields,
+    .field_count = QS_COUNTOF(s_transform_fields),
+};
+
+static const Qs_FieldInfo s_mesh_comp_fields[] = {
+    QS_FIELD(Qs_MeshComp, visible, QS_FIELD_BOOL),
+};
+
+static const Qs_TypeInfo s_mesh_comp_type_info = {
+    .name        = "MeshComp",
+    .data_size   = sizeof(Qs_MeshComp),
+    .fields      = s_mesh_comp_fields,
+    .field_count = QS_COUNTOF(s_mesh_comp_fields),
+};
+
+/* ================================================================
    BUILT-IN TYPE HANDLES
    ================================================================ */
 
@@ -213,15 +255,21 @@ Qs_ComponentType *qs_light_comp_type(void) { return s_light_comp_type; }
 
 static void register_builtin_types(Qs_Engine *engine)
 {
+    /* Register reflection type infos */
+    qs_type_register(&s_transform_type_info);
+    qs_type_register(&s_mesh_comp_type_info);
+
     s_transform_type = qs_component_register(engine, &(Qs_ComponentTypeDesc){
         .name      = "Transform",
         .data_size = sizeof(Qs_Transform),
+        .type_info = &s_transform_type_info,
         .init      = transform_init,
     });
 
     s_mesh_comp_type = qs_component_register(engine, &(Qs_ComponentTypeDesc){
         .name      = "MeshComp",
         .data_size = sizeof(Qs_MeshComp),
+        .type_info = &s_mesh_comp_type_info,
         .init      = mesh_comp_init,
     });
 
@@ -531,6 +579,106 @@ Qs_Entity qs_scene_next(const Qs_Scene *scene,
     const ComponentStore *store = &scene->stores[type->index];
     uint32_t e = bit_next_set(store->mask, after + 1);
     return e < QS_MAX_ENTITIES ? (Qs_Entity)e : QS_ENTITY_INVALID;
+}
+
+/* ================================================================
+   SCENE SERIALIZATION
+   ================================================================ */
+
+cJSON *qs_scene_to_json(const Qs_Scene *scene)
+{
+    if (!scene || !g_scene_system) return NULL;
+
+    cJSON *root = cJSON_CreateObject();
+    cJSON_AddStringToObject(root, "name", scene->name);
+
+    cJSON *entities = cJSON_CreateArray();
+    cJSON_AddItemToObject(root, "entities", entities);
+
+    for (uint32_t e = bit_next_set(scene->alive, 0);
+         e < QS_MAX_ENTITIES;
+         e = bit_next_set(scene->alive, e + 1))
+    {
+        cJSON *ent = cJSON_CreateObject();
+        cJSON_AddStringToObject(ent, "name", scene->entity_names[e]);
+        cJSON_AddBoolToObject(ent, "enabled", bit_test(scene->enabled, e));
+
+        cJSON *comps = cJSON_CreateObject();
+        cJSON_AddItemToObject(ent, "components", comps);
+
+        for (uint32_t t = 0; t < QS_MAX_COMPONENT_TYPES; t++) {
+            Qs_ComponentType *type = &g_scene_system->types[t];
+            if (!type->in_use) continue;
+            if (!bit_test(scene->stores[t].mask, e)) continue;
+
+            if (type->type_info) {
+                void *comp = scene->stores[t].data +
+                             (size_t)e * type->data_size;
+                cJSON *comp_json = qs_reflect_to_json(comp, type->type_info);
+                if (comp_json)
+                    cJSON_AddItemToObject(comps, type->name, comp_json);
+            } else {
+                cJSON_AddItemToObject(comps, type->name,
+                                      cJSON_CreateObject());
+            }
+        }
+
+        cJSON_AddItemToArray(entities, ent);
+    }
+
+    return root;
+}
+
+bool qs_scene_from_json(Qs_Scene *scene, Qs_Engine *engine,
+                        const cJSON *json)
+{
+    (void)engine;
+    if (!scene || !json || !g_scene_system) return false;
+
+    const cJSON *entities = cJSON_GetObjectItemCaseSensitive(json, "entities");
+    if (!cJSON_IsArray(entities)) return false;
+
+    const cJSON *ent_json;
+    cJSON_ArrayForEach(ent_json, entities) {
+        const cJSON *name_val =
+            cJSON_GetObjectItemCaseSensitive(ent_json, "name");
+        const char *name =
+            cJSON_IsString(name_val) ? name_val->valuestring : NULL;
+
+        Qs_Entity entity = qs_entity_create(scene, name);
+        if (entity == QS_ENTITY_INVALID) continue;
+
+        const cJSON *enabled_val =
+            cJSON_GetObjectItemCaseSensitive(ent_json, "enabled");
+        if (cJSON_IsBool(enabled_val))
+            qs_entity_set_enabled(scene, entity, cJSON_IsTrue(enabled_val));
+
+        const cJSON *comps =
+            cJSON_GetObjectItemCaseSensitive(ent_json, "components");
+        if (!cJSON_IsObject(comps)) continue;
+
+        const cJSON *comp_json;
+        cJSON_ArrayForEach(comp_json, comps) {
+            const char *type_name = comp_json->string;
+            Qs_ComponentType *type = qs_component_find(type_name);
+            if (!type) {
+                QS_LOG_WARN("Unknown component type '%s' during deserialization",
+                            type_name);
+                continue;
+            }
+
+            /* Transform is auto-added by qs_entity_create */
+            void *comp = qs_entity_get(scene, entity, type);
+            if (!comp)
+                comp = qs_entity_add(scene, entity, type);
+            if (!comp) continue;
+
+            if (type->type_info)
+                qs_reflect_from_json(comp, type->type_info, comp_json);
+        }
+    }
+
+    return true;
 }
 
 /* ================================================================
