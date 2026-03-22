@@ -7,6 +7,7 @@ typedef struct Editor Editor;
 
 typedef struct EditorDesc {
     const char *title;
+    const char *project_path;  ///< Project directory path (from launcher).
     int         width;
     int         height;
 } EditorDesc;

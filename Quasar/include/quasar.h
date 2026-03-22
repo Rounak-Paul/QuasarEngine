@@ -14,6 +14,7 @@
 #include "qs_light.h"
 #include "qs_scene.h"
 #include "qs_reflect.h"
+#include "qs_project.h"
 #include "qs_primitives.h"
 #include "qs_forward.h"
 #include "qs_input.h"

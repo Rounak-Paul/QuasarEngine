@@ -6,10 +6,12 @@
 
 #include "ui/ed_file_browser.h"
 
+#include <stdio.h>
 #include <stdlib.h>
 
 struct Editor {
     Qs_Engine     *engine;
+    Qs_Project    *project;
     Qs_Renderer   *scene_renderer;
     Ca_Viewport   *scene_viewport;
 };
@@ -328,8 +330,27 @@ Editor *editor_create(const EditorDesc *desc)
     Editor *ed = calloc(1, sizeof(Editor));
     if (!ed) return NULL;
 
+    /* Open project */
+    if (desc->project_path) {
+        ed->project = qs_project_open(desc->project_path);
+        if (!ed->project) {
+            free(ed);
+            return NULL;
+        }
+    }
+
+    /* Build window title: "Quasar Editor — ProjectName" */
+    char title[256];
+    if (ed->project)
+        snprintf(title, sizeof(title), "%s \xE2\x80\x94 %s",
+                 desc->title ? desc->title : "Quasar Editor",
+                 qs_project_name(ed->project));
+    else
+        snprintf(title, sizeof(title), "%s",
+                 desc->title ? desc->title : "Quasar Editor");
+
     ed->engine = qs_engine_create(&(Qs_EngineDesc){
-        .app_name      = desc->title ? desc->title : "Quasar Editor",
+        .app_name      = title,
         .version_major = 0,
         .version_minor = 1,
         .version_patch = 0,
@@ -533,5 +554,6 @@ void editor_destroy(Editor *ed)
     if (!ed) return;
     qs_forward_shutdown();
     qs_engine_destroy(ed->engine);
+    qs_project_destroy(ed->project);
     free(ed);
 }
