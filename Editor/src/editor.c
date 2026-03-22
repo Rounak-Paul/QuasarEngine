@@ -4,6 +4,8 @@
 #include "ui/ed_layout.h"
 #include "ui/ed_status_bar.h"
 
+#include "ui/ed_file_browser.h"
+
 #include <stdlib.h>
 
 struct Editor {
@@ -113,6 +115,171 @@ static const char *g_editor_css =
     "  color: #6a6a88;"
     "  font-size: 11px;"
     "}"
+
+    /* ---- File browser ---- */
+
+    ".fb-root {"
+    "  width: 100%;"
+    "  height: 100%;"
+    "}"
+
+    ".fb-title-bar {"
+    "  background: #14142a;"
+    "  height: 32px;"
+    "  width: 100%;"
+    "  padding-left: 10px;"
+    "  padding-right: 4px;"
+    "  align-items: center;"
+    "}"
+
+    ".fb-title {"
+    "  color: #c0c0d8;"
+    "  font-size: 12px;"
+    "}"
+
+    ".fb-spacer-grow {"
+    "  flex-grow: 1;"
+    "}"
+
+    ".fb-close-btn {"
+    "  width: 28px;"
+    "  height: 24px;"
+    "  background: transparent;"
+    "  color: #7777aa;"
+    "  font-size: 12px;"
+    "  corner-radius: 3px;"
+    "}"
+
+    ".fb-nav-bar {"
+    "  background: #18182e;"
+    "  height: 34px;"
+    "  width: 100%;"
+    "  padding-left: 4px;"
+    "  padding-right: 4px;"
+    "  align-items: center;"
+    "  gap: 2px;"
+    "}"
+
+    ".fb-nav-btn {"
+    "  width: 28px;"
+    "  height: 24px;"
+    "  background: #222240;"
+    "  color: #8888aa;"
+    "  font-size: 12px;"
+    "  corner-radius: 3px;"
+    "}"
+
+    ".fb-path-input {"
+    "  flex-grow: 1;"
+    "  height: 24px;"
+    "  background: #10102a;"
+    "  color: #c0c0d8;"
+    "  font-size: 11px;"
+    "  padding-left: 6px;"
+    "  corner-radius: 3px;"
+    "}"
+
+    ".fb-col-header {"
+    "  width: 100%;"
+    "  height: 20px;"
+    "  padding-left: 12px;"
+    "  padding-right: 12px;"
+    "  align-items: center;"
+    "  background: #16162c;"
+    "}"
+
+    ".fb-col-name {"
+    "  color: #666688;"
+    "  font-size: 10px;"
+    "  flex-grow: 1;"
+    "  text-align: left;"
+    "}"
+
+    ".fb-col-size {"
+    "  color: #666688;"
+    "  font-size: 10px;"
+    "  width: 80px;"
+    "  text-align: right;"
+    "}"
+
+    ".fb-file-list {"
+    "  flex-grow: 1;"
+    "  overflow-y: scroll;"
+    "  padding: 2px;"
+    "  gap: 1px;"
+    "  align-items: flex-start;"
+    "}"
+
+    ".fb-entry {"
+    "  width: 100%;"
+    "  height: 22px;"
+    "  background: transparent;"
+    "  color: #b0b0cc;"
+    "  font-size: 11px;"
+    "  text-align: left;"
+    "  padding-left: 4px;"
+    "  corner-radius: 2px;"
+    "}"
+
+    ".fb-entry-selected {"
+    "  background: #2a2a55;"
+    "}"
+
+    ".fb-entry-dir {"
+    "  color: #7799dd;"
+    "}"
+
+    ".fb-empty {"
+    "  color: #555570;"
+    "  font-size: 11px;"
+    "  padding: 8px;"
+    "}"
+
+    ".fb-bottom {"
+    "  background: #18182e;"
+    "  width: 100%;"
+    "  padding: 6px 8px;"
+    "  gap: 4px;"
+    "}"
+
+    ".fb-bottom-row {"
+    "  width: 100%;"
+    "  height: 26px;"
+    "  align-items: center;"
+    "  gap: 6px;"
+    "}"
+
+    ".fb-label {"
+    "  color: #8888aa;"
+    "  font-size: 11px;"
+    "  width: 44px;"
+    "  text-align: right;"
+    "}"
+
+    ".fb-selected-name {"
+    "  color: #c0c0d8;"
+    "  font-size: 11px;"
+    "  flex-grow: 1;"
+    "  text-align: left;"
+    "}"
+
+    ".fb-filter-select {"
+    "  width: 200px;"
+    "}"
+
+    ".fb-btn {"
+    "  width: 90px;"
+    "  height: 24px;"
+    "  background: #252540;"
+    "  color: #b0b0cc;"
+    "  font-size: 11px;"
+    "  corner-radius: 3px;"
+    "}"
+
+    ".fb-btn-primary {"
+    "  background: #3355aa;"
+    "  color: #e0e0f0;"
+    "}"
 ;
 
 static void editor_build_ui(Editor *ed)
@@ -147,6 +314,7 @@ static void on_frame(Qs_Engine *engine, void *userdata)
     if (ed->scene_viewport)
         ca_viewport_request_redraw(ed->scene_viewport);
     ed_console_update(ed);
+    ed_file_browser_update();
 }
 
 static void on_log(void *userdata)
@@ -324,6 +492,8 @@ Editor *editor_create(const EditorDesc *desc)
     }
 
     editor_build_ui(ed);
+
+    ed_file_browser_init(qs_engine_ca_instance(ed->engine));
 
     qs_engine_set_event_handler(ed->engine, CA_EVENT_KEY, on_key_event, ed);
     qs_engine_set_on_frame(ed->engine, on_frame, ed);

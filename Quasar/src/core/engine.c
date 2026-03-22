@@ -177,6 +177,10 @@ Ca_Window* qs_engine_window(Qs_Engine* engine) {
     return engine ? engine->window : NULL;
 }
 
+Ca_Instance* qs_engine_ca_instance(Qs_Engine* engine) {
+    return engine ? engine->ca_instance : NULL;
+}
+
 Qs_EventBus* qs_engine_event_bus(Qs_Engine* engine) {
     if (!engine) return NULL;
     Qs_System *s = qs_system_find(engine->systems, "Event");

@@ -141,10 +141,10 @@ void ed_layout(Ca_Window *window, void *editor)
             });
             for (uint32_t i = 0; i < CONSOLE_MAX_LINES; i++) {
                 s_console_lines[i] = ca_text(&(Ca_TextDesc){
-                    .text  = "",
-                    .style = "console-line",
+                    .text   = "",
+                    .style  = "console-line",
+                    .hidden = true,
                 });
-                ca_label_set_hidden(s_console_lines[i], true);
             }
             ca_div_end();
         }

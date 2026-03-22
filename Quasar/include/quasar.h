@@ -41,6 +41,9 @@ int qs_engine_run(Qs_Engine* engine);
 /// Returns the engine's window for UI building.
 Ca_Window* qs_engine_window(Qs_Engine* engine);
 
+/// Returns the engine's Causality instance (for multi-window, etc.).
+Ca_Instance* qs_engine_ca_instance(Qs_Engine* engine);
+
 /// Returns the engine's event bus.
 Qs_EventBus* qs_engine_event_bus(Qs_Engine* engine);
 
