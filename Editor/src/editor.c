@@ -6,8 +6,10 @@
 
 #include "ui/ed_file_browser.h"
 
+#include "cJSON.h"
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 struct Editor {
     Qs_Engine     *engine;
@@ -282,6 +284,31 @@ static const char *g_editor_css =
     "  background: #3355aa;"
     "  color: #e0e0f0;"
     "}"
+
+    /* ---- Hierarchy panel ---- */
+
+    ".hierarchy-tree {"
+    "  overflow-y: scroll;"
+    "  padding: 4px;"
+    "  gap: 0px;"
+    "  flex-grow: 1;"
+    "  align-items: flex-start;"
+    "}"
+
+    ".hierarchy-scene {"
+    "  color: #c0c0d8;"
+    "  font-size: 12px;"
+    "}"
+
+    ".hierarchy-entity {"
+    "  color: #b0b0cc;"
+    "  font-size: 11px;"
+    "}"
+
+    ".hierarchy-component {"
+    "  color: #6a6a88;"
+    "  font-size: 10px;"
+    "}"
 ;
 
 static void editor_build_ui(Editor *ed)
@@ -323,6 +350,174 @@ static void on_log(void *userdata)
 {
     (void)userdata;
     qs_engine_wake();
+}
+
+/* ---- Scene file loading ---- */
+
+#define MAX_SCENE_RESOURCES 64
+
+typedef struct {
+    char  name[64];
+    void *ptr;
+} NamedResource;
+
+static Qs_Mesh *find_mesh(NamedResource *res, int count, const char *name)
+{
+    for (int i = 0; i < count; i++)
+        if (strcmp(res[i].name, name) == 0)
+            return (Qs_Mesh *)res[i].ptr;
+    return NULL;
+}
+
+static Qs_Material *find_material(NamedResource *res, int count, const char *name)
+{
+    for (int i = 0; i < count; i++)
+        if (strcmp(res[i].name, name) == 0)
+            return (Qs_Material *)res[i].ptr;
+    return NULL;
+}
+
+static bool editor_load_scene(Editor *ed, const char *path)
+{
+    FILE *f = fopen(path, "r");
+    if (!f) {
+        QS_LOG_ERROR("Failed to open scene: %s", path);
+        return false;
+    }
+    fseek(f, 0, SEEK_END);
+    long len = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    if (len <= 0) { fclose(f); return false; }
+
+    char *buf = malloc((size_t)len + 1);
+    if (!buf) { fclose(f); return false; }
+    size_t nread = fread(buf, 1, (size_t)len, f);
+    buf[nread] = '\0';
+    fclose(f);
+
+    cJSON *root = cJSON_Parse(buf);
+    free(buf);
+    if (!root) {
+        QS_LOG_ERROR("Failed to parse scene: %s", path);
+        return false;
+    }
+
+    /* Scene name */
+    const cJSON *name_val = cJSON_GetObjectItemCaseSensitive(root, "name");
+    const char *scene_name = cJSON_IsString(name_val)
+                           ? name_val->valuestring : "Untitled";
+
+    Qs_Scene *scene = qs_scene_create(ed->engine, &(Qs_SceneDesc){
+        .name = scene_name,
+    });
+    qs_scene_set_active(scene);
+
+    /* ---- Create resources from the "resources" section ---- */
+    NamedResource meshes[MAX_SCENE_RESOURCES];
+    NamedResource materials[MAX_SCENE_RESOURCES];
+    int mesh_count = 0, mat_count = 0;
+
+    const cJSON *resources = cJSON_GetObjectItemCaseSensitive(root, "resources");
+    if (resources) {
+        /* Materials */
+        const cJSON *mats_json =
+            cJSON_GetObjectItemCaseSensitive(resources, "materials");
+        const cJSON *mat_json;
+        cJSON_ArrayForEach(mat_json, mats_json) {
+            if (mat_count >= MAX_SCENE_RESOURCES) break;
+
+            float base_color[4] = {1,1,1,1};
+            const cJSON *bc =
+                cJSON_GetObjectItemCaseSensitive(mat_json, "base_color");
+            if (cJSON_IsArray(bc)) {
+                for (int i = 0; i < 4 && i < cJSON_GetArraySize(bc); i++)
+                    base_color[i] = (float)cJSON_GetArrayItem(bc, i)->valuedouble;
+            }
+            const cJSON *rough =
+                cJSON_GetObjectItemCaseSensitive(mat_json, "roughness");
+            const cJSON *metal =
+                cJSON_GetObjectItemCaseSensitive(mat_json, "metallic");
+
+            Qs_Material *m = qs_material_create(ed->engine, &(Qs_MaterialDesc){
+                .name              = mat_json->string,
+                .base_color_factor = { base_color[0], base_color[1],
+                                       base_color[2], base_color[3] },
+                .roughness_factor  = rough ? (float)rough->valuedouble : 0.5f,
+                .metallic_factor   = metal ? (float)metal->valuedouble : 0.0f,
+            });
+            if (m) {
+                snprintf(materials[mat_count].name, 64, "%s", mat_json->string);
+                materials[mat_count].ptr = m;
+                mat_count++;
+            }
+        }
+
+        /* Meshes (primitives) */
+        const cJSON *meshes_json =
+            cJSON_GetObjectItemCaseSensitive(resources, "meshes");
+        const cJSON *mesh_json;
+        cJSON_ArrayForEach(mesh_json, meshes_json) {
+            if (mesh_count >= MAX_SCENE_RESOURCES) break;
+            const cJSON *type_val =
+                cJSON_GetObjectItemCaseSensitive(mesh_json, "type");
+            if (!cJSON_IsString(type_val)) continue;
+            const char *type = type_val->valuestring;
+
+            Qs_Mesh *m = NULL;
+            if (strcmp(type, "plane") == 0) {
+                const cJSON *sz =
+                    cJSON_GetObjectItemCaseSensitive(mesh_json, "size");
+                const cJSON *sd =
+                    cJSON_GetObjectItemCaseSensitive(mesh_json, "subdivisions");
+                m = qs_primitive_plane(ed->engine,
+                        sz ? (float)sz->valuedouble : 1.0f,
+                        sd ? (uint32_t)sd->valueint  : 1);
+            } else if (strcmp(type, "cube") == 0) {
+                const cJSON *sz =
+                    cJSON_GetObjectItemCaseSensitive(mesh_json, "size");
+                m = qs_primitive_cube(ed->engine,
+                        sz ? (float)sz->valuedouble : 1.0f);
+            } else if (strcmp(type, "sphere") == 0) {
+                const cJSON *rad =
+                    cJSON_GetObjectItemCaseSensitive(mesh_json, "radius");
+                const cJSON *sl =
+                    cJSON_GetObjectItemCaseSensitive(mesh_json, "slices");
+                const cJSON *st =
+                    cJSON_GetObjectItemCaseSensitive(mesh_json, "stacks");
+                m = qs_primitive_sphere(ed->engine,
+                        rad ? (float)rad->valuedouble    : 0.5f,
+                        sl  ? (uint32_t)sl->valueint     : 24,
+                        st  ? (uint32_t)st->valueint     : 16);
+            }
+            if (m) {
+                snprintf(meshes[mesh_count].name, 64, "%s", mesh_json->string);
+                meshes[mesh_count].ptr = m;
+                mesh_count++;
+            }
+        }
+    }
+
+    /* ---- Load entities ---- */
+    qs_scene_from_json(scene, ed->engine, root);
+
+    /* ---- Resolve mesh/material name references ---- */
+    for (Qs_Entity e = qs_scene_first(scene, qs_mesh_comp_type());
+         e != QS_ENTITY_INVALID;
+         e = qs_scene_next(scene, qs_mesh_comp_type(), e))
+    {
+        Qs_MeshComp *mc = (Qs_MeshComp *)qs_entity_get(
+                              scene, e, qs_mesh_comp_type());
+        if (!mc) continue;
+        if (mc->mesh_name[0])
+            mc->mesh = find_mesh(meshes, mesh_count, mc->mesh_name);
+        if (mc->material_name[0])
+            mc->material = find_material(materials, mat_count,
+                                         mc->material_name);
+    }
+
+    cJSON_Delete(root);
+    QS_LOG_INFO("Scene loaded: %s", path);
+    return true;
 }
 
 Editor *editor_create(const EditorDesc *desc)
@@ -382,134 +577,12 @@ Editor *editor_create(const EditorDesc *desc)
     /* Initialize forward rendering pipeline */
     qs_forward_init(ed->engine, ed->scene_renderer);
 
-    /* ---- Test scene ---- */
-    Qs_Scene *scene = qs_scene_create(ed->engine, &(Qs_SceneDesc){
-        .name = "TestScene",
-    });
-    qs_scene_set_active(scene);
-
-    /* Create shared primitive meshes */
-    Qs_Mesh *plane_mesh  = qs_primitive_plane(ed->engine, 12.0f, 1);
-    Qs_Mesh *cube_mesh   = qs_primitive_cube(ed->engine, 1.0f);
-    Qs_Mesh *sphere_mesh = qs_primitive_sphere(ed->engine, 0.5f, 24, 16);
-
-    /* Create some materials with different colors */
-    Qs_Material *mat_floor = qs_material_create(ed->engine, &(Qs_MaterialDesc){
-        .name              = "floor",
-        .base_color_factor = { 0.3f, 0.3f, 0.35f, 1.0f },
-        .roughness_factor  = 0.9f,
-        .metallic_factor   = 0.0f,
-    });
-    Qs_Material *mat_red = qs_material_create(ed->engine, &(Qs_MaterialDesc){
-        .name              = "red",
-        .base_color_factor = { 0.8f, 0.15f, 0.1f, 1.0f },
-        .roughness_factor  = 0.5f,
-        .metallic_factor   = 0.1f,
-    });
-    Qs_Material *mat_blue = qs_material_create(ed->engine, &(Qs_MaterialDesc){
-        .name              = "blue",
-        .base_color_factor = { 0.1f, 0.3f, 0.85f, 1.0f },
-        .roughness_factor  = 0.4f,
-        .metallic_factor   = 0.2f,
-    });
-    Qs_Material *mat_green = qs_material_create(ed->engine, &(Qs_MaterialDesc){
-        .name              = "green",
-        .base_color_factor = { 0.15f, 0.7f, 0.2f, 1.0f },
-        .roughness_factor  = 0.6f,
-        .metallic_factor   = 0.0f,
-    });
-    Qs_Material *mat_gold = qs_material_create(ed->engine, &(Qs_MaterialDesc){
-        .name              = "gold",
-        .base_color_factor = { 0.9f, 0.75f, 0.2f, 1.0f },
-        .roughness_factor  = 0.3f,
-        .metallic_factor   = 0.9f,
-    });
-
-    /* Floor platform */
-    {
-        Qs_Entity e = qs_entity_create(scene, "Floor");
-        Qs_MeshComp *mc = (Qs_MeshComp *)qs_entity_add(scene, e, qs_mesh_comp_type());
-        mc->mesh     = plane_mesh;
-        mc->material = mat_floor;
-    }
-
-    /* Red cube — left */
-    {
-        Qs_Entity e = qs_entity_create(scene, "RedCube");
-        Qs_Transform *tf = (Qs_Transform *)qs_entity_get(scene, e, qs_transform_type());
-        tf->position[0] = -2.0f;
-        tf->position[1] =  0.5f;
-        tf->position[2] =  0.0f;
-        Qs_MeshComp *mc = (Qs_MeshComp *)qs_entity_add(scene, e, qs_mesh_comp_type());
-        mc->mesh     = cube_mesh;
-        mc->material = mat_red;
-    }
-
-    /* Blue cube — right */
-    {
-        Qs_Entity e = qs_entity_create(scene, "BlueCube");
-        Qs_Transform *tf = (Qs_Transform *)qs_entity_get(scene, e, qs_transform_type());
-        tf->position[0] =  2.0f;
-        tf->position[1] =  0.5f;
-        tf->position[2] =  0.0f;
-        Qs_MeshComp *mc = (Qs_MeshComp *)qs_entity_add(scene, e, qs_mesh_comp_type());
-        mc->mesh     = cube_mesh;
-        mc->material = mat_blue;
-    }
-
-    /* Green sphere — center back */
-    {
-        Qs_Entity e = qs_entity_create(scene, "GreenSphere");
-        Qs_Transform *tf = (Qs_Transform *)qs_entity_get(scene, e, qs_transform_type());
-        tf->position[0] =  0.0f;
-        tf->position[1] =  0.5f;
-        tf->position[2] = -2.0f;
-        Qs_MeshComp *mc = (Qs_MeshComp *)qs_entity_add(scene, e, qs_mesh_comp_type());
-        mc->mesh     = sphere_mesh;
-        mc->material = mat_green;
-    }
-
-    /* Gold sphere — center front */
-    {
-        Qs_Entity e = qs_entity_create(scene, "GoldSphere");
-        Qs_Transform *tf = (Qs_Transform *)qs_entity_get(scene, e, qs_transform_type());
-        tf->position[0] =  0.0f;
-        tf->position[1] =  0.8f;
-        tf->position[2] =  2.0f;
-        tf->scale[0]    =  1.5f;
-        tf->scale[1]    =  1.5f;
-        tf->scale[2]    =  1.5f;
-        Qs_MeshComp *mc = (Qs_MeshComp *)qs_entity_add(scene, e, qs_mesh_comp_type());
-        mc->mesh     = sphere_mesh;
-        mc->material = mat_gold;
-    }
-
-    /* Small stacked cubes — right-back */
-    {
-        Qs_Entity e = qs_entity_create(scene, "SmallCube1");
-        Qs_Transform *tf = (Qs_Transform *)qs_entity_get(scene, e, qs_transform_type());
-        tf->position[0] =  3.0f;
-        tf->position[1] =  0.3f;
-        tf->position[2] = -2.5f;
-        tf->scale[0]    =  0.6f;
-        tf->scale[1]    =  0.6f;
-        tf->scale[2]    =  0.6f;
-        Qs_MeshComp *mc = (Qs_MeshComp *)qs_entity_add(scene, e, qs_mesh_comp_type());
-        mc->mesh     = cube_mesh;
-        mc->material = mat_gold;
-    }
-    {
-        Qs_Entity e = qs_entity_create(scene, "SmallCube2");
-        Qs_Transform *tf = (Qs_Transform *)qs_entity_get(scene, e, qs_transform_type());
-        tf->position[0] =  3.0f;
-        tf->position[1] =  0.9f;
-        tf->position[2] = -2.5f;
-        tf->scale[0]    =  0.4f;
-        tf->scale[1]    =  0.4f;
-        tf->scale[2]    =  0.4f;
-        Qs_MeshComp *mc = (Qs_MeshComp *)qs_entity_add(scene, e, qs_mesh_comp_type());
-        mc->mesh     = cube_mesh;
-        mc->material = mat_red;
+    /* ---- Load scene from project ---- */
+    if (ed->project) {
+        char scene_path[512];
+        snprintf(scene_path, sizeof(scene_path), "%s/scenes/default.qscene",
+                 qs_project_path(ed->project));
+        editor_load_scene(ed, scene_path);
     }
 
     editor_build_ui(ed);

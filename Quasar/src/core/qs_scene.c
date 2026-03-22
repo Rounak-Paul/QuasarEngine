@@ -6,6 +6,7 @@
 
 #include <stdlib.h>
 #include <string.h>
+#include <stdio.h>
 
 #ifdef _MSC_VER
 #include <intrin.h>
@@ -36,9 +37,25 @@ struct Qs_ComponentType {
 };
 
 typedef struct ComponentStore {
-    uint8_t  *data;                           /* lazily allocated */
-    uint64_t  mask[QS_ENTITY_MASK_WORDS];
+    uint8_t  *data;           /* dense-packed component data                   */
+    uint32_t *sparse;         /* entity → dense index (UINT32_MAX = absent)    */
+    uint32_t *dense;          /* dense index → entity ID                       */
+    uint32_t  count;          /* number of live components in dense array      */
 } ComponentStore;
+
+static inline bool store_has(const ComponentStore *store, uint32_t entity)
+{
+    if (!store->sparse) return false;
+    uint32_t idx = store->sparse[entity];
+    return idx < store->count && store->dense[idx] == entity;
+}
+
+static inline void *store_get(const ComponentStore *store,
+                              uint32_t entity, size_t data_size)
+{
+    uint32_t idx = store->sparse[entity];
+    return store->data + (size_t)idx * data_size;
+}
 
 struct Qs_Scene {
     char              name[64];
@@ -231,7 +248,9 @@ static const Qs_TypeInfo s_transform_type_info = {
 };
 
 static const Qs_FieldInfo s_mesh_comp_fields[] = {
-    QS_FIELD(Qs_MeshComp, visible, QS_FIELD_BOOL),
+    QS_FIELD(Qs_MeshComp, visible,       QS_FIELD_BOOL),
+    QS_FIELD(Qs_MeshComp, mesh_name,     QS_FIELD_STRING),
+    QS_FIELD(Qs_MeshComp, material_name, QS_FIELD_STRING),
 };
 
 static const Qs_TypeInfo s_mesh_comp_type_info = {
@@ -335,9 +354,11 @@ void qs_scene_destroy(Qs_Scene *scene)
         qs_entity_destroy(scene, e);
     }
 
-    /* Free component store data buffers */
+    /* Free component store buffers */
     for (uint32_t t = 0; t < QS_MAX_COMPONENT_TYPES; t++) {
         free(scene->stores[t].data);
+        free(scene->stores[t].sparse);
+        free(scene->stores[t].dense);
     }
 
     /* Remove from system array */
@@ -434,7 +455,7 @@ void qs_entity_destroy(Qs_Scene *scene, Qs_Entity entity)
     /* Remove all components */
     for (uint32_t t = 0; t < QS_MAX_COMPONENT_TYPES; t++) {
         if (g_scene_system->types[t].in_use &&
-            bit_test(scene->stores[t].mask, entity))
+            store_has(&scene->stores[t], entity))
         {
             qs_entity_remove(scene, entity, &g_scene_system->types[t]);
         }
@@ -497,17 +518,29 @@ void *qs_entity_add(Qs_Scene *scene, Qs_Entity entity,
     ComponentStore *store = &scene->stores[type->index];
 
     /* Already has component? */
-    if (bit_test(store->mask, entity))
+    if (store_has(store, entity))
         return NULL;
 
-    /* Lazy-allocate data array for this component type in this scene */
+    /* Lazy-allocate dense arrays for this component type in this scene */
     if (!store->data) {
-        store->data = (uint8_t *)calloc(QS_MAX_ENTITIES, type->data_size);
-        if (!store->data) return NULL;
+        store->data   = (uint8_t *)calloc(QS_MAX_ENTITIES, type->data_size);
+        store->sparse = (uint32_t *)malloc(QS_MAX_ENTITIES * sizeof(uint32_t));
+        store->dense  = (uint32_t *)malloc(QS_MAX_ENTITIES * sizeof(uint32_t));
+        if (!store->data || !store->sparse || !store->dense) {
+            free(store->data); free(store->sparse); free(store->dense);
+            store->data = NULL; store->sparse = NULL; store->dense = NULL;
+            return NULL;
+        }
+        memset(store->sparse, 0xFF, QS_MAX_ENTITIES * sizeof(uint32_t));
+        store->count = 0;
     }
 
-    bit_set(store->mask, entity);
-    void *comp = store->data + (size_t)entity * type->data_size;
+    /* Append to dense arrays */
+    uint32_t idx = store->count++;
+    store->sparse[entity] = idx;
+    store->dense[idx]     = entity;
+
+    void *comp = store->data + (size_t)idx * type->data_size;
     memset(comp, 0, type->data_size);
 
     if (type->init)
@@ -520,31 +553,43 @@ void *qs_entity_get(const Qs_Scene *scene, Qs_Entity entity,
                      const Qs_ComponentType *type)
 {
     if (!scene || !type || entity >= QS_MAX_ENTITIES ||
-        !type->in_use || !scene->stores[type->index].data)
+        !type->in_use)
         return NULL;
 
     const ComponentStore *store = &scene->stores[type->index];
-    if (!bit_test(store->mask, entity)) return NULL;
+    if (!store_has(store, entity)) return NULL;
 
-    return store->data + (size_t)entity * type->data_size;
+    return store_get(store, entity, type->data_size);
 }
 
 void qs_entity_remove(Qs_Scene *scene, Qs_Entity entity,
                        Qs_ComponentType *type)
 {
     if (!scene || !type || entity >= QS_MAX_ENTITIES ||
-        !type->in_use || !scene->stores[type->index].data)
+        !type->in_use)
         return;
 
     ComponentStore *store = &scene->stores[type->index];
-    if (!bit_test(store->mask, entity)) return;
+    if (!store_has(store, entity)) return;
 
-    void *comp = store->data + (size_t)entity * type->data_size;
+    uint32_t idx = store->sparse[entity];
+    void *comp = store->data + (size_t)idx * type->data_size;
     if (type->destroy)
         type->destroy(comp, scene, entity);
 
-    memset(comp, 0, type->data_size);
-    bit_clear(store->mask, entity);
+    /* Swap-remove: move last element into the vacated slot */
+    uint32_t last = store->count - 1;
+    if (idx != last) {
+        uint32_t last_entity = store->dense[last];
+        memcpy(store->data + (size_t)idx * type->data_size,
+               store->data + (size_t)last * type->data_size,
+               type->data_size);
+        store->dense[idx]          = last_entity;
+        store->sparse[last_entity] = idx;
+    }
+
+    store->sparse[entity] = UINT32_MAX;
+    store->count--;
 }
 
 bool qs_entity_has(const Qs_Scene *scene, Qs_Entity entity,
@@ -552,7 +597,7 @@ bool qs_entity_has(const Qs_Scene *scene, Qs_Entity entity,
 {
     if (!scene || !type || entity >= QS_MAX_ENTITIES || !type->in_use)
         return false;
-    return bit_test(scene->stores[type->index].mask, entity);
+    return store_has(&scene->stores[type->index], entity);
 }
 
 /* ================================================================
@@ -565,8 +610,7 @@ Qs_Entity qs_scene_first(const Qs_Scene *scene,
     if (!scene || !type || !type->in_use) return QS_ENTITY_INVALID;
 
     const ComponentStore *store = &scene->stores[type->index];
-    uint32_t e = bit_next_set(store->mask, 0);
-    return e < QS_MAX_ENTITIES ? (Qs_Entity)e : QS_ENTITY_INVALID;
+    return store->count > 0 ? store->dense[0] : QS_ENTITY_INVALID;
 }
 
 Qs_Entity qs_scene_next(const Qs_Scene *scene,
@@ -577,8 +621,12 @@ Qs_Entity qs_scene_next(const Qs_Scene *scene,
         return QS_ENTITY_INVALID;
 
     const ComponentStore *store = &scene->stores[type->index];
-    uint32_t e = bit_next_set(store->mask, after + 1);
-    return e < QS_MAX_ENTITIES ? (Qs_Entity)e : QS_ENTITY_INVALID;
+    if (!store->sparse) return QS_ENTITY_INVALID;
+    uint32_t idx = store->sparse[after];
+    if (idx >= store->count || store->dense[idx] != after)
+        return QS_ENTITY_INVALID;
+    uint32_t next = idx + 1;
+    return next < store->count ? store->dense[next] : QS_ENTITY_INVALID;
 }
 
 /* ================================================================
@@ -609,11 +657,11 @@ cJSON *qs_scene_to_json(const Qs_Scene *scene)
         for (uint32_t t = 0; t < QS_MAX_COMPONENT_TYPES; t++) {
             Qs_ComponentType *type = &g_scene_system->types[t];
             if (!type->in_use) continue;
-            if (!bit_test(scene->stores[t].mask, e)) continue;
+            if (!store_has(&scene->stores[t], e)) continue;
 
             if (type->type_info) {
-                void *comp = scene->stores[t].data +
-                             (size_t)e * type->data_size;
+                void *comp = store_get(&scene->stores[t], e,
+                                       type->data_size);
                 cJSON *comp_json = qs_reflect_to_json(comp, type->type_info);
                 if (comp_json)
                     cJSON_AddItemToObject(comps, type->name, comp_json);
@@ -734,16 +782,16 @@ static void scene_system_update(Qs_System *system, Qs_Engine *engine, float dt)
         if (!type->in_use || !type->update) continue;
 
         ComponentStore *store = &scene->stores[t];
-        if (!store->data) continue;
+        if (!store->data || store->count == 0) continue;
 
-        for (uint32_t e = bit_next_set(store->mask, 0);
-             e < QS_MAX_ENTITIES;
-             e = bit_next_set(store->mask, e + 1))
-        {
+        /* Dense iteration — components are contiguous in memory */
+        for (uint32_t i = 0; i < store->count; i++) {
+            uint32_t e = store->dense[i];
+
             /* Skip disabled entities */
             if (!bit_test(scene->enabled, e)) continue;
 
-            void *comp = store->data + (size_t)e * type->data_size;
+            void *comp = store->data + (size_t)i * type->data_size;
             type->update(comp, scene, e, dt);
         }
     }
@@ -758,4 +806,72 @@ Qs_SystemDesc qs_scene_system_desc(void)
         .shutdown  = scene_system_shutdown,
         .update    = scene_system_update,
     };
+}
+
+/* ================================================================
+   SCENE FILE I/O
+   ================================================================ */
+
+bool qs_scene_save(const Qs_Scene *scene, const char *path)
+{
+    if (!scene || !path) return false;
+
+    cJSON *json = qs_scene_to_json(scene);
+    if (!json) return false;
+
+    char *str = cJSON_Print(json);
+    cJSON_Delete(json);
+    if (!str) return false;
+
+    FILE *f = fopen(path, "w");
+    if (!f) {
+        QS_LOG_ERROR("Failed to write scene file: %s", path);
+        free(str);
+        return false;
+    }
+    fputs(str, f);
+    fclose(f);
+    free(str);
+
+    QS_LOG_INFO("Scene saved: %s", path);
+    return true;
+}
+
+bool qs_scene_load(Qs_Scene *scene, Qs_Engine *engine, const char *path)
+{
+    if (!scene || !engine || !path) return false;
+
+    FILE *f = fopen(path, "r");
+    if (!f) {
+        QS_LOG_ERROR("Failed to open scene file: %s", path);
+        return false;
+    }
+
+    fseek(f, 0, SEEK_END);
+    long len = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    if (len <= 0) { fclose(f); return false; }
+
+    char *buf = malloc((size_t)len + 1);
+    if (!buf) { fclose(f); return false; }
+    size_t nread = fread(buf, 1, (size_t)len, f);
+    buf[nread] = '\0';
+    fclose(f);
+
+    cJSON *json = cJSON_Parse(buf);
+    free(buf);
+    if (!json) {
+        QS_LOG_ERROR("Failed to parse scene file: %s", path);
+        return false;
+    }
+
+    bool ok = qs_scene_from_json(scene, engine, json);
+    cJSON_Delete(json);
+
+    if (ok)
+        QS_LOG_INFO("Scene loaded: %s", path);
+    else
+        QS_LOG_ERROR("Failed to deserialize scene: %s", path);
+
+    return ok;
 }

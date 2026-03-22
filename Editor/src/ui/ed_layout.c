@@ -1,4 +1,5 @@
 #include "ed_layout.h"
+#include "ed_hierarchy.h"
 #include "editor.h"
 
 #include <stdio.h>
@@ -67,6 +68,7 @@ void ed_layout(Ca_Window *window, void *editor)
             });
             ca_text(&(Ca_TextDesc){ .text = "Hierarchy", .style = "panel-tab active" });
             ca_div_end();
+            ed_hierarchy(editor);
             ca_div_end();
 
             /* Center + Right split */

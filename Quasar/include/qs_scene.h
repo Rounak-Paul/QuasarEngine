@@ -73,7 +73,9 @@ typedef struct Qs_Transform {
 typedef struct Qs_MeshComp {
     Qs_Mesh     *mesh;
     Qs_Material *material;
-    bool         visible;   ///< Default: true.
+    bool         visible;          ///< Default: true.
+    char         mesh_name[64];    ///< Resource name for serialization.
+    char         material_name[64];///< Resource name for serialization.
 } Qs_MeshComp;
 
 /// Light reference.
@@ -193,5 +195,13 @@ struct cJSON *qs_scene_to_json(const Qs_Scene *scene);
 /// The scene should be empty or newly created.  Returns true on success.
 bool qs_scene_from_json(Qs_Scene *scene, Qs_Engine *engine,
                         const struct cJSON *json);
+
+/// Saves the scene to a .qscene JSON file at the given path.
+/// Returns true on success.
+bool qs_scene_save(const Qs_Scene *scene, const char *path);
+
+/// Loads a scene from a .qscene JSON file.  Creates entities and components
+/// inside the given (empty/new) scene.  Returns true on success.
+bool qs_scene_load(Qs_Scene *scene, Qs_Engine *engine, const char *path);
 
 #endif
