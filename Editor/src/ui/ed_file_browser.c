@@ -6,9 +6,13 @@
 #include <stdint.h>
 
 #ifdef _WIN32
-  #define WIN32_LEAN_AND_MEAN
+  #ifndef WIN32_LEAN_AND_MEAN
+    #define WIN32_LEAN_AND_MEAN
+  #endif
   #include <windows.h>
   #define FB_PATH_SEP '\\'
+  #define strtok_r strtok_s
+  #define strcasecmp _stricmp
 #else
   #include <dirent.h>
   #include <sys/stat.h>

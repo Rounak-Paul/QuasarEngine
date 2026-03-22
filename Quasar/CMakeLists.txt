@@ -16,7 +16,7 @@ set(ALSOFT_INSTALL_UTILS OFF CACHE BOOL "" FORCE)
 add_subdirectory(vendors/openal-soft)
 
 # Suppress -Werror=function-effects from OpenAL's CoreAudio backend (vendor code)
-if(TARGET OpenAL)
+if(TARGET OpenAL AND NOT MSVC)
     target_compile_options(OpenAL PRIVATE -Wno-error=function-effects)
 endif()
 
