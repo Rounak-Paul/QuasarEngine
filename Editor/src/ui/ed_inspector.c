@@ -216,19 +216,10 @@ void ed_inspector(void *editor)
         });
         {
             /* ID row — shown first */
-            ca_div_begin(&(Ca_DivDesc){
-                .direction = CA_HORIZONTAL,
-                .style     = "inspector-meta-row",
-            });
-            ca_text(&(Ca_TextDesc){
-                .text  = ICON_ID,
-                .style = "inspector-id-icon",
-            });
             s_id_value = ca_text(&(Ca_TextDesc){
-                .text  = "0",
-                .style = "inspector-meta-value",
+                .text  = ICON_ID "  0",
+                .style = "inspector-id-label",
             });
-            ca_div_end();
 
             /* Entity name */
             s_entity_name_input = ca_input(&(Ca_InputDesc){
@@ -404,19 +395,19 @@ static void build_sections(Qs_Scene *scene, Qs_Entity entity)
             strcmp(comp_name, "TagComp") == 0)
             continue;
 
-        /* Section header */
+        /* Section header — single label with icon + name */
+        char section_buf[128];
+        snprintf(section_buf, sizeof(section_buf), "%s  %s",
+                 component_icon(comp_name), comp_name);
+
         ca_div_begin(&(Ca_DivDesc){
             .direction = CA_HORIZONTAL,
             .style     = "inspector-section-header",
         });
         ca_text(&(Ca_TextDesc){
-            .text  = component_icon(comp_name),
-            .style = "inspector-section-icon",
+            .text  = section_buf,
+            .style = "inspector-section-label",
             .color = component_icon_color(comp_name),
-        });
-        ca_text(&(Ca_TextDesc){
-            .text  = comp_name,
-            .style = "inspector-section-name",
         });
         ca_div_end();
 
@@ -475,8 +466,8 @@ void ed_inspector_update(void *editor)
     Qs_IdComp *id_comp = (Qs_IdComp *)qs_entity_get(
                               scene, entity, qs_id_comp_type());
     if (id_comp) {
-        char id_buf[16];
-        snprintf(id_buf, sizeof(id_buf), "%u", id_comp->id);
+        char id_buf[32];
+        snprintf(id_buf, sizeof(id_buf), ICON_ID "  %u", id_comp->id);
         ca_label_set_text(s_id_value, id_buf);
     }
 
