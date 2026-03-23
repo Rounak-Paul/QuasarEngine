@@ -24,18 +24,20 @@ struct Editor {
 
 static const char *g_editor_css =
 
-    /* Root — OLED black background */
+    /* Root */
     ".editor-root {"
-    "  background: #000000;"
+    "  background: #0d0b12;"
     "  gap: 0px;"
     "  overflow: hidden;"
     "}"
 
-    /* Menu bar — slim, dark */
+    /* Menu bar */
     ".menu-bar {"
-    "  background: #0a0a0a;"
+    "  background: #090712;"
     "  width: 100%;"
     "  height: 22px;"
+    "  border-width: 1px;"
+    "  border-color: #18122a;"
     "}"
 
     /* Menu bar header items */
@@ -43,23 +45,25 @@ static const char *g_editor_css =
     "  padding-left: 8px;"
     "  padding-right: 8px;"
     "  align-items: center;"
+    "  color: #9070b0;"
+    "  font-size: 14px;"
     "}"
 
-    /* Toolbar — icon row */
+    /* Toolbar */
     ".toolbar {"
-    "  background: #0a0a0a;"
+    "  background: #0e0b18;"
     "  width: 100%;"
     "  height: 18px;"
     "  align-items: center;"
     "  padding-left: 4px;"
     "  padding-right: 4px;"
     "  border-width: 1px;"
-    "  border-color: #050505;"
+    "  border-color: #1c1428;"
     "}"
 
     /* Panels */
     ".panel {"
-    "  background: #0a0a0a;"
+    "  background: #110e18;"
     "  overflow: hidden;"
     "}"
 
@@ -68,7 +72,7 @@ static const char *g_editor_css =
     "}"
 
     ".panel-bottom {"
-    "  background: #0a0a0a;"
+    "  background: #0f0c16;"
     "}"
 
     /* Console */
@@ -80,38 +84,40 @@ static const char *g_editor_css =
     "}"
 
     ".console-line {"
-    "  font-size: 14px;"
-    "  height: 18px;"
+    "  font-size: 13px;"
+    "  height: 17px;"
     "  width: 100%;"
     "  text-align: left;"
     "}"
 
 
-    /* Panel tab bars (row of tabs at top of each panel) */
+    /* Panel tab bars */
     ".panel-tab-bar {"
-    "  background: #050505;"
+    "  background: #0a081a;"
     "  height: 24px;"
     "  width: 100%;"
     "  align-items: center;"
     "  padding-left: 4px;"
     "  gap: 2px;"
+    "  border-width: 1px;"
+    "  border-color: #18122c;"
     "}"
 
-    /* Panel tabs (individual tab labels) */
+    /* Panel tabs */
     ".panel-tab {"
-    "  color: #555555;"
+    "  color: #3e2e60;"
     "  font-size: 14px;"
     "  padding-left: 8px;"
     "  padding-right: 8px;"
     "}"
 
     ".active {"
-    "  color: #cccccc;"
+    "  color: #c8a8e8;"
     "}"
 
     /* Status bar */
     ".status-bar {"
-    "  background: #050505;"
+    "  background: #070510;"
     "  width: 100%;"
     "  height: 20px;"
     "  align-items: center;"
@@ -119,8 +125,8 @@ static const char *g_editor_css =
     "}"
 
     ".status-text {"
-    "  color: #666666;"
-    "  font-size: 14px;"
+    "  color: #3e2878;"
+    "  font-size: 13px;"
     "}"
 
     /* ---- File browser ---- */
@@ -131,7 +137,7 @@ static const char *g_editor_css =
     "}"
 
     ".fb-title-bar {"
-    "  background: #080808;"
+    "  background: #0b0916;"
     "  height: 32px;"
     "  width: 100%;"
     "  padding-left: 10px;"
@@ -140,7 +146,7 @@ static const char *g_editor_css =
     "}"
 
     ".fb-title {"
-    "  color: #cccccc;"
+    "  color: #c8a0e8;"
     "  font-size: 15px;"
     "}"
 
@@ -152,13 +158,13 @@ static const char *g_editor_css =
     "  width: 28px;"
     "  height: 28px;"
     "  background: transparent;"
-    "  color: #888888;"
+    "  color: #6e4888;"
     "  font-size: 15px;"
     "  corner-radius: 3px;"
     "}"
 
     ".fb-nav-bar {"
-    "  background: #0c0c0c;"
+    "  background: #0e0b18;"
     "  height: 34px;"
     "  width: 100%;"
     "  padding-left: 4px;"
@@ -170,8 +176,8 @@ static const char *g_editor_css =
     ".fb-nav-btn {"
     "  width: 32px;"
     "  height: 28px;"
-    "  background: #1a1a1a;"
-    "  color: #888888;"
+    "  background: #1c1430;"
+    "  color: #9068b8;"
     "  font-size: 15px;"
     "  corner-radius: 3px;"
     "}"
@@ -179,11 +185,13 @@ static const char *g_editor_css =
     ".fb-path-input {"
     "  flex-grow: 1;"
     "  height: 28px;"
-    "  background: #050505;"
-    "  color: #cccccc;"
+    "  background: #080516;"
+    "  color: #c4a0e8;"
     "  font-size: 14px;"
     "  padding-left: 6px;"
     "  corner-radius: 3px;"
+    "  border-width: 1px;"
+    "  border-color: #221840;"
     "}"
 
     ".fb-col-header {"
@@ -192,18 +200,18 @@ static const char *g_editor_css =
     "  padding-left: 12px;"
     "  padding-right: 12px;"
     "  align-items: center;"
-    "  background: #0a0a0a;"
+    "  background: #0c0915;"
     "}"
 
     ".fb-col-name {"
-    "  color: #666666;"
+    "  color: #4c2e68;"
     "  font-size: 14px;"
     "  flex-grow: 1;"
     "  text-align: left;"
     "}"
 
     ".fb-col-size {"
-    "  color: #666666;"
+    "  color: #4c2e68;"
     "  font-size: 14px;"
     "  width: 80px;"
     "  text-align: right;"
@@ -221,7 +229,7 @@ static const char *g_editor_css =
     "  width: 100%;"
     "  height: 26px;"
     "  background: transparent;"
-    "  color: #bbbbbb;"
+    "  color: #9868c0;"
     "  font-size: 14px;"
     "  text-align: left;"
     "  padding-left: 4px;"
@@ -229,21 +237,21 @@ static const char *g_editor_css =
     "}"
 
     ".fb-entry-selected {"
-    "  background: #1a1a1a;"
+    "  background: #1c1240;"
     "}"
 
     ".fb-entry-dir {"
-    "  color: #6699cc;"
+    "  color: #7040d8;"
     "}"
 
     ".fb-empty {"
-    "  color: #555555;"
+    "  color: #382858;"
     "  font-size: 14px;"
     "  padding: 8px;"
     "}"
 
     ".fb-bottom {"
-    "  background: #0c0c0c;"
+    "  background: #0b0916;"
     "  width: 100%;"
     "  padding: 6px 8px;"
     "  gap: 4px;"
@@ -257,14 +265,14 @@ static const char *g_editor_css =
     "}"
 
     ".fb-label {"
-    "  color: #888888;"
+    "  color: #6a4888;"
     "  font-size: 14px;"
     "  width: 50px;"
     "  text-align: right;"
     "}"
 
     ".fb-selected-name {"
-    "  color: #cccccc;"
+    "  color: #c4a0e8;"
     "  font-size: 14px;"
     "  flex-grow: 1;"
     "  text-align: left;"
@@ -277,15 +285,15 @@ static const char *g_editor_css =
     ".fb-btn {"
     "  width: 100px;"
     "  height: 28px;"
-    "  background: #1a1a1a;"
-    "  color: #bbbbbb;"
+    "  background: #1a1028;"
+    "  color: #9068c0;"
     "  font-size: 14px;"
     "  corner-radius: 3px;"
     "}"
 
     ".fb-btn-primary {"
-    "  background: #2a6adf;"
-    "  color: #e8e8e8;"
+    "  background: #501ec8;"
+    "  color: #ecdcfc;"
     "}"
 
     /* ---- Hierarchy panel ---- */
@@ -301,17 +309,17 @@ static const char *g_editor_css =
     "}"
 
     ".hierarchy-scene {"
-    "  color: #cccccc;"
+    "  color: #d0a8f0;"
     "  font-size: 14px;"
     "}"
 
     ".hierarchy-entity {"
-    "  color: #bbbbbb;"
+    "  color: #a870cc;"
     "  font-size: 14px;"
     "}"
 
     ".hierarchy-component {"
-    "  color: #606060;"
+    "  color: #4e3468;"
     "  font-size: 14px;"
     "}"
 
@@ -319,7 +327,7 @@ static const char *g_editor_css =
     "  width: 100%;"
     "  height: 26px;"
     "  background: transparent;"
-    "  color: #444444;"
+    "  color: #3c2852;"
     "  font-size: 14px;"
     "}"
 
@@ -335,7 +343,7 @@ static const char *g_editor_css =
     "}"
 
     ".inspector-placeholder {"
-    "  color: #444444;"
+    "  color: #382858;"
     "  font-size: 14px;"
     "  padding: 12px 0px 0px 6px;"
     "  width: 100%;"
@@ -352,11 +360,13 @@ static const char *g_editor_css =
     ".inspector-entity-input {"
     "  width: 100%;"
     "  height: 22px;"
-    "  background: #111111;"
-    "  color: #dddddd;"
+    "  background: #180f24;"
+    "  color: #e4d0f8;"
     "  font-size: 15px;"
     "  padding-left: 4px;"
     "  corner-radius: 2px;"
+    "  border-width: 1px;"
+    "  border-color: #281848;"
     "}"
 
     ".inspector-meta-row {"
@@ -370,20 +380,24 @@ static const char *g_editor_css =
     ".inspector-tag-input {"
     "  height: 18px;"
     "  flex-grow: 1;"
-    "  background: #111111;"
-    "  color: #bbbbbb;"
+    "  background: #130c1e;"
+    "  color: #7048a0;"
     "  font-size: 13px;"
     "  padding-left: 4px;"
     "  corner-radius: 2px;"
+    "  border-width: 1px;"
+    "  border-color: #1e1038;"
     "}"
 
     ".inspector-section-header {"
-    "  background: #111111;"
+    "  background: #140e22;"
     "  width: 100%;"
     "  height: 22px;"
     "  padding: 0px 6px;"
     "  margin-top: 2px;"
     "  align-items: center;"
+    "  border-width: 1px;"
+    "  border-color: #201438;"
     "}"
 
     ".inspector-section-label {"
@@ -400,7 +414,7 @@ static const char *g_editor_css =
     "}"
 
     ".inspector-field-name {"
-    "  color: #808080;"
+    "  color: #5c3880;"
     "  font-size: 12px;"
     "  text-align: left;"
     "  width: 100%;"
@@ -413,10 +427,10 @@ static const char *g_editor_css =
     "  flex-wrap: wrap;"
     "}"
 
-    ".inspector-axis-x { color: #cc4444; font-size: 12px; width: 10px; }"
-    ".inspector-axis-y { color: #44cc44; font-size: 12px; width: 10px; }"
-    ".inspector-axis-z { color: #4477cc; font-size: 12px; width: 10px; }"
-    ".inspector-axis-w { color: #cc44cc; font-size: 12px; width: 10px; }"
+    ".inspector-axis-x { color: #e05858; font-size: 12px; width: 10px; }"
+    ".inspector-axis-y { color: #52cc78; font-size: 12px; width: 10px; }"
+    ".inspector-axis-z { color: #4e88f4; font-size: 12px; width: 10px; }"
+    ".inspector-axis-w { color: #b068d0; font-size: 12px; width: 10px; }"
 
     ".inspector-axis-group {"
     "  width: 64px;"
@@ -428,34 +442,34 @@ static const char *g_editor_css =
     ".inspector-vec-input {"
     "  width: 48px;"
     "  height: 18px;"
-    "  background: #0d0d0d;"
-    "  color: #cccccc;"
+    "  background: #0f0b1a;"
+    "  color: #b888e0;"
     "  font-size: 12px;"
     "  padding-left: 3px;"
     "  corner-radius: 2px;"
     "  border-width: 1px;"
-    "  border-color: #1a1a1a;"
+    "  border-color: #1c1038;"
     "}"
 
     ".inspector-scalar-input {"
     "  width: 100%;"
     "  height: 18px;"
-    "  background: #0d0d0d;"
-    "  color: #cccccc;"
+    "  background: #0f0b1a;"
+    "  color: #b888e0;"
     "  font-size: 12px;"
     "  padding-left: 3px;"
     "  corner-radius: 2px;"
     "  border-width: 1px;"
-    "  border-color: #1a1a1a;"
+    "  border-color: #1c1038;"
     "}"
 
     ".inspector-field-value {"
-    "  color: #bbbbbb;"
+    "  color: #7c58a8;"
     "  font-size: 13px;"
     "}"
 
     ".inspector-id-label {"
-    "  color: #888888;"
+    "  color: #4a2c78;"
     "  font-size: 13px;"
     "  width: 100%;"
     "  text-align: left;"
@@ -463,14 +477,14 @@ static const char *g_editor_css =
     "}"
 
     ".inspector-tag-icon {"
-    "  color: #66aa66;"
+    "  color: #3a8860;"
     "  font-size: 14px;"
     "  width: 16px;"
     "  flex-shrink: 0;"
     "}"
 
     ".hierarchy-selected {"
-    "  background: #1a1a1a;"
+    "  background: #1e0e3c;"
     "}"
 ;
 
