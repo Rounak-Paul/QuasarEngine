@@ -298,7 +298,7 @@ static const char *g_editor_css =
 
     /* ---- Hierarchy panel ---- */
 
-    ".hierarchy-tree {"
+    ".hierarchy-tree {" 
     "  overflow-y: scroll;"
     "  padding-left: 4px;"
     "  padding-right: 2px;"
