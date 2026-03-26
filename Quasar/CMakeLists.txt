@@ -13,6 +13,7 @@ set(ALSOFT_INSTALL_HRTF_DATA OFF CACHE BOOL "" FORCE)
 set(ALSOFT_INSTALL_AMBDEC_PRESETS OFF CACHE BOOL "" FORCE)
 set(ALSOFT_INSTALL_EXAMPLES OFF CACHE BOOL "" FORCE)
 set(ALSOFT_INSTALL_UTILS OFF CACHE BOOL "" FORCE)
+set(ALSOFT_ENABLE_MODULES OFF CACHE BOOL "" FORCE)
 add_subdirectory(vendors/openal-soft)
 
 # Suppress -Werror=function-effects from OpenAL's CoreAudio backend (vendor code)

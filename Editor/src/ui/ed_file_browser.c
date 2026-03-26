@@ -306,7 +306,7 @@ static void sync_widgets(void)
 
             if (s_fb.selected == i)
                 ca_button_set_background(s_fb.entry_btns[i],
-                                         ca_color(0.16f, 0.16f, 0.35f, 1.0f));
+                                         ca_color(0.19f, 0.20f, 0.27f, 1.0f));  /* Surface0 #313244 */
             else
                 ca_button_set_background(s_fb.entry_btns[i], 0);
         } else {

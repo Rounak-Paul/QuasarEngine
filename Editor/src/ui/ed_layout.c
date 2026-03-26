@@ -6,8 +6,8 @@
 #include <stdio.h>
 #include <string.h>
 
-#define SPLIT_BAR_COLOR       ca_color(0.08f, 0.08f, 0.08f, 1.0f)
-#define SPLIT_BAR_HOVER_COLOR ca_color(0.20f, 0.45f, 0.85f, 1.0f)
+#define SPLIT_BAR_COLOR       ca_color(0.07f, 0.07f, 0.11f, 1.0f)  /* Crust #11111b */
+#define SPLIT_BAR_HOVER_COLOR ca_color(0.80f, 0.65f, 0.97f, 1.0f)  /* Mauve #cba6f7 */
 
 /* ---- Console ---- */
 #define CONSOLE_MAX_LINES 100
@@ -20,13 +20,13 @@ static bool        s_needs_scroll;
 static uint32_t log_level_color(Qs_LogLevel level)
 {
     switch (level) {
-    case QS_LOG_DEBUG: return ca_color(0.40f, 0.40f, 0.40f, 1.0f);
-    case QS_LOG_TRACE: return ca_color(0.27f, 0.67f, 0.80f, 1.0f);
-    case QS_LOG_INFO:  return ca_color(0.27f, 0.80f, 0.40f, 1.0f);
-    case QS_LOG_WARN:  return ca_color(0.80f, 0.67f, 0.27f, 1.0f);
-    case QS_LOG_ERROR: return ca_color(0.80f, 0.27f, 0.27f, 1.0f);
-    case QS_LOG_FATAL: return ca_color(0.80f, 0.27f, 0.80f, 1.0f);
-    default:           return ca_color(0.40f, 0.40f, 0.40f, 1.0f);
+    case QS_LOG_DEBUG: return ca_color(0.42f, 0.44f, 0.53f, 1.0f);  /* Overlay0 #6c7086 */
+    case QS_LOG_TRACE: return ca_color(0.45f, 0.78f, 0.93f, 1.0f);  /* Sapphire #74c7ec */
+    case QS_LOG_INFO:  return ca_color(0.65f, 0.89f, 0.63f, 1.0f);  /* Green #a6e3a1 */
+    case QS_LOG_WARN:  return ca_color(0.98f, 0.89f, 0.69f, 1.0f);  /* Yellow #f9e2af */
+    case QS_LOG_ERROR: return ca_color(0.95f, 0.55f, 0.66f, 1.0f);  /* Red #f38ba8 */
+    case QS_LOG_FATAL: return ca_color(0.96f, 0.76f, 0.91f, 1.0f);  /* Pink #f5c2e7 */
+    default:           return ca_color(0.42f, 0.44f, 0.53f, 1.0f);
     }
 }
 
@@ -131,10 +131,10 @@ void ed_layout(Ca_Window *window, void *editor)
                 .count         = 2,
                 .active        = 0,
                 .style         = "panel-tab-bar",
-                .active_text   = ca_color(0.69f, 0.69f, 0.80f, 1.0f),
-                .inactive_text = ca_color(0.33f, 0.33f, 0.40f, 1.0f),
-                .active_bg     = ca_color(0.09f, 0.09f, 0.18f, 1.0f),
-                .inactive_bg   = ca_color(0.07f, 0.07f, 0.13f, 0.0f),
+                .active_text   = ca_color(0.80f, 0.65f, 0.97f, 1.0f),  /* Mauve #cba6f7 */
+                .inactive_text = ca_color(0.42f, 0.44f, 0.53f, 1.0f),  /* Overlay0 #6c7086 */
+                .active_bg     = ca_color(0.19f, 0.20f, 0.27f, 1.0f),  /* Surface0 #313244 */
+                .inactive_bg   = ca_color(0.00f, 0.00f, 0.00f, 0.0f),
             });
 
             /* Console content — scrollable log lines */
