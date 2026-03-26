@@ -46,7 +46,7 @@ static const char *g_editor_css =
     "  padding-right: 10px;"
     "  align-items: center;"
     "  color: #cdd6f4;"
-    "  font-size: 13px;"
+    "  font-size: 15px;"
     "}"
 
     /* Toolbar — Mantle */
@@ -84,7 +84,7 @@ static const char *g_editor_css =
     "}"
 
     ".console-line {"
-    "  font-size: 13px;"
+    "  font-size: 15px;"
     "  height: 17px;"
     "  width: 100%;"
     "  text-align: left;"
@@ -105,7 +105,7 @@ static const char *g_editor_css =
     /* Panel tabs — Overlay0 dim, active = Mauve */
     ".panel-tab {"
     "  color: #6c7086;"
-    "  font-size: 13px;"
+    "  font-size: 15px;"
     "  padding-left: 10px;"
     "  padding-right: 10px;"
     "}"
@@ -125,7 +125,7 @@ static const char *g_editor_css =
 
     ".status-text {"
     "  color: #6c7086;"
-    "  font-size: 12px;"
+    "  font-size: 14px;"
     "}"
 
     /* ---- File browser (Catppuccin Mocha) ---- */
@@ -149,7 +149,7 @@ static const char *g_editor_css =
 
     ".fb-title {"
     "  color: #cba6f7;"
-    "  font-size: 15px;"
+    "  font-size: 16px;"
     "  flex-grow: 1;"
     "}"
 
@@ -162,7 +162,7 @@ static const char *g_editor_css =
     "  height: 28px;"
     "  background: transparent;"
     "  color: #6c7086;"
-    "  font-size: 14px;"
+    "  font-size: 16px;"
     "  corner-radius: 4px;"
     "}"
 
@@ -185,7 +185,7 @@ static const char *g_editor_css =
     "  height: 26px;"
     "  background: #313244;"
     "  color: #cdd6f4;"
-    "  font-size: 14px;"
+    "  font-size: 16px;"
     "  corner-radius: 4px;"
     "}"
 
@@ -195,7 +195,7 @@ static const char *g_editor_css =
     "  height: 28px;"
     "  background: #11111b;"
     "  color: #cdd6f4;"
-    "  font-size: 13px;"
+    "  font-size: 15px;"
     "  padding-left: 8px;"
     "  corner-radius: 4px;"
     "  border-width: 1px;"
@@ -216,14 +216,14 @@ static const char *g_editor_css =
 
     ".fb-col-name {"
     "  color: #6c7086;"
-    "  font-size: 12px;"
+    "  font-size: 14px;"
     "  flex-grow: 1;"
     "  text-align: left;"
     "}"
 
     ".fb-col-size {"
     "  color: #6c7086;"
-    "  font-size: 12px;"
+    "  font-size: 14px;"
     "  width: 80px;"
     "  text-align: right;"
     "}"
@@ -244,7 +244,7 @@ static const char *g_editor_css =
     "  height: 28px;"
     "  background: transparent;"
     "  color: #cdd6f4;"
-    "  font-size: 13px;"
+    "  font-size: 15px;"
     "  text-align: left;"
     "  padding-left: 8px;"
     "  corner-radius: 4px;"
@@ -260,7 +260,7 @@ static const char *g_editor_css =
 
     ".fb-empty {"
     "  color: #6c7086;"
-    "  font-size: 13px;"
+    "  font-size: 15px;"
     "  padding: 14px;"
     "}"
 
@@ -283,14 +283,14 @@ static const char *g_editor_css =
 
     ".fb-label {"
     "  color: #a6adc8;"
-    "  font-size: 13px;"
+    "  font-size: 15px;"
     "  width: 50px;"
     "  text-align: right;"
     "}"
 
     ".fb-selected-name {"
     "  color: #cdd6f4;"
-    "  font-size: 13px;"
+    "  font-size: 15px;"
     "  flex-grow: 1;"
     "  text-align: left;"
     "}"
@@ -305,7 +305,7 @@ static const char *g_editor_css =
     "  height: 28px;"
     "  background: #313244;"
     "  color: #cdd6f4;"
-    "  font-size: 13px;"
+    "  font-size: 15px;"
     "  corner-radius: 4px;"
     "}"
 
@@ -329,17 +329,17 @@ static const char *g_editor_css =
 
     ".hierarchy-scene {"
     "  color: #cba6f7;"
-    "  font-size: 13px;"
+    "  font-size: 15px;"
     "}"
 
     ".hierarchy-entity {"
     "  color: #89b4fa;"
-    "  font-size: 13px;"
+    "  font-size: 15px;"
     "}"
 
     ".hierarchy-component {"
     "  color: #6c7086;"
-    "  font-size: 12px;"
+    "  font-size: 14px;"
     "}"
 
     ".hierarchy-add-btn {"
@@ -347,7 +347,7 @@ static const char *g_editor_css =
     "  height: 26px;"
     "  background: transparent;"
     "  color: #6c7086;"
-    "  font-size: 13px;"
+    "  font-size: 15px;"
     "}"
 
     /* ---- Inspector panel (Catppuccin) ---- */
@@ -363,7 +363,7 @@ static const char *g_editor_css =
 
     ".inspector-placeholder {"
     "  color: #6c7086;"
-    "  font-size: 13px;"
+    "  font-size: 15px;"
     "  padding: 14px 0px 0px 8px;"
     "  width: 100%;"
     "  text-align: left;"
@@ -381,7 +381,7 @@ static const char *g_editor_css =
     "  height: 24px;"
     "  background: #11111b;"
     "  color: #cdd6f4;"
-    "  font-size: 14px;"
+    "  font-size: 16px;"
     "  padding-left: 6px;"
     "  corner-radius: 4px;"
     "  border-width: 1px;"
@@ -401,7 +401,7 @@ static const char *g_editor_css =
     "  flex-grow: 1;"
     "  background: #11111b;"
     "  color: #a6adc8;"
-    "  font-size: 12px;"
+    "  font-size: 14px;"
     "  padding-left: 4px;"
     "  corner-radius: 4px;"
     "  border-width: 1px;"
@@ -420,7 +420,7 @@ static const char *g_editor_css =
     "}"
 
     ".inspector-section-label {"
-    "  font-size: 12px;"
+    "  font-size: 14px;"
     "  color: #a6adc8;"
     "  width: 100%;"
     "  text-align: left;"
@@ -435,7 +435,7 @@ static const char *g_editor_css =
 
     ".inspector-field-name {"
     "  color: #6c7086;"
-    "  font-size: 12px;"
+    "  font-size: 14px;"
     "  text-align: left;"
     "  width: 100%;"
     "}"
@@ -448,10 +448,10 @@ static const char *g_editor_css =
     "}"
 
     /* Axis label colors — Red/Green/Blue/Mauve */
-    ".inspector-axis-x { color: #f38ba8; font-size: 12px; width: 10px; }"
-    ".inspector-axis-y { color: #a6e3a1; font-size: 12px; width: 10px; }"
-    ".inspector-axis-z { color: #89b4fa; font-size: 12px; width: 10px; }"
-    ".inspector-axis-w { color: #cba6f7; font-size: 12px; width: 10px; }"
+    ".inspector-axis-x { color: #f38ba8; font-size: 14px; width: 10px; }"
+    ".inspector-axis-y { color: #a6e3a1; font-size: 14px; width: 10px; }"
+    ".inspector-axis-z { color: #89b4fa; font-size: 14px; width: 10px; }"
+    ".inspector-axis-w { color: #cba6f7; font-size: 14px; width: 10px; }"
 
     ".inspector-axis-group {"
     "  width: 68px;"
@@ -465,7 +465,7 @@ static const char *g_editor_css =
     "  height: 18px;"
     "  background: #11111b;"
     "  color: #cdd6f4;"
-    "  font-size: 12px;"
+    "  font-size: 14px;"
     "  padding-left: 4px;"
     "  corner-radius: 3px;"
     "  border-width: 1px;"
@@ -477,7 +477,7 @@ static const char *g_editor_css =
     "  height: 18px;"
     "  background: #11111b;"
     "  color: #cdd6f4;"
-    "  font-size: 12px;"
+    "  font-size: 14px;"
     "  padding-left: 4px;"
     "  corner-radius: 3px;"
     "  border-width: 1px;"
@@ -486,12 +486,12 @@ static const char *g_editor_css =
 
     ".inspector-field-value {"
     "  color: #a6adc8;"
-    "  font-size: 12px;"
+    "  font-size: 14px;"
     "}"
 
     ".inspector-id-label {"
     "  color: #6c7086;"
-    "  font-size: 12px;"
+    "  font-size: 14px;"
     "  width: 100%;"
     "  text-align: left;"
     "  padding-left: 2px;"
@@ -499,7 +499,7 @@ static const char *g_editor_css =
 
     ".inspector-tag-icon {"
     "  color: #a6e3a1;"
-    "  font-size: 13px;"
+    "  font-size: 15px;"
     "  width: 16px;"
     "  flex-shrink: 0;"
     "}"

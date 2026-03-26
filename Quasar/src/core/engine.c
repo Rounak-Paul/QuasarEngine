@@ -1,4 +1,6 @@
 #include "quasar.h"
+#include "qs_plugin.h"
+#include "qs_dylib.h"
 
 #ifdef _WIN32
   #ifndef WIN32_LEAN_AND_MEAN
@@ -18,10 +20,10 @@ Qs_SystemDesc qs_log_system_desc(void);
 Qs_SystemDesc qs_job_system_desc(void);
 Qs_SystemDesc qs_event_system_desc(void);
 Qs_SystemDesc qs_input_system_desc(void);
-Qs_SystemDesc qs_render_system_desc(Ca_Instance *ca_instance);
-Qs_SystemDesc qs_texture_system_desc(Ca_Instance *ca_instance);
-Qs_SystemDesc qs_mesh_system_desc(Ca_Instance *ca_instance);
-Qs_SystemDesc qs_material_system_desc(Ca_Instance *ca_instance);
+Qs_SystemDesc qs_render_system_desc(void);
+Qs_SystemDesc qs_texture_system_desc(void);
+Qs_SystemDesc qs_mesh_system_desc(void);
+Qs_SystemDesc qs_material_system_desc(void);
 Qs_SystemDesc qs_light_system_desc(void);
 Qs_SystemDesc qs_scene_system_desc(void);
 
@@ -31,6 +33,7 @@ struct Qs_Engine {
     uint32_t          version_minor;
     uint32_t          version_patch;
     Qs_SystemManager* systems;
+    Qs_PluginManager* plugins;
     Ca_Instance*      ca_instance;
     Ca_Window*        window;
     Ca_Stylesheet*    stylesheet;
@@ -137,22 +140,30 @@ Qs_Engine* qs_engine_create(const Qs_EngineDesc* desc) {
     Qs_SystemDesc input_desc = qs_input_system_desc();
     if (!qs_system_register(engine->systems, &input_desc)) goto fail;
 
-    /* ---- Rendering systems ---- */
-    Qs_SystemDesc render_desc = qs_render_system_desc(engine->ca_instance);
+    /* ---- Plugin loading ----
+       Plugins may register additional systems (e.g. renderer) here,
+       before Scene is initialised so dependency order is preserved. */
+    engine->plugins = qs_plugin_manager_create(engine, desc->plugin_dir);
+    if (engine->plugins)
+        qs_plugin_manager_scan(engine->plugins);
+
+    /* ---- Renderer systems (backends registered by plugins above) ---- */
+    Qs_SystemDesc render_desc = qs_render_system_desc();
     if (!qs_system_register(engine->systems, &render_desc)) goto fail;
 
-    Qs_SystemDesc tex_desc = qs_texture_system_desc(engine->ca_instance);
-    if (!qs_system_register(engine->systems, &tex_desc)) goto fail;
+    Qs_SystemDesc texture_desc = qs_texture_system_desc();
+    if (!qs_system_register(engine->systems, &texture_desc)) goto fail;
 
-    Qs_SystemDesc mesh_desc = qs_mesh_system_desc(engine->ca_instance);
+    Qs_SystemDesc mesh_desc = qs_mesh_system_desc();
     if (!qs_system_register(engine->systems, &mesh_desc)) goto fail;
 
-    Qs_SystemDesc mat_desc = qs_material_system_desc(engine->ca_instance);
-    if (!qs_system_register(engine->systems, &mat_desc)) goto fail;
+    Qs_SystemDesc material_desc = qs_material_system_desc();
+    if (!qs_system_register(engine->systems, &material_desc)) goto fail;
 
     Qs_SystemDesc light_desc = qs_light_system_desc();
     if (!qs_system_register(engine->systems, &light_desc)) goto fail;
 
+    /* ---- Scene system (depends on renderer being registered first) ---- */
     Qs_SystemDesc scene_desc = qs_scene_system_desc();
     if (!qs_system_register(engine->systems, &scene_desc)) goto fail;
 
@@ -165,6 +176,7 @@ Qs_Engine* qs_engine_create(const Qs_EngineDesc* desc) {
     return engine;
 
 fail:
+    if (engine->plugins) qs_plugin_manager_destroy(engine->plugins);
     if (engine->systems) qs_system_manager_destroy(engine->systems);
     ca_instance_destroy(engine->ca_instance);
     free(engine->app_name);
@@ -175,6 +187,8 @@ fail:
 void qs_engine_destroy(Qs_Engine* engine) {
     if (!engine) return;
     qs_event_fire(qs_engine_event_bus(engine), QS_EVENT_ENGINE_SHUTDOWN, NULL, 0);
+    /* Plugins must clean up render nodes / pipelines before systems tear down. */
+    if (engine->plugins) qs_plugin_manager_destroy(engine->plugins);
     qs_system_manager_destroy(engine->systems);
     if (engine->stylesheet) ca_css_destroy(engine->stylesheet);
     ca_instance_destroy(engine->ca_instance);
@@ -241,6 +255,14 @@ void qs_engine_request_exit(Qs_Engine* engine) {
 
 void qs_engine_wake(void) {
     ca_instance_wake();
+}
+
+Qs_SystemManager* qs_engine_systems(Qs_Engine* engine) {
+    return engine ? engine->systems : NULL;
+}
+
+Qs_PluginManager* qs_engine_plugin_manager(Qs_Engine* engine) {
+    return engine ? engine->plugins : NULL;
 }
 
 const char* qs_version_string(void) {

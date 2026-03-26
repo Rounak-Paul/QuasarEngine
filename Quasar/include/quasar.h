@@ -18,6 +18,8 @@
 #include "qs_primitives.h"
 #include "qs_forward.h"
 #include "qs_input.h"
+#include "qs_dylib.h"
+#include "qs_plugin.h"
 
 typedef struct Qs_Engine Qs_Engine;
 
@@ -29,6 +31,8 @@ typedef struct Qs_EngineDesc {
     int         window_width;    ///< Initial window width  (default: 1280).
     int         window_height;   ///< Initial window height (default: 720).
     float       font_size_px;    ///< UI font size in logical pixels (default: 14).
+    /// Directory to scan for plugins. NULL = auto-detect as <exe_dir>/plugins.
+    const char* plugin_dir;
 } Qs_EngineDesc;
 
 /// Creates a new Quasar Engine instance with a window and all built-in systems.
@@ -70,6 +74,12 @@ void qs_engine_set_event_handler(Qs_Engine* engine, Ca_EventType type,
 
 /// Requests the engine to close its window and exit the main loop.
 void qs_engine_request_exit(Qs_Engine* engine);
+
+/// Returns the engine's system manager (for use by plugins registering systems).
+Qs_SystemManager* qs_engine_systems(Qs_Engine* engine);
+
+/// Returns the engine's plugin manager.
+Qs_PluginManager* qs_engine_plugin_manager(Qs_Engine* engine);
 
 /// Wakes the event loop from another thread.
 void qs_engine_wake(void);

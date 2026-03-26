@@ -1,4 +1,4 @@
-#ifndef QS_TEXTURE_H
+﻿#ifndef QS_TEXTURE_H
 #define QS_TEXTURE_H
 
 #include <vulkan/vulkan.h>
@@ -6,7 +6,8 @@
 #include <stdint.h>
 
 typedef struct Qs_Engine       Qs_Engine;
-typedef struct Qs_Texture      Qs_Texture;
+typedef struct Ca_Instance     Ca_Instance;
+typedef struct Qs_Texture      Qs_Texture;     ///< Opaque â€” defined by the texture backend.
 
 /* ================================================================
    TEXTURE FORMAT
@@ -53,10 +54,43 @@ typedef struct Qs_TextureDesc {
 } Qs_TextureDesc;
 
 /* ================================================================
-   TEXTURE API
+   TEXTURE BACKEND
    ================================================================ */
 
-/// Creates a GPU texture from pixel data. Returns NULL on failure.
+typedef struct Qs_TextureBackend {
+    const char *name;
+
+    /// Set up descriptor pools and default textures.  VkDevice is obtained
+    /// via Ca_Instance (the render system will already be initialised).
+    bool (*init)(Ca_Instance *ca, void **out_ctx);
+
+    /// Destroy all textures and release ctx.
+    void (*shutdown)(void *ctx);
+
+    /// Create a GPU-side texture from the given descriptor.
+    Qs_Texture *(*create)(void *ctx, Qs_Engine *engine, const Qs_TextureDesc *desc);
+
+    /// Destroy an individual texture.
+    void        (*destroy)(void *ctx, Qs_Texture *texture);
+
+    /* Accessors */
+    const char  *(*tex_name)(const Qs_Texture *texture);
+    VkImageView  (*image_view)(const Qs_Texture *texture);
+    VkSampler    (*sampler)(const Qs_Texture *texture);
+    void         (*extents)(const Qs_Texture *texture,
+                            uint32_t *out_w, uint32_t *out_h);
+    uint32_t     (*mip_levels)(const Qs_Texture *texture);
+} Qs_TextureBackend;
+
+/// Registers the texture backend.  Must be called before the Texture
+/// system initialises (i.e. in the pluginâ€™s on_load callback).
+void qs_texture_backend_register(const Qs_TextureBackend *backend);
+
+/* ================================================================
+   PUBLIC TEXTURE API
+   ================================================================ */
+
+/// Creates a GPU texture.  Destroy with qs_texture_destroy.
 Qs_Texture *qs_texture_create(Qs_Engine *engine, const Qs_TextureDesc *desc);
 
 /// Destroys a texture and frees its GPU resources.

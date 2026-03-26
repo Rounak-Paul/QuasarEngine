@@ -7,7 +7,11 @@
 
 typedef struct Qs_Engine        Qs_Engine;
 typedef struct Ca_Viewport      Ca_Viewport;
-typedef struct Qs_Renderer      Qs_Renderer;
+typedef struct Ca_Instance      Ca_Instance;
+typedef struct Qs_Renderer      Qs_Renderer;    ///< Opaque — defined by the renderer backend.
+typedef struct Qs_RenderNode    Qs_RenderNode;  ///< Opaque — defined by the renderer backend.
+typedef struct Qs_Light         Qs_Light;
+typedef struct Qs_LightGPU      Qs_LightGPU;    ///< Full definition in qs_light.h.
 
 /* ================================================================
    CAMERA
@@ -57,8 +61,7 @@ typedef struct Qs_RenderNodeDesc {
     void             *user_data;
 } Qs_RenderNodeDesc;
 
-/// Opaque handle to a render pass node in a renderer's pipeline.
-typedef struct Qs_RenderNode Qs_RenderNode;
+/* Qs_RenderNode is an opaque type defined by the renderer backend. */
 
 /* ================================================================
    RENDERER INSTANCE
@@ -72,21 +75,93 @@ typedef struct Qs_RendererDesc {
     bool              depth_test;   ///< Create a depth attachment (default: true if zero).
 } Qs_RendererDesc;
 
-/// Creates a renderer instance. Must be destroyed with qs_renderer_destroy.
-/// The renderer is automatically tracked by the render system.
+/* ================================================================
+   RENDERER BACKEND — implement to provide a rendering backend
+   ================================================================ */
+
+/// Vtable that a renderer plugin fills in and registers with the engine.
+/// Every function pointer must be non-NULL.
+typedef struct Qs_RendererBackend {
+    const char *name;
+
+    /* --- System lifecycle ----------------------------------------- */
+
+    /// One-time GPU resource setup (device, physical device, command pools).
+    /// Called when the Render system initialises.
+    bool (*init)(Qs_Engine *engine, Ca_Instance *ca, void **out_ctx);
+
+    /// Tear down all GPU resources and release ctx.
+    void (*shutdown)(void *ctx);
+
+    /// Per-frame update (propagate delta time, etc.).
+    void (*update)(void *ctx, float dt);
+
+    /* --- Renderer instances --------------------------------------- */
+
+    /// Allocate and initialise a renderer.  Returned pointer is
+    /// backend-owned memory returned as an opaque Qs_Renderer *.
+    Qs_Renderer   *(*renderer_create)(void *ctx, Qs_Engine *engine,
+                                       const Qs_RendererDesc *desc);
+
+    /// Destroy a renderer and free all its GPU resources.
+    void           (*renderer_destroy)(void *ctx, Qs_Renderer *renderer);
+
+    /// Register viewport callbacks so the renderer redraws every frame.
+    void           (*renderer_bind)(void *ctx, Qs_Renderer *renderer,
+                                    Ca_Viewport *viewport);
+
+    /* --- Renderer accessors --------------------------------------- */
+
+    Qs_Camera     *(*renderer_camera)(Qs_Renderer *renderer);
+    void           (*renderer_set_clear_color)(Qs_Renderer *renderer,
+                                               VkClearColorValue color);
+    Qs_RenderNode *(*renderer_add_node)(Qs_Renderer *renderer,
+                                        const Qs_RenderNodeDesc *desc);
+    void           (*renderer_remove_node)(Qs_Renderer *renderer,
+                                           Qs_RenderNode *node);
+    const char    *(*renderer_name)(const Qs_Renderer *renderer);
+    VkDevice       (*renderer_device)(const Qs_Renderer *renderer);
+    void           (*renderer_extents)(const Qs_Renderer *renderer,
+                                       uint32_t *out_w, uint32_t *out_h);
+
+    /* --- Per-frame light submission ------------------------------ */
+
+    void             (*submit_light)(Qs_Renderer *renderer, Qs_Light *light);
+    void             (*clear_lights)(Qs_Renderer *renderer);
+    const Qs_LightGPU *(*get_lights)(const Qs_Renderer *renderer,
+                                      uint32_t *out_count);
+
+    /* --- Forward pipeline ---------------------------------------- */
+
+    /// Attach the forward PBR render node to an existing renderer.
+    bool (*forward_init)(Qs_Engine *engine, Qs_Renderer *renderer, void *ctx);
+
+    /// Detach and destroy the forward render node.
+    void (*forward_shutdown)(void *ctx);
+} Qs_RendererBackend;
+
+/// Registers the renderer backend.  Must be called before the Render
+/// system initialises (i.e. in the plugin's on_load callback).
+void qs_renderer_backend_register(const Qs_RendererBackend *backend);
+
+/* ================================================================
+   PUBLIC RENDERER API
+   All functions dispatch through the registered backend.
+   ================================================================ */
+
+/// Creates a renderer instance. Destroy with qs_renderer_destroy.
 Qs_Renderer *qs_renderer_create(Qs_Engine *engine, const Qs_RendererDesc *desc);
 
 /// Destroys a renderer and all GPU resources it owns.
 void qs_renderer_destroy(Qs_Renderer *renderer);
 
-/// Binds this renderer to a viewport. The viewport will invoke the renderer
-/// each frame. Replaces any previous binding.
+/// Binds this renderer to a Ca_Viewport — it will render every frame.
 void qs_renderer_bind(Qs_Renderer *renderer, Ca_Viewport *viewport);
 
-/// Returns a mutable pointer to the renderer's camera for direct manipulation.
+/// Returns a mutable pointer to the renderer's camera.
 Qs_Camera *qs_renderer_camera(Qs_Renderer *renderer);
 
-/// Updates the clear color.
+/// Updates the clear colour.
 void qs_renderer_set_clear_color(Qs_Renderer *renderer, VkClearColorValue color);
 
 /// Adds a render pass node to the pipeline. Returns the node handle.
@@ -104,6 +179,19 @@ VkDevice qs_renderer_device(const Qs_Renderer *renderer);
 
 /// Returns the current framebuffer dimensions (0 if unbound).
 void qs_renderer_extents(const Qs_Renderer *renderer,
-                         uint32_t *out_width, uint32_t *out_height);
+                          uint32_t *out_width, uint32_t *out_height);
+
+/* --- Per-frame light submission (on the renderer) --------------- */
+
+/// Submits a light to a renderer for the current frame.  Must be called
+/// each frame — lights are not persistent.
+void qs_renderer_submit_light(Qs_Renderer *renderer, Qs_Light *light);
+
+/// Clears all submitted lights from a renderer (called automatically each frame).
+void qs_renderer_clear_lights(Qs_Renderer *renderer);
+
+/// Returns the array of GPU-packed lights submitted this frame.
+const Qs_LightGPU *qs_renderer_lights(const Qs_Renderer *renderer,
+                                        uint32_t *out_count);
 
 #endif

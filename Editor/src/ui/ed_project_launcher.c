@@ -228,14 +228,14 @@ static const char *g_launcher_css =
     /* Title — Mauve (primary accent) */
     ".launcher-title {"
     "  color: #cba6f7;"
-    "  font-size: 18px;"
+    "  font-size: 20px;"
     "  text-align: left;"
     "}"
 
     /* Version — Surface1 (very dim) */
     ".launcher-version {"
     "  color: #45475a;"
-    "  font-size: 13px;"
+    "  font-size: 15px;"
     "  text-align: left;"
     "}"
 
@@ -245,7 +245,7 @@ static const char *g_launcher_css =
     "  height: 38px;"
     "  background: transparent;"
     "  color: #7f849c;"
-    "  font-size: 14px;"
+    "  font-size: 16px;"
     "  text-align: left;"
     "  padding-left: 18px;"
     "  corner-radius: 0px;"
@@ -286,7 +286,7 @@ static const char *g_launcher_css =
     /* Page title — Text */
     ".launcher-page-title {"
     "  color: #cdd6f4;"
-    "  font-size: 16px;"
+    "  font-size: 18px;"
     "  flex-grow: 1;"
     "  text-align: left;"
     "}"
@@ -307,7 +307,7 @@ static const char *g_launcher_css =
     "  height: 56px;"
     "  background: #181825;"
     "  color: #cdd6f4;"
-    "  font-size: 14px;"
+    "  font-size: 16px;"
     "  text-align: left;"
     "  padding-left: 16px;"
     "  corner-radius: 6px;"
@@ -318,21 +318,21 @@ static const char *g_launcher_css =
     /* Project name — Text */
     ".launcher-entry-name {"
     "  color: #cdd6f4;"
-    "  font-size: 14px;"
+    "  font-size: 16px;"
     "  text-align: left;"
     "}"
 
     /* Project path — Overlay0 (dim) */
     ".launcher-entry-path {"
     "  color: #6c7086;"
-    "  font-size: 12px;"
+    "  font-size: 14px;"
     "  text-align: left;"
     "}"
 
     /* Empty state — Surface1 */
     ".launcher-empty {"
     "  color: #45475a;"
-    "  font-size: 14px;"
+    "  font-size: 16px;"
     "  padding: 24px;"
     "}"
 
@@ -354,7 +354,7 @@ static const char *g_launcher_css =
     /* Form label — Subtext0 */
     ".launcher-form-label {"
     "  color: #a6adc8;"
-    "  font-size: 13px;"
+    "  font-size: 15px;"
     "  width: 70px;"
     "  text-align: right;"
     "}"
@@ -365,7 +365,7 @@ static const char *g_launcher_css =
     "  height: 34px;"
     "  background: #11111b;"
     "  color: #cdd6f4;"
-    "  font-size: 14px;"
+    "  font-size: 16px;"
     "  padding-left: 10px;"
     "  corner-radius: 6px;"
     "  border-width: 1px;"
@@ -376,7 +376,7 @@ static const char *g_launcher_css =
     ".launcher-path-display {"
     "  flex-grow: 1;"
     "  color: #7f849c;"
-    "  font-size: 13px;"
+    "  font-size: 15px;"
     "  text-align: left;"
     "}"
 
@@ -386,7 +386,7 @@ static const char *g_launcher_css =
     "  height: 34px;"
     "  background: #313244;"
     "  color: #cdd6f4;"
-    "  font-size: 13px;"
+    "  font-size: 15px;"
     "  corner-radius: 6px;"
     "}"
 
@@ -395,7 +395,7 @@ static const char *g_launcher_css =
     "  height: 34px;"
     "  background: #313244;"
     "  color: #cdd6f4;"
-    "  font-size: 13px;"
+    "  font-size: 15px;"
     "  corner-radius: 6px;"
     "}"
 
@@ -433,7 +433,7 @@ static const char *g_launcher_css =
 
     ".fb-title {"
     "  color: #cba6f7;"
-    "  font-size: 15px;"
+    "  font-size: 16px;"
     "  flex-grow: 1;"
     "}"
 
@@ -446,7 +446,7 @@ static const char *g_launcher_css =
     "  height: 28px;"
     "  background: transparent;"
     "  color: #6c7086;"
-    "  font-size: 14px;"
+    "  font-size: 16px;"
     "  corner-radius: 4px;"
     "}"
 
@@ -467,7 +467,7 @@ static const char *g_launcher_css =
     "  height: 26px;"
     "  background: #313244;"
     "  color: #cdd6f4;"
-    "  font-size: 14px;"
+    "  font-size: 16px;"
     "  corner-radius: 4px;"
     "}"
 
@@ -476,7 +476,7 @@ static const char *g_launcher_css =
     "  height: 28px;"
     "  background: #11111b;"
     "  color: #cdd6f4;"
-    "  font-size: 13px;"
+    "  font-size: 15px;"
     "  padding-left: 8px;"
     "  corner-radius: 4px;"
     "  border-width: 1px;"
@@ -496,14 +496,14 @@ static const char *g_launcher_css =
 
     ".fb-col-name {"
     "  color: #6c7086;"
-    "  font-size: 12px;"
+    "  font-size: 14px;"
     "  flex-grow: 1;"
     "  text-align: left;"
     "}"
 
     ".fb-col-size {"
     "  color: #6c7086;"
-    "  font-size: 12px;"
+    "  font-size: 14px;"
     "  width: 80px;"
     "  text-align: right;"
     "}"
@@ -522,7 +522,7 @@ static const char *g_launcher_css =
     "  height: 28px;"
     "  background: transparent;"
     "  color: #cdd6f4;"
-    "  font-size: 13px;"
+    "  font-size: 15px;"
     "  text-align: left;"
     "  padding-left: 8px;"
     "  corner-radius: 4px;"
@@ -538,7 +538,7 @@ static const char *g_launcher_css =
 
     ".fb-empty {"
     "  color: #6c7086;"
-    "  font-size: 13px;"
+    "  font-size: 15px;"
     "  padding: 14px;"
     "}"
 
@@ -560,14 +560,14 @@ static const char *g_launcher_css =
 
     ".fb-label {"
     "  color: #a6adc8;"
-    "  font-size: 13px;"
+    "  font-size: 15px;"
     "  width: 50px;"
     "  text-align: right;"
     "}"
 
     ".fb-selected-name {"
     "  color: #cdd6f4;"
-    "  font-size: 13px;"
+    "  font-size: 15px;"
     "  flex-grow: 1;"
     "  text-align: left;"
     "}"
@@ -581,7 +581,7 @@ static const char *g_launcher_css =
     "  height: 28px;"
     "  background: #313244;"
     "  color: #cdd6f4;"
-    "  font-size: 13px;"
+    "  font-size: 15px;"
     "  corner-radius: 4px;"
     "}"
 

@@ -41,3 +41,6 @@ add_subdirectory(Quasar)
 # Applications
 add_subdirectory(Editor)
 add_subdirectory(Runtime)
+
+# Plugins
+add_subdirectory(plugins/BuiltinRendererPBR)
