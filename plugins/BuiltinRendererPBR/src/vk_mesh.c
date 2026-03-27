@@ -2,6 +2,7 @@
 #include "qs_log.h"
 #include "vk_common.h"
 
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
