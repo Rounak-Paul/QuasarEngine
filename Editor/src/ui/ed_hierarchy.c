@@ -1,5 +1,6 @@
 #include "ed_hierarchy.h"
 #include "editor.h"
+#include "ca_theme.h"
 
 #include <string.h>
 #include <stdio.h>
@@ -50,11 +51,11 @@ void ed_hierarchy(void *editor)
     {
         /* Scene root node — always expanded */
         ca_tree_node_begin(&(Ca_TreeNodeDesc){
-            .text     = qs_scene_name(scene),
-            .expanded = true,
-            .style    = "hierarchy-scene",
-            .icon     = ICON_SCENE,
-            .icon_color = ca_color(0.45f, 0.55f, 0.75f, 1.0f),
+            .text       = qs_scene_name(scene),
+            .expanded   = true,
+            .style      = "hierarchy-scene",
+            .icon       = ICON_SCENE,
+            .icon_color = CA_THEME_ACCENT,
         });
         {
             Qs_Entity selected = editor_selected_entity(ed);
@@ -74,13 +75,13 @@ void ed_hierarchy(void *editor)
                 uint32_t dot_color;
                 const char *dot_icon;
                 if (has_light) {
-                    dot_color = ca_color(0.95f, 0.85f, 0.35f, 1.0f);
+                    dot_color = CA_THEME_WARNING;
                     dot_icon  = ICON_LIGHT;
                 } else if (has_mesh) {
-                    dot_color = ca_color(0.45f, 0.75f, 0.55f, 1.0f);
+                    dot_color = CA_THEME_SUCCESS;
                     dot_icon  = ICON_MESH;
                 } else {
-                    dot_color = ca_color(0.55f, 0.55f, 0.60f, 1.0f);
+                    dot_color = CA_THEME_TEXT_MUTED;
                     dot_icon  = ICON_ENTITY;
                 }
 

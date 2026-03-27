@@ -199,68 +199,67 @@ static void get_default_projects_dir(char *buf, size_t size)
 
 static const char *g_launcher_css =
 
-    /* Root — Catppuccin Base */
+    /* Root */
     ".launcher-root {"
-    "  background: #1e1e2e;"
+    "  background: #111114;"
     "  gap: 0px;"
     "  overflow: hidden;"
     "}"
 
-    /* ---- Left sidebar — Mantle with Crust header ---- */
+    /* ---- Left sidebar ---- */
 
     ".launcher-sidebar {"
-    "  width: 220px;"
-    "  background: #181825;"
+    "  width: 200px;"
+    "  background: #16161a;"
     "  padding-top: 0px;"
     "  gap: 0px;"
     "  overflow: hidden;"
-    "  border-width: 1px;"
-    "  border-color: #313244;"
     "}"
 
     ".launcher-sidebar-header {"
     "  width: 100%;"
-    "  padding: 24px 18px 20px 18px;"
+    "  padding: 24px 18px 18px 18px;"
     "  gap: 4px;"
-    "  background: #11111b;"
+    "  background: #0d0d0f;"
     "}"
 
-    /* Title — Mauve (primary accent) */
+    /* Title */
     ".launcher-title {"
-    "  color: #cba6f7;"
-    "  font-size: 20px;"
+    "  color: #6e8aff;"
+    "  font-size: 12px;"
+    "  font-weight: bold;"
     "  text-align: left;"
     "}"
 
-    /* Version — Surface1 (very dim) */
+    /* Version */
     ".launcher-version {"
-    "  color: #45475a;"
-    "  font-size: 15px;"
+    "  color: #4a4e6a;"
+    "  font-size: 12px;"
     "  text-align: left;"
     "}"
 
-    /* Tab buttons — Overlay1 inactive, Mauve + Surface0 active */
+    /* Tab buttons */
     ".launcher-tab {"
     "  width: 100%;"
-    "  height: 38px;"
+    "  height: 34px;"
     "  background: transparent;"
-    "  color: #7f849c;"
-    "  font-size: 16px;"
+    "  color: #4a4e6a;"
+    "  font-size: 12px;"
     "  text-align: left;"
     "  padding-left: 18px;"
     "  corner-radius: 0px;"
     "}"
 
     ".launcher-tab-active {"
-    "  background: #313244;"
-    "  color: #cba6f7;"
+    "  background: #242430;"
+    "  color: #6e8aff;"
     "}"
 
     /* ---- Right content area ---- */
 
     ".launcher-content {"
     "  flex-grow: 1;"
-    "  background: #1e1e2e;"
+    "  background: #111114;"
     "  overflow: hidden;"
     "}"
 
@@ -271,22 +270,21 @@ static const char *g_launcher_css =
 
     /* ---- Projects page ---- */
 
-    /* Page header — Mantle */
+    /* Page header */
     ".launcher-page-header {"
     "  width: 100%;"
-    "  height: 52px;"
-    "  padding: 0px 20px;"
+    "  height: 44px;"
+    "  padding: 0px 16px;"
     "  align-items: center;"
     "  gap: 10px;"
-    "  background: #181825;"
-    "  border-width: 1px;"
-    "  border-color: #313244;"
+    "  background: #16161a;"
     "}"
 
-    /* Page title — Text */
+    /* Page title */
     ".launcher-page-title {"
-    "  color: #cdd6f4;"
-    "  font-size: 18px;"
+    "  color: #c8d0ff;"
+    "  font-size: 12px;"
+    "  font-weight: bold;"
     "  flex-grow: 1;"
     "  text-align: left;"
     "}"
@@ -296,44 +294,42 @@ static const char *g_launcher_css =
     "  flex-grow: 1;"
     "  width: 100%;"
     "  overflow-y: scroll;"
-    "  padding: 10px 16px;"
-    "  gap: 6px;"
+    "  padding: 8px 12px;"
+    "  gap: 4px;"
     "  align-items: flex-start;"
     "}"
 
-    /* Project entry card — Mantle with Surface0 border */
+    /* Project entry card */
     ".launcher-entry {"
     "  width: 100%;"
-    "  height: 56px;"
-    "  background: #181825;"
-    "  color: #cdd6f4;"
-    "  font-size: 16px;"
+    "  height: 48px;"
+    "  background: #16161a;"
+    "  color: #c8d0ff;"
+    "  font-size: 12px;"
     "  text-align: left;"
-    "  padding-left: 16px;"
-    "  corner-radius: 6px;"
-    "  border-width: 1px;"
-    "  border-color: #313244;"
+    "  padding-left: 14px;"
+    "  corner-radius: 4px;"
     "}"
 
-    /* Project name — Text */
+    /* Project name */
     ".launcher-entry-name {"
-    "  color: #cdd6f4;"
-    "  font-size: 16px;"
+    "  color: #c8d0ff;"
+    "  font-size: 12px;"
     "  text-align: left;"
     "}"
 
-    /* Project path — Overlay0 (dim) */
+    /* Project path */
     ".launcher-entry-path {"
-    "  color: #6c7086;"
-    "  font-size: 14px;"
+    "  color: #4a4e6a;"
+    "  font-size: 12px;"
     "  text-align: left;"
     "}"
 
-    /* Empty state — Surface1 */
+    /* Empty state */
     ".launcher-empty {"
-    "  color: #45475a;"
-    "  font-size: 16px;"
-    "  padding: 24px;"
+    "  color: #4a4e6a;"
+    "  font-size: 12px;"
+    "  padding: 20px;"
     "}"
 
     /* ---- New Project form ---- */
@@ -346,74 +342,72 @@ static const char *g_launcher_css =
 
     ".launcher-form-row {"
     "  width: 100%;"
-    "  height: 34px;"
+    "  height: 30px;"
     "  align-items: center;"
     "  gap: 10px;"
     "}"
 
-    /* Form label — Subtext0 */
+    /* Form label */
     ".launcher-form-label {"
-    "  color: #a6adc8;"
-    "  font-size: 15px;"
-    "  width: 70px;"
+    "  color: #8890b0;"
+    "  font-size: 12px;"
+    "  width: 60px;"
     "  text-align: right;"
     "}"
 
-    /* Text input — Crust background with Text color */
+    /* Text input */
     ".launcher-input {"
     "  flex-grow: 1;"
-    "  height: 34px;"
-    "  background: #11111b;"
-    "  color: #cdd6f4;"
-    "  font-size: 16px;"
+    "  height: 28px;"
+    "  background: #0d0d0f;"
+    "  color: #c8d0ff;"
+    "  font-size: 12px;"
     "  padding-left: 10px;"
-    "  corner-radius: 6px;"
-    "  border-width: 1px;"
-    "  border-color: #313244;"
+    "  corner-radius: 4px;"
     "}"
 
-    /* Path display — Overlay1 */
+    /* Path display */
     ".launcher-path-display {"
     "  flex-grow: 1;"
-    "  color: #7f849c;"
-    "  font-size: 15px;"
+    "  color: #4a4e6a;"
+    "  font-size: 12px;"
     "  text-align: left;"
     "}"
 
-    /* Standard button — Surface0 */
+    /* Standard button */
     ".launcher-btn {"
-    "  width: 110px;"
-    "  height: 34px;"
-    "  background: #313244;"
-    "  color: #cdd6f4;"
-    "  font-size: 15px;"
-    "  corner-radius: 6px;"
+    "  width: 90px;"
+    "  height: 28px;"
+    "  background: #1c1c22;"
+    "  color: #8890b0;"
+    "  font-size: 12px;"
+    "  corner-radius: 4px;"
     "}"
 
     ".launcher-btn-sm {"
-    "  width: 80px;"
-    "  height: 34px;"
-    "  background: #313244;"
-    "  color: #cdd6f4;"
-    "  font-size: 15px;"
-    "  corner-radius: 6px;"
+    "  width: 70px;"
+    "  height: 28px;"
+    "  background: #1c1c22;"
+    "  color: #8890b0;"
+    "  font-size: 12px;"
+    "  corner-radius: 4px;"
     "}"
 
-    /* Primary button — Mauve (Base text for contrast) */
+    /* Primary button */
     ".launcher-btn-primary {"
-    "  background: #cba6f7;"
-    "  color: #1e1e2e;"
+    "  background: #6e8aff;"
+    "  color: #0d0d0f;"
     "}"
 
     ".launcher-form-actions {"
     "  width: 100%;"
-    "  height: 36px;"
+    "  height: 34px;"
     "  align-items: center;"
-    "  padding-top: 8px;"
+    "  padding-top: 6px;"
     "  gap: 8px;"
     "}"
 
-    /* ---- File browser styles (Catppuccin — shared with editor) ---- */
+    /* ---- File browser styles (Quasar Dark) ---- */
 
     ".fb-root {"
     "  width: 100%;"
@@ -421,19 +415,18 @@ static const char *g_launcher_css =
     "}"
 
     ".fb-title-bar {"
-    "  background: #181825;"
-    "  height: 38px;"
+    "  background: #1c1c22;"
+    "  height: 36px;"
     "  width: 100%;"
     "  padding-left: 14px;"
     "  padding-right: 6px;"
     "  align-items: center;"
-    "  border-width: 1px;"
-    "  border-color: #313244;"
     "}"
 
     ".fb-title {"
-    "  color: #cba6f7;"
-    "  font-size: 16px;"
+    "  color: #c8d0ff;"
+    "  font-size: 12px;"
+    "  font-weight: bold;"
     "  flex-grow: 1;"
     "}"
 
@@ -442,68 +435,62 @@ static const char *g_launcher_css =
     "}"
 
     ".fb-close-btn {"
-    "  width: 28px;"
-    "  height: 28px;"
+    "  width: 26px;"
+    "  height: 26px;"
     "  background: transparent;"
-    "  color: #6c7086;"
-    "  font-size: 16px;"
+    "  color: #4a4e6a;"
+    "  font-size: 12px;"
     "  corner-radius: 4px;"
     "}"
 
     ".fb-nav-bar {"
-    "  background: #1e1e2e;"
-    "  height: 42px;"
+    "  background: #111114;"
+    "  height: 38px;"
     "  width: 100%;"
     "  padding-left: 8px;"
     "  padding-right: 8px;"
     "  align-items: center;"
     "  gap: 4px;"
-    "  border-width: 1px;"
-    "  border-color: #313244;"
     "}"
 
     ".fb-nav-btn {"
-    "  width: 30px;"
-    "  height: 26px;"
-    "  background: #313244;"
-    "  color: #cdd6f4;"
-    "  font-size: 16px;"
+    "  width: 28px;"
+    "  height: 24px;"
+    "  background: #1c1c22;"
+    "  color: #8890b0;"
+    "  font-size: 12px;"
     "  corner-radius: 4px;"
     "}"
 
     ".fb-path-input {"
     "  flex-grow: 1;"
-    "  height: 28px;"
-    "  background: #11111b;"
-    "  color: #cdd6f4;"
-    "  font-size: 15px;"
+    "  height: 26px;"
+    "  background: #0d0d0f;"
+    "  color: #c8d0ff;"
+    "  font-size: 12px;"
     "  padding-left: 8px;"
     "  corner-radius: 4px;"
-    "  border-width: 1px;"
-    "  border-color: #313244;"
     "}"
 
     ".fb-col-header {"
     "  width: 100%;"
-    "  height: 24px;"
+    "  height: 22px;"
     "  padding-left: 14px;"
     "  padding-right: 14px;"
     "  align-items: center;"
-    "  background: #181825;"
-    "  border-width: 1px;"
-    "  border-color: #313244;"
+    "  background: #1c1c22;"
     "}"
 
     ".fb-col-name {"
-    "  color: #6c7086;"
-    "  font-size: 14px;"
+    "  color: #4a4e6a;"
+    "  font-size: 12px;"
     "  flex-grow: 1;"
     "  text-align: left;"
     "}"
 
     ".fb-col-size {"
-    "  color: #6c7086;"
-    "  font-size: 14px;"
+    "  color: #4a4e6a;"
+    "  font-size: 12px;"
     "  width: 80px;"
     "  text-align: right;"
     "}"
@@ -514,60 +501,58 @@ static const char *g_launcher_css =
     "  padding: 4px;"
     "  gap: 2px;"
     "  align-items: flex-start;"
-    "  background: #1e1e2e;"
+    "  background: #111114;"
     "}"
 
     ".fb-entry {"
     "  width: 100%;"
-    "  height: 28px;"
+    "  height: 26px;"
     "  background: transparent;"
-    "  color: #cdd6f4;"
-    "  font-size: 15px;"
+    "  color: #8890b0;"
+    "  font-size: 12px;"
     "  text-align: left;"
     "  padding-left: 8px;"
-    "  corner-radius: 4px;"
+    "  corner-radius: 3px;"
     "}"
 
     ".fb-entry-selected {"
-    "  background: #313244;"
+    "  background: #242430;"
     "}"
 
     ".fb-entry-dir {"
-    "  color: #89b4fa;"
+    "  color: #6e8aff;"
     "}"
 
     ".fb-empty {"
-    "  color: #6c7086;"
-    "  font-size: 15px;"
+    "  color: #4a4e6a;"
+    "  font-size: 12px;"
     "  padding: 14px;"
     "}"
 
     ".fb-bottom {"
-    "  background: #181825;"
+    "  background: #1c1c22;"
     "  width: 100%;"
-    "  padding: 8px 10px;"
+    "  padding: 6px 10px;"
     "  gap: 6px;"
-    "  border-width: 1px;"
-    "  border-color: #313244;"
     "}"
 
     ".fb-bottom-row {"
     "  width: 100%;"
-    "  height: 28px;"
+    "  height: 26px;"
     "  align-items: center;"
     "  gap: 8px;"
     "}"
 
     ".fb-label {"
-    "  color: #a6adc8;"
-    "  font-size: 15px;"
+    "  color: #4a4e6a;"
+    "  font-size: 12px;"
     "  width: 50px;"
     "  text-align: right;"
     "}"
 
     ".fb-selected-name {"
-    "  color: #cdd6f4;"
-    "  font-size: 15px;"
+    "  color: #c8d0ff;"
+    "  font-size: 12px;"
     "  flex-grow: 1;"
     "  text-align: left;"
     "}"
@@ -577,17 +562,17 @@ static const char *g_launcher_css =
     "}"
 
     ".fb-btn {"
-    "  width: 90px;"
-    "  height: 28px;"
-    "  background: #313244;"
-    "  color: #cdd6f4;"
-    "  font-size: 15px;"
+    "  width: 80px;"
+    "  height: 26px;"
+    "  background: #242430;"
+    "  color: #8890b0;"
+    "  font-size: 12px;"
     "  corner-radius: 4px;"
     "}"
 
     ".fb-btn-primary {"
-    "  background: #cba6f7;"
-    "  color: #1e1e2e;"
+    "  background: #6e8aff;"
+    "  color: #0d0d0f;"
     "}"
 ;
 
@@ -1025,7 +1010,7 @@ bool ed_project_launcher_run(char *out_path, size_t out_path_size)
     /* Create Causality instance for the launcher */
     s_launcher.instance = ca_instance_create(&(Ca_InstanceDesc){
         .app_name     = "Quasar Engine",
-        .font_size_px = 14.0f,
+        .font_size_px = 0.0f,
     });
     if (!s_launcher.instance) return false;
 

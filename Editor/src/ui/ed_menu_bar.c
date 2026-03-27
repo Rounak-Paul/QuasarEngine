@@ -47,15 +47,10 @@ void ed_menu_bar(Ca_Window *window, void *editor)
         { .label = "File", .items = file_items, .item_count = 3 },
     };
 
+    /* Colors use 0 to fall through to ca_theme.h defaults in widget.c */
     ca_menu_bar(&(Ca_MenuBarDesc){
-        .menus            = menus,
-        .menu_count       = 1,
-        .style            = "menu-bar",
-        .header_highlight = ca_color(0.10f, 0.10f, 0.10f, 1.0f),
-        .dropdown_bg      = ca_color(0.05f, 0.05f, 0.05f, 0.98f),
-        .dropdown_border  = ca_color(0.12f, 0.12f, 0.12f, 1.0f),
-        .dropdown_hover   = ca_color(0.12f, 0.12f, 0.12f, 1.0f),
-        .dropdown_text    = ca_color(0.85f, 0.85f, 0.85f, 1.0f),
-        .text_color       = ca_color(0.80f, 0.80f, 0.80f, 1.0f),
+        .menus      = menus,
+        .menu_count = 1,
+        .style      = "menu-bar",
     });
 }

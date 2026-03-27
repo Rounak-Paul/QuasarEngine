@@ -20,62 +20,84 @@ struct Editor {
     Qs_Entity      selected_entity;
 };
 
-/* ---- Editor CSS theme (Catppuccin Mocha) ---- */
+/* ---- Editor CSS theme (Quasar Dark) ---- */
+/*
+ * Color palette — professional dark game engine aesthetic
+ *
+ * Background hierarchy (darkest → lightest):
+ *   #0d0d0f  void        (deepest inset, inputs, viewport bg)
+ *   #111114  base        (primary panel background)
+ *   #16161a  elevated    (panel chrome, toolbars)
+ *   #1c1c22  surface     (tab bars, headers, section dividers)
+ *   #242430  overlay     (hover states, selected items)
+ *   #2e2e3e  border      (dividers, input borders)
+ *
+ * Accent colors:
+ *   #6e8aff  primary     (active tabs, primary buttons — blue-violet)
+ *   #c8d0ff  text-bright (labels, interactive text)
+ *   #8890b0  text-muted  (secondary labels, hints)
+ *   #4a4e6a  text-dim    (disabled, placeholder)
+ *   #ff6b6b  danger      (errors, destructive)
+ *   #6bffb8  success     (play, confirm)
+ *   #ffd166  warning     (warnings)
+ *   #ff8c42  orange      (scene objects, mesh icons)
+ *
+ * Axis colors (XYZ):
+ *   #ff5370  x-axis      (red)
+ *   #80ff80  y-axis      (green)
+ *   #5b9cff  z-axis      (blue)
+ *   #bf80ff  w-axis      (purple)
+ */
 
 static const char *g_editor_css =
 
-    /* Root — Catppuccin Base */
+    /* Root */
     ".editor-root {"
-    "  background: #1e1e2e;"
+    "  background: #111114;"
     "  gap: 0px;"
     "  overflow: hidden;"
     "}"
 
-    /* Menu bar — Mantle */
+    /* ---- Menu bar ---- */
     ".menu-bar {"
-    "  background: #181825;"
+    "  background: #16161a;"
     "  width: 100%;"
     "  height: 24px;"
-    "  border-width: 1px;"
-    "  border-color: #313244;"
     "}"
 
-    /* Menu bar items — Text color */
     ".menu-bar-item {"
     "  padding-left: 10px;"
     "  padding-right: 10px;"
     "  align-items: center;"
-    "  color: #cdd6f4;"
-    "  font-size: 15px;"
+    "  color: #8890b0;"
+    "  font-size: 12px;"
     "}"
 
-    /* Toolbar — Mantle */
+    /* ---- Toolbar ---- */
     ".toolbar {"
-    "  background: #181825;"
+    "  background: #16161a;"
     "  width: 100%;"
     "  height: 28px;"
     "  align-items: center;"
     "  padding-left: 6px;"
     "  padding-right: 6px;"
-    "  border-width: 1px;"
-    "  border-color: #313244;"
     "}"
 
-    /* Panels — Base */
+    /* ---- Panels ---- */
     ".panel {"
-    "  background: #1e1e2e;"
+    "  background: #111114;"
     "  overflow: hidden;"
     "}"
 
     ".panel-viewport {"
-    "  background: #11111b;"
+    "  background: #0d0d0f;"
     "}"
 
     ".panel-bottom {"
-    "  background: #1e1e2e;"
+    "  background: #111114;"
     "}"
 
-    /* Console — scrollable log area */
+    /* ---- Console ---- */
     ".console-scroll {"
     "  overflow-y: scroll;"
     "  padding: 4px;"
@@ -84,72 +106,69 @@ static const char *g_editor_css =
     "}"
 
     ".console-line {"
-    "  font-size: 15px;"
-    "  height: 17px;"
+    "  font-size: 12px;"
+    "  height: 16px;"
     "  width: 100%;"
     "  text-align: left;"
+    "  color: #8890b0;"
     "}"
 
-    /* Panel tab bars — Mantle */
+    /* ---- Panel tab bars ---- */
     ".panel-tab-bar {"
-    "  background: #181825;"
+    "  background: #1c1c22;"
     "  height: 26px;"
     "  width: 100%;"
     "  align-items: center;"
     "  padding-left: 6px;"
     "  gap: 2px;"
-    "  border-width: 1px;"
-    "  border-color: #313244;"
     "}"
 
-    /* Panel tabs — Overlay0 dim, active = Mauve */
     ".panel-tab {"
-    "  color: #6c7086;"
-    "  font-size: 15px;"
+    "  color: #4a4e6a;"
+    "  font-size: 12px;"
+    "  height: 20px;"
     "  padding-left: 10px;"
     "  padding-right: 10px;"
     "}"
 
     ".active {"
-    "  color: #cba6f7;"
+    "  color: #6e8aff;"
     "}"
 
-    /* Status bar — Crust (deepest chrome) */
+    /* ---- Status bar ---- */
     ".status-bar {"
-    "  background: #11111b;"
+    "  background: #0d0d0f;"
     "  width: 100%;"
-    "  height: 22px;"
+    "  height: 20px;"
     "  align-items: center;"
     "  padding-left: 10px;"
     "}"
 
     ".status-text {"
-    "  color: #6c7086;"
-    "  font-size: 14px;"
+    "  color: #4a4e6a;"
+    "  font-size: 12px;"
     "}"
 
-    /* ---- File browser (Catppuccin Mocha) ---- */
+    /* ---- File browser ---- */
 
     ".fb-root {"
     "  width: 100%;"
     "  height: 100%;"
     "}"
 
-    /* Title bar — Mantle with Mauve accent title */
     ".fb-title-bar {"
-    "  background: #181825;"
-    "  height: 38px;"
+    "  background: #1c1c22;"
+    "  height: 36px;"
     "  width: 100%;"
     "  padding-left: 14px;"
     "  padding-right: 6px;"
     "  align-items: center;"
-    "  border-width: 1px;"
-    "  border-color: #313244;"
     "}"
 
     ".fb-title {"
-    "  color: #cba6f7;"
-    "  font-size: 16px;"
+    "  color: #c8d0ff;"
+    "  font-size: 12px;"
+    "  font-weight: bold;"
     "  flex-grow: 1;"
     "}"
 
@@ -158,139 +177,124 @@ static const char *g_editor_css =
     "}"
 
     ".fb-close-btn {"
-    "  width: 28px;"
-    "  height: 28px;"
+    "  width: 26px;"
+    "  height: 26px;"
     "  background: transparent;"
-    "  color: #6c7086;"
-    "  font-size: 16px;"
+    "  color: #4a4e6a;"
+    "  font-size: 12px;"
     "  corner-radius: 4px;"
     "}"
 
-    /* Nav bar — Base */
     ".fb-nav-bar {"
-    "  background: #1e1e2e;"
-    "  height: 42px;"
+    "  background: #111114;"
+    "  height: 38px;"
     "  width: 100%;"
     "  padding-left: 8px;"
     "  padding-right: 8px;"
     "  align-items: center;"
     "  gap: 4px;"
-    "  border-width: 1px;"
-    "  border-color: #313244;"
     "}"
 
-    /* Nav buttons — Surface0 with Text color */
     ".fb-nav-btn {"
-    "  width: 30px;"
-    "  height: 26px;"
-    "  background: #313244;"
-    "  color: #cdd6f4;"
-    "  font-size: 16px;"
+    "  width: 28px;"
+    "  height: 24px;"
+    "  background: #1c1c22;"
+    "  color: #8890b0;"
+    "  font-size: 12px;"
     "  corner-radius: 4px;"
     "}"
 
-    /* Path input — Crust with Text */
     ".fb-path-input {"
     "  flex-grow: 1;"
-    "  height: 28px;"
-    "  background: #11111b;"
-    "  color: #cdd6f4;"
-    "  font-size: 15px;"
+    "  height: 26px;"
+    "  background: #0d0d0f;"
+    "  color: #c8d0ff;"
+    "  font-size: 12px;"
     "  padding-left: 8px;"
     "  corner-radius: 4px;"
-    "  border-width: 1px;"
-    "  border-color: #313244;"
     "}"
 
-    /* Column header — Mantle */
     ".fb-col-header {"
     "  width: 100%;"
-    "  height: 24px;"
+    "  height: 22px;"
     "  padding-left: 14px;"
     "  padding-right: 14px;"
     "  align-items: center;"
-    "  background: #181825;"
-    "  border-width: 1px;"
-    "  border-color: #313244;"
+    "  background: #1c1c22;"
     "}"
 
     ".fb-col-name {"
-    "  color: #6c7086;"
-    "  font-size: 14px;"
+    "  color: #4a4e6a;"
+    "  font-size: 12px;"
     "  flex-grow: 1;"
     "  text-align: left;"
     "}"
 
     ".fb-col-size {"
-    "  color: #6c7086;"
-    "  font-size: 14px;"
+    "  color: #4a4e6a;"
+    "  font-size: 12px;"
     "  width: 80px;"
     "  text-align: right;"
     "}"
 
-    /* File list — scrollable content area */
     ".fb-file-list {"
     "  flex-grow: 1;"
     "  overflow-y: scroll;"
     "  padding: 4px;"
     "  gap: 2px;"
     "  align-items: flex-start;"
-    "  background: #1e1e2e;"
+    "  background: #111114;"
     "}"
 
-    /* File entries — Text default, dir = Blue */
     ".fb-entry {"
     "  width: 100%;"
-    "  height: 28px;"
+    "  height: 26px;"
     "  background: transparent;"
-    "  color: #cdd6f4;"
-    "  font-size: 15px;"
+    "  color: #8890b0;"
+    "  font-size: 12px;"
     "  text-align: left;"
     "  padding-left: 8px;"
-    "  corner-radius: 4px;"
+    "  corner-radius: 3px;"
     "}"
 
     ".fb-entry-selected {"
-    "  background: #313244;"
+    "  background: #242430;"
     "}"
 
     ".fb-entry-dir {"
-    "  color: #89b4fa;"
+    "  color: #6e8aff;"
     "}"
 
     ".fb-empty {"
-    "  color: #6c7086;"
-    "  font-size: 15px;"
+    "  color: #4a4e6a;"
+    "  font-size: 12px;"
     "  padding: 14px;"
     "}"
 
-    /* Bottom bar — Mantle (fixed-height, doesn't grow) */
     ".fb-bottom {"
-    "  background: #181825;"
+    "  background: #1c1c22;"
     "  width: 100%;"
-    "  padding: 8px 10px;"
+    "  padding: 6px 10px;"
     "  gap: 6px;"
-    "  border-width: 1px;"
-    "  border-color: #313244;"
     "}"
 
     ".fb-bottom-row {"
     "  width: 100%;"
-    "  height: 28px;"
+    "  height: 26px;"
     "  align-items: center;"
     "  gap: 8px;"
     "}"
 
     ".fb-label {"
-    "  color: #a6adc8;"
-    "  font-size: 15px;"
+    "  color: #4a4e6a;"
+    "  font-size: 12px;"
     "  width: 50px;"
     "  text-align: right;"
     "}"
 
     ".fb-selected-name {"
-    "  color: #cdd6f4;"
-    "  font-size: 15px;"
+    "  color: #c8d0ff;"
+    "  font-size: 12px;"
     "  flex-grow: 1;"
     "  text-align: left;"
     "}"
@@ -299,23 +303,21 @@ static const char *g_editor_css =
     "  width: 200px;"
     "}"
 
-    /* Cancel button — Surface0 */
     ".fb-btn {"
-    "  width: 90px;"
-    "  height: 28px;"
-    "  background: #313244;"
-    "  color: #cdd6f4;"
-    "  font-size: 15px;"
+    "  width: 80px;"
+    "  height: 26px;"
+    "  background: #242430;"
+    "  color: #8890b0;"
+    "  font-size: 12px;"
     "  corner-radius: 4px;"
     "}"
 
-    /* Open/Confirm button — Mauve (primary accent) */
     ".fb-btn-primary {"
-    "  background: #cba6f7;"
-    "  color: #1e1e2e;"
+    "  background: #6e8aff;"
+    "  color: #0d0d0f;"
     "}"
 
-    /* ---- Hierarchy panel (Catppuccin) ---- */
+    /* ---- Hierarchy panel ---- */
 
     ".hierarchy-tree {"
     "  overflow-y: scroll;"
@@ -328,29 +330,32 @@ static const char *g_editor_css =
     "}"
 
     ".hierarchy-scene {"
-    "  color: #cba6f7;"
-    "  font-size: 15px;"
+    "  color: #6e8aff;"
+    "  font-size: 12px;"
+    "  height: 16px;"
     "}"
 
     ".hierarchy-entity {"
-    "  color: #89b4fa;"
-    "  font-size: 15px;"
+    "  color: #8890b0;"
+    "  font-size: 12px;"
+    "  height: 16px;"
     "}"
 
     ".hierarchy-component {"
-    "  color: #6c7086;"
-    "  font-size: 14px;"
+    "  color: #4a4e6a;"
+    "  font-size: 12px;"
+    "  height: 16px;"
     "}"
 
     ".hierarchy-add-btn {"
     "  width: 100%;"
-    "  height: 26px;"
+    "  height: 24px;"
     "  background: transparent;"
-    "  color: #6c7086;"
-    "  font-size: 15px;"
+    "  color: #4a4e6a;"
+    "  font-size: 12px;"
     "}"
 
-    /* ---- Inspector panel (Catppuccin) ---- */
+    /* ---- Inspector panel ---- */
 
     ".inspector-scroll {"
     "  overflow-y: scroll;"
@@ -362,8 +367,8 @@ static const char *g_editor_css =
     "}"
 
     ".inspector-placeholder {"
-    "  color: #6c7086;"
-    "  font-size: 15px;"
+    "  color: #4a4e6a;"
+    "  font-size: 12px;"
     "  padding: 14px 0px 0px 8px;"
     "  width: 100%;"
     "  text-align: left;"
@@ -378,50 +383,46 @@ static const char *g_editor_css =
 
     ".inspector-entity-input {"
     "  width: 100%;"
-    "  height: 24px;"
-    "  background: #11111b;"
-    "  color: #cdd6f4;"
-    "  font-size: 16px;"
+    "  height: 22px;"
+    "  background: #0d0d0f;"
+    "  color: #c8d0ff;"
+    "  font-size: 12px;"
+    "  font-weight: bold;"
     "  padding-left: 6px;"
-    "  corner-radius: 4px;"
-    "  border-width: 1px;"
-    "  border-color: #313244;"
+    "  corner-radius: 3px;"
     "}"
 
     ".inspector-meta-row {"
     "  width: 100%;"
-    "  height: 20px;"
+    "  height: 18px;"
     "  gap: 4px;"
     "  align-items: center;"
     "  padding-left: 0px;"
     "}"
 
     ".inspector-tag-input {"
-    "  height: 20px;"
+    "  height: 18px;"
     "  flex-grow: 1;"
-    "  background: #11111b;"
-    "  color: #a6adc8;"
-    "  font-size: 14px;"
+    "  background: #0d0d0f;"
+    "  color: #8890b0;"
+    "  font-size: 12px;"
     "  padding-left: 4px;"
-    "  corner-radius: 4px;"
-    "  border-width: 1px;"
-    "  border-color: #313244;"
+    "  corner-radius: 3px;"
     "}"
 
     ".inspector-section-header {"
-    "  background: #181825;"
+    "  background: #1c1c22;"
     "  width: 100%;"
-    "  height: 22px;"
+    "  height: 20px;"
     "  padding: 0px 8px;"
     "  margin-top: 4px;"
     "  align-items: center;"
-    "  border-width: 1px;"
-    "  border-color: #313244;"
     "}"
 
     ".inspector-section-label {"
-    "  font-size: 14px;"
-    "  color: #a6adc8;"
+    "  font-size: 12px;"
+    "  font-weight: bold;"
+    "  color: #8890b0;"
     "  width: 100%;"
     "  text-align: left;"
     "}"
@@ -434,8 +435,8 @@ static const char *g_editor_css =
     "}"
 
     ".inspector-field-name {"
-    "  color: #6c7086;"
-    "  font-size: 14px;"
+    "  color: #4a4e6a;"
+    "  font-size: 12px;"
     "  text-align: left;"
     "  width: 100%;"
     "}"
@@ -447,11 +448,10 @@ static const char *g_editor_css =
     "  flex-wrap: wrap;"
     "}"
 
-    /* Axis label colors — Red/Green/Blue/Mauve */
-    ".inspector-axis-x { color: #f38ba8; font-size: 14px; width: 10px; }"
-    ".inspector-axis-y { color: #a6e3a1; font-size: 14px; width: 10px; }"
-    ".inspector-axis-z { color: #89b4fa; font-size: 14px; width: 10px; }"
-    ".inspector-axis-w { color: #cba6f7; font-size: 14px; width: 10px; }"
+    ".inspector-axis-x { color: #ff5370; font-size: 12px; font-weight: bold; width: 10px; }"
+    ".inspector-axis-y { color: #80ff80; font-size: 12px; font-weight: bold; width: 10px; }"
+    ".inspector-axis-z { color: #5b9cff; font-size: 12px; font-weight: bold; width: 10px; }"
+    ".inspector-axis-w { color: #bf80ff; font-size: 12px; font-weight: bold; width: 10px; }"
 
     ".inspector-axis-group {"
     "  width: 68px;"
@@ -462,50 +462,46 @@ static const char *g_editor_css =
 
     ".inspector-vec-input {"
     "  width: 50px;"
-    "  height: 18px;"
-    "  background: #11111b;"
-    "  color: #cdd6f4;"
-    "  font-size: 14px;"
+    "  height: 17px;"
+    "  background: #0d0d0f;"
+    "  color: #c8d0ff;"
+    "  font-size: 12px;"
     "  padding-left: 4px;"
     "  corner-radius: 3px;"
-    "  border-width: 1px;"
-    "  border-color: #313244;"
     "}"
 
     ".inspector-scalar-input {"
     "  width: 100%;"
-    "  height: 18px;"
-    "  background: #11111b;"
-    "  color: #cdd6f4;"
-    "  font-size: 14px;"
+    "  height: 17px;"
+    "  background: #0d0d0f;"
+    "  color: #c8d0ff;"
+    "  font-size: 12px;"
     "  padding-left: 4px;"
     "  corner-radius: 3px;"
-    "  border-width: 1px;"
-    "  border-color: #313244;"
     "}"
 
     ".inspector-field-value {"
-    "  color: #a6adc8;"
-    "  font-size: 14px;"
+    "  color: #8890b0;"
+    "  font-size: 12px;"
     "}"
 
     ".inspector-id-label {"
-    "  color: #6c7086;"
-    "  font-size: 14px;"
+    "  color: #4a4e6a;"
+    "  font-size: 12px;"
     "  width: 100%;"
     "  text-align: left;"
     "  padding-left: 2px;"
     "}"
 
     ".inspector-tag-icon {"
-    "  color: #a6e3a1;"
-    "  font-size: 15px;"
+    "  color: #6bffb8;"
+    "  font-size: 12px;"
     "  width: 16px;"
     "  flex-shrink: 0;"
     "}"
 
     ".hierarchy-selected {"
-    "  background: #313244;"
+    "  background: #242430;"
     "}"
 ;
 

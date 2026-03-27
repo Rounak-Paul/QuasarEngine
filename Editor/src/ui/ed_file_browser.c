@@ -1,4 +1,5 @@
 #include "ed_file_browser.h"
+#include "ca_theme.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -305,8 +306,7 @@ static void sync_widgets(void)
             ca_button_set_hidden(s_fb.entry_btns[i], false);
 
             if (s_fb.selected == i)
-                ca_button_set_background(s_fb.entry_btns[i],
-                                         ca_color(0.19f, 0.20f, 0.27f, 1.0f));  /* Surface0 #313244 */
+                ca_button_set_background(s_fb.entry_btns[i], CA_THEME_BG_OVERLAY);
             else
                 ca_button_set_background(s_fb.entry_btns[i], 0);
         } else {
@@ -492,9 +492,8 @@ static void build_window_ui(void)
     Ca_Window *win = s_fb.window;
 
     ca_ui_begin(win, &(Ca_DivDesc){
-        .direction  = CA_VERTICAL,
-        .background = ca_color(0.10f, 0.10f, 0.20f, 1.0f),
-        .style      = "fb-root",
+        .direction = CA_VERTICAL,
+        .style     = "fb-root",
     });
     {
         /* ---- Title bar ---- */
@@ -560,7 +559,7 @@ static void build_window_ui(void)
         ca_text(&(Ca_TextDesc){ .text = "Name", .style = "fb-col-name" });
         ca_div_end();
 
-        ca_hr(&(Ca_HrDesc){ .color = ca_color(0.2f, 0.2f, 0.35f, 1.0f) });
+        ca_hr(NULL);
 
         /* ---- File list (scrollable) ---- */
         ca_div_begin(&(Ca_DivDesc){
@@ -586,7 +585,7 @@ static void build_window_ui(void)
         }
         ca_div_end();
 
-        ca_hr(&(Ca_HrDesc){ .color = ca_color(0.2f, 0.2f, 0.35f, 1.0f) });
+        ca_hr(NULL);
 
         /* ---- Bottom bar ---- */
         ca_div_begin(&(Ca_DivDesc){

@@ -1,5 +1,6 @@
 #include "ed_inspector.h"
 #include "editor.h"
+#include "ca_theme.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -93,13 +94,10 @@ static const char *component_icon(const char *name)
 
 static uint32_t component_icon_color(const char *name)
 {
-    if (strcmp(name, "Transform") == 0)
-        return ca_color(0.40f, 0.60f, 0.90f, 1.0f);
-    if (strcmp(name, "MeshComp") == 0)
-        return ca_color(0.45f, 0.75f, 0.55f, 1.0f);
-    if (strcmp(name, "LightComp") == 0)
-        return ca_color(0.95f, 0.85f, 0.35f, 1.0f);
-    return ca_color(0.55f, 0.55f, 0.70f, 1.0f);
+    if (strcmp(name, "Transform") == 0) return CA_THEME_ACCENT;
+    if (strcmp(name, "MeshComp")  == 0) return CA_THEME_SUCCESS;
+    if (strcmp(name, "LightComp") == 0) return CA_THEME_WARNING;
+    return CA_THEME_TEXT_MUTED;
 }
 
 /* ================================================================
@@ -248,7 +246,7 @@ void ed_inspector(void *editor)
         ca_div_end();
 
         /* Separator */
-        ca_hr(&(Ca_HrDesc){ .color = ca_color(0.10f, 0.10f, 0.10f, 1.0f) });
+        ca_hr(&(Ca_HrDesc){ .color = CA_THEME_BG_SURFACE });
 
         /* Dynamic content container — rebuilt on entity change */
         s_content_div = ca_div_begin(&(Ca_DivDesc){
