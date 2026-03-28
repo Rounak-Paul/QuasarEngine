@@ -596,7 +596,7 @@ static void on_frame(Qs_Engine *engine, void *userdata)
             Qs_MeshComp  *mc = qs_entity_get(scene, e, qs_mesh_comp_type());
             if (!mc || !mc->visible || !mc->mesh || !mc->material) continue;
             Qs_Transform *tr = qs_entity_get(scene, e, qs_transform_type());
-            Qs_Renderable r;
+            Qs_RenderableDesc r;
             r.mesh            = mc->mesh;
             r.material        = mc->material;
             r.cast_shadows    = true;

@@ -131,6 +131,10 @@ static const char *vk_mesh_name(const Qs_Mesh *m)   { return m ? m->name        
 static uint32_t    vk_mesh_vcount(const Qs_Mesh *m)  { return m ? m->vertex_count : 0; }
 static uint32_t    vk_mesh_icount(const Qs_Mesh *m)  { return m ? m->index_count  : 0; }
 
+static Qs_GpuBuffer *vk_mesh_vertex_buffer_fn(const Qs_Mesh *m) { return m ? m->vertex_buffer : NULL; }
+static Qs_GpuBuffer *vk_mesh_index_buffer_fn (const Qs_Mesh *m) { return m ? m->index_buffer  : NULL; }
+static Qs_IndexType  vk_mesh_index_type_fn   (const Qs_Mesh *m) { return m ? m->index_type : QS_INDEX_TYPE_UINT32; }
+
 static void vk_mesh_bind(const Qs_Mesh *m, Qs_GpuCmd *cmd)
 {
     if (!m || !cmd) return;
@@ -155,16 +159,19 @@ static void vk_mesh_draw(const Qs_Mesh *m, Qs_GpuCmd *cmd)
    ================================================================ */
 
 const Qs_MeshBackend vk_mesh_backend = {
-    .name         = "Vulkan/PBR",
-    .init         = vk_mesh_init,
-    .shutdown     = vk_mesh_shutdown,
-    .create       = vk_mesh_create,
-    .destroy      = vk_mesh_destroy,
-    .mesh_name    = vk_mesh_name,
-    .vertex_count = vk_mesh_vcount,
-    .index_count  = vk_mesh_icount,
-    .bind         = vk_mesh_bind,
-    .draw         = vk_mesh_draw,
+    .name          = "Vulkan/PBR",
+    .init          = vk_mesh_init,
+    .shutdown      = vk_mesh_shutdown,
+    .create        = vk_mesh_create,
+    .destroy       = vk_mesh_destroy,
+    .mesh_name     = vk_mesh_name,
+    .vertex_count  = vk_mesh_vcount,
+    .index_count   = vk_mesh_icount,
+    .bind          = vk_mesh_bind,
+    .draw          = vk_mesh_draw,
+    .vertex_buffer = vk_mesh_vertex_buffer_fn,
+    .index_buffer  = vk_mesh_index_buffer_fn,
+    .index_type    = vk_mesh_index_type_fn,
 };
 
 #include <stdio.h>

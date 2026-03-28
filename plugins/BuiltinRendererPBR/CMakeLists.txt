@@ -1,10 +1,6 @@
 add_library(BuiltinRendererPBR SHARED
     src/plugin_main.c
     src/vk_renderer.c
-    src/vk_texture.c
-    src/vk_mesh.c
-    src/vk_material.c
-    src/vk_light.c
     src/vk_forward.c
 )
 

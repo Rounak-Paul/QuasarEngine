@@ -1,246 +1,279 @@
-#ifndef QS_RENDERER_H
+﻿#ifndef QS_RENDERER_H
 #define QS_RENDERER_H
 
 #include <stdbool.h>
 #include <stdint.h>
 
 #include "qs_gpu.h"
+#include "qs_light.h"
+#include "qs_mesh.h"
+#include "qs_material.h"
 
-typedef struct Qs_Engine        Qs_Engine;
-typedef struct Qs_Renderer      Qs_Renderer;    ///< Opaque — defined by the renderer backend.
-typedef struct Qs_RenderNode    Qs_RenderNode;  ///< Opaque — defined by the renderer backend.
-typedef struct Qs_Light         Qs_Light;
-typedef struct Qs_LightGPU      Qs_LightGPU;    ///< Full definition in qs_light.h.
-typedef struct Qs_Mesh          Qs_Mesh;
-typedef struct Qs_Material      Qs_Material;
-typedef struct Qs_Renderable    Qs_Renderable;
+typedef struct Qs_Engine            Qs_Engine;
+typedef struct Qs_Renderer          Qs_Renderer;
+typedef struct Qs_RenderNode        Qs_RenderNode;
+typedef struct Qs_RenderAttachment  Qs_RenderAttachment;
 
 /* ================================================================
    CAMERA
    ================================================================ */
 
-/// Projection mode for a renderer's camera.
 typedef enum Qs_Projection {
     QS_PROJECTION_PERSPECTIVE  = 0,
     QS_PROJECTION_ORTHOGRAPHIC = 1,
 } Qs_Projection;
 
-/// Camera state embedded in each renderer.
 typedef struct Qs_Camera {
-    float position[3];          ///< World-space eye position.
-    float target[3];            ///< World-space look-at target.
-    float up[3];                ///< World-space up vector.
+    float         position[3];
+    float         target[3];
+    float         up[3];
     Qs_Projection projection;
-    float fov_deg;              ///< Vertical field of view (perspective).
-    float ortho_size;           ///< Half-height of view volume (orthographic).
-    float near_plane;
-    float far_plane;
+    float         fov_deg;
+    float         ortho_size;
+    float         near_plane;
+    float         far_plane;
 } Qs_Camera;
 
 /* ================================================================
-   RENDER PASS NODE — extensible pipeline phase
+   STANDARD FRAME UNIFORM DATA
+   Both engine (writer) and plugin shaders (reader) must agree on
+   these layouts.  Use std140 alignment rules in GLSL.
    ================================================================ */
 
-/// Render context passed to each render pass node callback.
-typedef struct Qs_RenderContext {
-    Qs_Renderer    *renderer;
-    Qs_GpuCmd      *cmd;
-    uint32_t        width;
-    uint32_t        height;
-    float           view[16];       ///< Column-major 4x4 view matrix.
-    float           proj[16];       ///< Column-major 4x4 projection matrix.
-    float           dt;             ///< Frame delta time in seconds.
-} Qs_RenderContext;
+/// Per-frame uniform block written by the engine each frame.
+typedef struct Qs_FrameUBO {
+    float view[16];
+    float proj[16];
+    float inv_view_proj[16];
+    float cam_pos[3];
+    float time;
+    float screen_width;
+    float screen_height;
+    float _pad[2];
+} Qs_FrameUBO; /* 208 bytes, std140 */
 
-/// Callback executed for a pipeline phase.
-typedef void (*Qs_RenderNodeFn)(const Qs_RenderContext *ctx, void *user_data);
+#define QS_LIGHTS_MAX 128
 
-/// Descriptor for adding a render pass node to a renderer's pipeline.
-typedef struct Qs_RenderNodeDesc {
-    const char       *name;         ///< Debug label (e.g. "depth_prepass", "pbr_forward").
-    int32_t           priority;     ///< Execution order (lower runs first, default 0).
-    Qs_RenderNodeFn   execute;      ///< Called each frame inside the render pass.
-    void             *user_data;
-} Qs_RenderNodeDesc;
-
-/* Qs_RenderNode is an opaque type defined by the renderer backend. */
+/// Per-frame lights uniform block written by the engine each frame.
+typedef struct Qs_LightsUBO {
+    Qs_LightGPU lights[QS_LIGHTS_MAX];
+    uint32_t    count;
+    uint32_t    _pad[3];
+} Qs_LightsUBO;
 
 /* ================================================================
-   RENDERER INSTANCE
+   RENDERABLE
+
+   Qs_RenderableDesc  — submission struct; caller provides Qs_Mesh / Qs_Material.
+   Qs_Renderable      — GPU-packed struct the engine stores and passes to plugins.
+                         The engine extracts vertex/index buffers and material
+                         descriptor data at submit time so pass nodes never need
+                         to call into the mesh or material systems directly.
    ================================================================ */
 
-/// Configuration for creating a renderer instance.
-typedef struct Qs_RendererDesc {
-    const char       *name;         ///< Debug label (e.g. "scene", "minimap", "thumbnail").
-    const char       *backend;      ///< Backend name to use (NULL = default backend).
-    float             clear_color[4];
-    Qs_Camera         camera;       ///< Initial camera state (zero-inited = defaults).
-    bool              depth_test;   ///< Create a depth attachment (default: true if zero).
-} Qs_RendererDesc;
-
-/* ================================================================
-   RENDERER BACKEND — implement to provide a rendering backend
-   ================================================================ */
-
-/// Vtable that a renderer plugin fills in and registers with the engine.
-/// Every function pointer must be non-NULL.
-typedef struct Qs_RendererBackend {
-    const char *name;
-
-    /* --- System lifecycle ----------------------------------------- */
-
-    /// One-time GPU resource setup (device, physical device, command pools).
-    /// Called when the Render system initialises.
-    bool (*init)(Qs_Engine *engine, Qs_GpuContext *gpu, void **out_ctx);
-
-    /// Tear down all GPU resources and release ctx.
-    void (*shutdown)(void *ctx);
-
-    /// Per-frame update (propagate delta time, etc.).
-    void (*update)(void *ctx, float dt);
-
-    /* --- Renderer instances --------------------------------------- */
-
-    /// Allocate and initialise a backend-internal renderer.
-    /// Returns a backend-owned opaque pointer (impl).  The engine wraps
-    /// this in a Qs_Renderer handle and calls renderer_post_create.
-    void          *(*renderer_create)(void *ctx, Qs_Engine *engine,
-                                       const Qs_RendererDesc *desc);
-
-    /// Destroy a renderer and free all its GPU resources.
-    void           (*renderer_destroy)(void *ctx, void *impl);
-
-    /// Register viewport callbacks so the renderer redraws every frame.
-    void           (*renderer_bind)(void *ctx, void *impl,
-                                    Qs_Viewport *viewport);
-
-    /// Called by the engine immediately after it wraps impl in a
-    /// Qs_Renderer handle.  Backends that need the back-reference
-    /// (e.g. to populate Qs_RenderContext.renderer) implement this;
-    /// others may leave it NULL.
-    void           (*renderer_post_create)(void *impl, Qs_Renderer *handle);
-
-    /* --- Renderer accessors (impl = backend-internal pointer) ----- */
-
-    Qs_Camera     *(*renderer_camera)(void *impl);
-    void           (*renderer_set_clear_color)(void *impl,
-                                               const float color[4]);
-    Qs_RenderNode *(*renderer_add_node)(void *impl,
-                                        const Qs_RenderNodeDesc *desc);
-    void           (*renderer_remove_node)(void *impl,
-                                           Qs_RenderNode *node);
-    const char    *(*renderer_name)(const void *impl);
-    void           (*renderer_extents)(const void *impl,
-                                       uint32_t *out_w, uint32_t *out_h);
-
-    /* --- Per-frame light submission ------------------------------ */
-
-    void              (*submit_light)(void *impl, Qs_Light *light);
-    void              (*clear_lights)(void *impl);
-    const Qs_LightGPU *(*get_lights)(const void *impl, uint32_t *out_count);
-
-    /* --- Per-frame renderable submission ------------------------- */
-
-    void                  (*submit_renderable)(void *impl, const Qs_Renderable *renderable);
-    void                  (*clear_renderables)(void *impl);
-    const Qs_Renderable   *(*get_renderables)(const void *impl, uint32_t *out_count);
-} Qs_RendererBackend;
-
-/// Registers a renderer backend.  Multiple backends may be registered
-/// simultaneously; each is identified by its unique name field.
-/// Must be called before the first qs_renderer_create with this backend
-/// (or before the Render system initialises if no backends are yet registered).
-void qs_renderer_backend_register(const Qs_RendererBackend *backend);
-
-/// Unregisters the backend with the given name.  Shuts it down if the
-/// Render system is currently running.
-void qs_renderer_backend_unregister(const char *name);
-
-/// Sets the default backend used when Qs_RendererDesc.backend is NULL.
-/// If never called, the first registered backend is the default.
-void qs_renderer_backend_set_default(const char *name);
-
-/* ================================================================
-   PUBLIC RENDERER API
-   All functions dispatch through the registered backend.
-   ================================================================ */
-
-/// Creates a renderer instance. Destroy with qs_renderer_destroy.
-Qs_Renderer *qs_renderer_create(Qs_Engine *engine, const Qs_RendererDesc *desc);
-
-/// Destroys a renderer and all GPU resources it owns.
-void qs_renderer_destroy(Qs_Renderer *renderer);
-
-/// Binds this renderer to a Qs_Viewport — it will render every frame.
-void qs_renderer_bind(Qs_Renderer *renderer, Qs_Viewport *viewport);
-
-/// Returns a mutable pointer to the renderer's camera.
-Qs_Camera *qs_renderer_camera(Qs_Renderer *renderer);
-
-/// Updates the clear colour.
-void qs_renderer_set_clear_color(Qs_Renderer *renderer, const float color[4]);
-
-/// Adds a render pass node to the pipeline. Returns the node handle.
-Qs_RenderNode *qs_renderer_add_node(Qs_Renderer *renderer,
-                                     const Qs_RenderNodeDesc *desc);
-
-/// Removes a render pass node from the pipeline.
-void qs_renderer_remove_node(Qs_Renderer *renderer, Qs_RenderNode *node);
-
-/* ================================================================
-   RENDERABLE SUBMISSION
-   Scene iterates scene entities, performs frustum/BVH culling, then
-   submits visible Qs_Renderable objects each frame.  The renderer is
-   scene-agnostic — it only consumes what is submitted.
-   ================================================================ */
-
-/// World-space axis-aligned bounding box (scene-side computed, fed into renderer).
 typedef struct Qs_AABB {
     float min[3];
     float max[3];
 } Qs_AABB;
 
-/// One visible geometry submission.
-typedef struct Qs_Renderable {
-    Qs_Mesh     *mesh;
-    Qs_Material *material;
-    float        transform[16]; ///< Column-major model matrix (world space).
-    Qs_AABB      bounds;        ///< World-space AABB (for per-frame culling by backend).
+/// Submission descriptor — fill this and pass to qs_renderer_submit_renderable.
+typedef struct Qs_RenderableDesc {
+    Qs_Mesh     *mesh;              ///< Required.
+    Qs_Material *material;          ///< NULL → engine uses the renderer default material.
+    float        transform[16];     ///< Column-major model matrix.
+    Qs_AABB      bounds;            ///< World-space AABB for engine-side culling.
     bool         cast_shadows;
     bool         receive_shadows;
+} Qs_RenderableDesc;
+
+/// GPU-packed renderable — populated by the engine; passed to render-pass nodes
+/// via Qs_RenderContext.renderables.  Pass nodes work at the GPU command level
+/// and do not need to access the mesh or material systems.
+typedef struct Qs_Renderable {
+    /* Mesh — extracted from Qs_Mesh at submit time */
+    Qs_GpuBuffer *vertex_buffer;
+    Qs_GpuBuffer *index_buffer;     ///< NULL for non-indexed meshes.
+    uint32_t      vertex_count;
+    uint32_t      index_count;
+    bool          index_16bit;      ///< true = UINT16, false = UINT32.
+
+    /* Material — extracted from Qs_Material (or renderer default) at submit time */
+    Qs_GpuDescriptorSet *material_set;    ///< Ready-to-bind descriptor set.
+    Qs_PBRParams         material_params; ///< Value copy; safe across frames.
+    Qs_AlphaMode         alpha_mode;
+    bool                 double_sided;
+
+    /* Transform and visibility */
+    float    transform[16];  ///< Column-major model matrix.
+    Qs_AABB  bounds;         ///< World-space AABB.
+    bool     cast_shadows;
+    bool     receive_shadows;
 } Qs_Renderable;
 
-/// Submits one renderable for this frame.
-void qs_renderer_submit_renderable(Qs_Renderer *renderer, const Qs_Renderable *renderable);
-
-/// Clears all submitted renderables (call at the start of each frame).
-void qs_renderer_clear_renderables(Qs_Renderer *renderer);
-
-/// Returns a pointer to the current renderable array and its count.
-const Qs_Renderable *qs_renderer_renderables(const Qs_Renderer *renderer, uint32_t *out_count);
-
 /* ================================================================
-   NAME / EXTENTS ACCESSORS
+   RENDER ATTACHMENT â€” engine-managed off-screen image
    ================================================================ */
 
-/// Returns the renderer's debug name.
-const char *qs_renderer_name(const Qs_Renderer *renderer);
+typedef enum Qs_RenderAttachmentUsage {
+    QS_ATTACHMENT_COLOR = 0,
+    QS_ATTACHMENT_DEPTH = 1,
+} Qs_RenderAttachmentUsage;
 
-/// Returns the current framebuffer dimensions (0 if unbound).
-void qs_renderer_extents(const Qs_Renderer *renderer,
-                          uint32_t *out_width, uint32_t *out_height);
+/// Descriptor for declaring a render attachment.
+/// The engine creates, resizes, and destroys the underlying image automatically.
+typedef struct Qs_RenderAttachmentDesc {
+    const char                *name;
+    Qs_GpuImageFormat          format;
+    Qs_RenderAttachmentUsage   usage;
+    /// Viewport-relative size â€” 1.0 = full viewport width/height.
+    /// Set to 0 when using fixed_width / fixed_height.
+    float                      width_scale;
+    float                      height_scale;
+    /// Fixed pixel size.  When > 0, overrides scale; image is never resized.
+    uint32_t                   fixed_width;
+    uint32_t                   fixed_height;
+} Qs_RenderAttachmentDesc;
 
-/* --- Per-frame light submission (on the renderer) --------------- */
+/* ================================================================
+   RENDER PASS NODE â€” pipeline phase
+   ================================================================ */
 
-/// Submits a light to a renderer for the current frame.  Must be called
-/// each frame — lights are not persistent.
-void qs_renderer_submit_light(Qs_Renderer *renderer, Qs_Light *light);
+/// Context supplied to every render-pass node callback each frame.
+typedef struct Qs_RenderContext {
+    Qs_Renderer        *renderer;
+    Qs_GpuCmd          *cmd;
+    uint32_t            width;
+    uint32_t            height;
+    float               view[16];
+    float               proj[16];
+    float               dt;
 
-/// Clears all submitted lights from a renderer (called automatically each frame).
-void qs_renderer_clear_lights(Qs_Renderer *renderer);
+    /// Engine-populated renderable list for this frame.
+    const Qs_Renderable *renderables;
+    uint32_t             renderable_count;
 
-/// Returns the array of GPU-packed lights submitted this frame.
-const Qs_LightGPU *qs_renderer_lights(const Qs_Renderer *renderer,
-                                        uint32_t *out_count);
+    /// Engine-populated GPU-packed light list for this frame.
+    const Qs_LightGPU   *lights;
+    uint32_t             light_count;
 
-#endif
+    /// Final output target for this frame.
+    Qs_GpuImageView     *swapchain_view;
+    uint32_t             swapchain_width;
+    uint32_t             swapchain_height;
+} Qs_RenderContext;
+
+typedef void (*Qs_RenderNodeFn)(const Qs_RenderContext *ctx, void *user_data);
+
+typedef struct Qs_RenderNodeDesc {
+    const char      *name;
+    int32_t          priority; ///< Execution order â€” lower runs first.
+    Qs_RenderNodeFn  execute;
+    void            *user_data;
+} Qs_RenderNodeDesc;
+
+/* ================================================================
+   RENDERER DESCRIPTOR
+   ================================================================ */
+
+typedef struct Qs_RendererDesc {
+    const char  *name;
+    const char  *backend;    ///< NULL = default backend.
+    float        clear_color[4];
+    Qs_Camera    camera;
+    bool         depth_test;
+    /// Optional PBR material used when a submitted renderable has no material.
+    /// If NULL the engine creates a built-in grey dielectric fallback.
+    const Qs_MaterialDesc *default_material;
+} Qs_RendererDesc;
+
+/* ================================================================
+   RENDERER BACKEND VTABLE
+   Implement to register a rendering backend plugin.
+   ================================================================ */
+
+typedef struct Qs_RendererBackend {
+    const char *name;
+
+    /* System lifecycle */
+    bool (*init)    (Qs_Engine *engine, Qs_GpuContext *gpu, void **out_ctx);
+    void (*shutdown)(void *ctx);
+    void (*update)  (void *ctx, float dt);
+
+    /* Renderer instance lifecycle.
+       handle is the engine-allocated Qs_Renderer* so the backend can call
+       qs_renderer_add_attachment() and qs_renderer_add_node() during creation.
+       Returns a backend-owned opaque impl pointer, or NULL on failure. */
+    void *(*renderer_create) (void *ctx, Qs_Engine *engine,
+                               const Qs_RendererDesc *desc, Qs_Renderer *handle);
+    void  (*renderer_destroy)(void *ctx, void *impl);
+
+    /// Called after the engine has resized all viewport-scaled attachments.
+    /// Backend should re-write descriptor sets that reference those image views.
+    void  (*renderer_on_resize)(void *ctx, void *impl, uint32_t w, uint32_t h);
+} Qs_RendererBackend;
+
+void qs_renderer_backend_register  (const Qs_RendererBackend *backend);
+void qs_renderer_backend_unregister(const char *name);
+void qs_renderer_backend_set_default(const char *name);
+
+/* ================================================================
+   PUBLIC RENDERER API
+   ================================================================ */
+
+Qs_Renderer *qs_renderer_create (Qs_Engine *engine, const Qs_RendererDesc *desc);
+void         qs_renderer_destroy(Qs_Renderer *renderer);
+void         qs_renderer_bind   (Qs_Renderer *renderer, Qs_Viewport *viewport);
+
+Qs_Camera  *qs_renderer_camera          (Qs_Renderer *renderer);
+void        qs_renderer_set_clear_color (Qs_Renderer *renderer, const float color[4]);
+const float *qs_renderer_clear_color    (const Qs_Renderer *renderer);
+const char *qs_renderer_name            (const Qs_Renderer *renderer);
+void        qs_renderer_extents         (const Qs_Renderer *renderer,
+                                          uint32_t *out_w, uint32_t *out_h);
+
+Qs_RenderNode *qs_renderer_add_node   (Qs_Renderer *renderer,
+                                        const Qs_RenderNodeDesc *desc);
+void           qs_renderer_remove_node(Qs_Renderer *renderer, Qs_RenderNode *node);
+
+/* ================================================================
+   RENDER ATTACHMENT API
+   Call from Qs_RendererBackend.renderer_create to declare attachments
+   that the engine owns and resizes automatically.
+   ================================================================ */
+
+Qs_RenderAttachment *qs_renderer_add_attachment(Qs_Renderer *renderer,
+                                                 const Qs_RenderAttachmentDesc *desc);
+Qs_GpuImageView     *qs_attachment_view (const Qs_RenderAttachment *att);
+Qs_GpuImage         *qs_attachment_image(const Qs_RenderAttachment *att);
+
+/// Engine-managed depth buffer view (NULL when depth_test=false).
+Qs_GpuImageView *qs_renderer_depth_view(const Qs_Renderer *renderer);
+
+/* ================================================================
+   ENGINE UBO ACCESSORS
+   Return the engine-owned per-frame UBO handles so backends can
+   write descriptor sets that reference them during renderer_create.
+   ================================================================ */
+
+Qs_GpuBuffer *qs_renderer_get_frame_ubo (const Qs_Renderer *renderer);
+Qs_GpuBuffer *qs_renderer_get_lights_ubo(const Qs_Renderer *renderer);
+
+/* ================================================================
+   RENDERABLE / LIGHT SUBMISSION
+   ================================================================ */
+
+/// Submit a renderable for this frame.  The engine extracts GPU handles from
+/// desc->mesh and desc->material and stores a GPU-packed Qs_Renderable
+/// internally.  If desc->material is NULL the renderer default material is used.
+void                  qs_renderer_submit_renderable (Qs_Renderer *renderer,
+                                                      const Qs_RenderableDesc *desc);
+void                  qs_renderer_clear_renderables (Qs_Renderer *renderer);
+const Qs_Renderable  *qs_renderer_renderables       (const Qs_Renderer *renderer,
+                                                      uint32_t *out_count);
+
+void               qs_renderer_submit_light(Qs_Renderer *renderer, Qs_Light *light);
+void               qs_renderer_clear_lights(Qs_Renderer *renderer);
+const Qs_LightGPU *qs_renderer_lights      (const Qs_Renderer *renderer,
+                                             uint32_t *out_count);
+
+#endif /* QS_RENDERER_H */

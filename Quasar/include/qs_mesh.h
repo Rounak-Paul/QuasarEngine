@@ -41,31 +41,6 @@ typedef struct Qs_MeshDesc {
 } Qs_MeshDesc;
 
 /* ================================================================
-   MESH BACKEND
-   ================================================================ */
-
-typedef struct Qs_MeshBackend {
-    const char *name;
-
-    bool        (*init)(Qs_GpuContext *gpu, void **out_ctx);
-    void        (*shutdown)(void *ctx);
-
-    Qs_Mesh    *(*create)(void *ctx, Qs_Engine *engine, const Qs_MeshDesc *desc);
-    void        (*destroy)(void *ctx, Qs_Mesh *mesh);
-
-    /* Accessors */
-    const char  *(*mesh_name)(const Qs_Mesh *mesh);
-    uint32_t     (*vertex_count)(const Qs_Mesh *mesh);
-    uint32_t     (*index_count)(const Qs_Mesh *mesh);
-    void         (*bind)(const Qs_Mesh *mesh, Qs_GpuCmd *cmd);
-    void         (*draw)(const Qs_Mesh *mesh, Qs_GpuCmd *cmd);
-} Qs_MeshBackend;
-
-/// Registers the mesh backend.  Must be called before the Mesh
-/// system initialises (i.e. in the pluginâ€™s on_load callback).
-void qs_mesh_backend_register(const Qs_MeshBackend *backend);
-
-/* ================================================================
    PUBLIC MESH API
    ================================================================ */
 
@@ -89,5 +64,14 @@ void qs_mesh_bind(const Qs_Mesh *mesh, Qs_GpuCmd *cmd);
 
 /// Binds and issues the draw call.
 void qs_mesh_draw(const Qs_Mesh *mesh, Qs_GpuCmd *cmd);
+
+/// Returns the GPU vertex buffer.  Used by the engine to pack renderables.
+Qs_GpuBuffer *qs_mesh_vertex_buffer(const Qs_Mesh *mesh);
+
+/// Returns the GPU index buffer, or NULL if the mesh is non-indexed.
+Qs_GpuBuffer *qs_mesh_index_buffer(const Qs_Mesh *mesh);
+
+/// Returns the index element type (UINT16 or UINT32).
+Qs_IndexType qs_mesh_index_type(const Qs_Mesh *mesh);
 
 #endif

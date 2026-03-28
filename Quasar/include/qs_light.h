@@ -58,36 +58,6 @@ typedef struct Qs_LightGPU {
 } Qs_LightGPU;
 
 /* ================================================================
-   LIGHT BACKEND
-   ================================================================ */
-
-typedef struct Qs_LightBackend {
-    const char *name;
-
-    bool      (*init)(void **out_ctx);
-    void      (*shutdown)(void *ctx);
-
-    Qs_Light *(*create)(void *ctx, Qs_Engine *engine, const Qs_LightDesc *desc);
-    void      (*destroy)(void *ctx, Qs_Light *light);
-
-    /* Accessors */
-    const char *(*light_name)(const Qs_Light *light);
-    float      *(*position)(Qs_Light *light);
-    float      *(*direction)(Qs_Light *light);
-    float      *(*color)(Qs_Light *light);
-    void        (*set_intensity)(Qs_Light *light, float intensity);
-    float       (*intensity)(const Qs_Light *light);
-    void        (*set_range)(Qs_Light *light, float range);
-    void        (*set_cone)(Qs_Light *light, float inner_deg, float outer_deg);
-    void        (*set_enabled)(Qs_Light *light, bool enabled);
-    bool        (*enabled)(const Qs_Light *light);
-} Qs_LightBackend;
-
-/// Registers the light backend.  Must be called before the Light
-/// system initialises (i.e. in the pluginâ€™s on_load callback).
-void qs_light_backend_register(const Qs_LightBackend *backend);
-
-/* ================================================================
    PUBLIC LIGHT API
    ================================================================ */
 
@@ -115,5 +85,11 @@ void  qs_light_set_range(Qs_Light *light, float range);
 void  qs_light_set_cone(Qs_Light *light, float inner_deg, float outer_deg);
 void  qs_light_set_enabled(Qs_Light *light, bool enabled);
 bool  qs_light_enabled(const Qs_Light *light);
+
+/// Returns true if the light is active and should be submitted for rendering.
+bool  qs_light_is_active(const Qs_Light *light);
+
+/// Packs a light's data into a GPU-ready struct for UBO upload.
+void  qs_light_pack_gpu(const Qs_Light *light, Qs_LightGPU *out);
 
 #endif

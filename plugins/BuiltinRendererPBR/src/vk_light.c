@@ -186,7 +186,7 @@ static bool vk_light_enabled(const Qs_Light *l) { return l ? l->enabled : false;
    ================================================================ */
 
 const Qs_LightBackend vk_light_backend = {
-    .name          = "Vulkan/PBR",
+    .name          = "VulkanLightSystem",
     .init          = vk_light_init,
     .shutdown      = vk_light_shutdown,
     .create        = vk_light_create,
@@ -201,4 +201,6 @@ const Qs_LightBackend vk_light_backend = {
     .set_cone      = vk_light_set_cone,
     .set_enabled   = vk_light_set_enabled,
     .enabled       = vk_light_enabled,
+    .is_active     = vk_light_is_active,
+    .pack_gpu      = vk_light_pack_gpu,
 };

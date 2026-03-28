@@ -147,7 +147,7 @@ Qs_Engine* qs_engine_create(const Qs_EngineDesc* desc) {
     if (engine->plugins)
         qs_plugin_manager_scan(engine->plugins);
 
-    /* ---- Renderer systems (backends registered by plugins above) ---- */
+    /* ---- Renderer systems ---- */
     Qs_SystemDesc render_desc = qs_render_system_desc();
     if (!qs_system_register(engine->systems, &render_desc)) goto fail;
 

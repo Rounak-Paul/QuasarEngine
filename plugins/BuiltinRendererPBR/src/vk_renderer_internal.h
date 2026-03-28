@@ -1,4 +1,4 @@
-#ifndef VK_RENDERER_INTERNAL_H
+﻿#ifndef VK_RENDERER_INTERNAL_H
 #define VK_RENDERER_INTERNAL_H
 
 /* Plugin-internal header shared between vk_renderer.c and vk_forward.c.
@@ -9,95 +9,66 @@
 #include "qs_light.h"
 
 /* ----------------------------------------------------------------
-   Shared constants
+   Constants
    ---------------------------------------------------------------- */
-#define QS_CSM_CASCADES            3
-#define QS_SHADOW_MAP_SIZE         1024
-#define QS_MAX_RENDERABLES         4096
-#define QS_MAX_RENDERERS           32
-#define QS_MAX_RENDER_NODES        16
-#define QS_MAX_LIGHTS_PER_RENDERER 128
+#define QS_CSM_CASCADES   3
+#define QS_SHADOW_MAP_SIZE 1024
 
-/* Qs_RenderNode — concrete definition (opaque to external code) */
-struct Qs_RenderNode {
-    char              name[64];
-    int32_t           priority;
-    Qs_RenderNodeFn   execute;
-    void             *user_data;
-    bool              active;
-};
+/* ----------------------------------------------------------------
+   VkRenderer — plugin-internal per-renderer state.
+   The engine now owns: camera, clear_color, name, nodes, renderables,
+   lights, depth buffer, frame UBO, lights UBO, default material, and
+   all viewport attachments declared via qs_renderer_add_attachment.
 
-/* VkRenderer — the plugin-internal per-renderer state.
-   Shared between vk_renderer.c and vk_forward.c. */
+   The plugin owns: pipelines, descriptor sets, shadow UBO (CSM data),
+   CSM matrices, and shadow sample views.
+   ---------------------------------------------------------------- */
 struct VkRenderer {
-    Qs_Renderer      *handle;    /* engine-owned wrapper (set post-create) */
+    char          name[64];
 
-    char              name[64];
-    bool              in_use;
+    Qs_Renderer  *engine_renderer; /* engine-owned handle set at renderer_create */
+    Qs_Engine    *engine;
+    Qs_GpuContext *gpu;             /* cached pointer from the system context */
 
-    Qs_GpuContext    *gpu;
-    Qs_GpuImage      *depth;
-    Qs_GpuImageView  *depth_view;
-    bool              depth_enabled;
+    /* CSM shadow computation state */
+    float         shadow_matrices[QS_CSM_CASCADES][16];
+    float         shadow_splits[QS_CSM_CASCADES + 1];
 
-    float             clear_color[4];
-    uint32_t          fb_width;
-    uint32_t          fb_height;
+    /* Plugin-owned UBO — shadow/CSM data (not written by the engine) */
+    Qs_GpuBuffer *shadow_ubo;
 
-    Qs_Camera         camera;
+    /* Descriptor pool + per-renderer descriptor sets */
+    Qs_GpuDescriptorPool *desc_pool;
+    Qs_GpuDescriptorSet  *frame_desc_set;      /* set=0: UBOs + shadow samplers */
+    Qs_GpuDescriptorSet  *composite_desc_set;  /* tonemap pass                  */
+    Qs_GpuDescriptorSet  *bloom_desc_sets[2];  /* bloom ping-pong               */
 
-    Qs_RenderNode     nodes[QS_MAX_RENDER_NODES];
-    uint32_t          node_count;
+    /* Engine attachment handles declared at renderer_create time */
+    Qs_RenderAttachment *hdr_att;             /* full-res RGBA16F color target */
+    Qs_RenderAttachment *shadow_att[QS_CSM_CASCADES]; /* 1024x1024 depth maps  */
+    Qs_RenderAttachment *bloom_att[2];        /* half-res bloom ping-pong       */
 
-    float             dt;
+    /* Shadow sampling views (one per cascade, created from shadow_att images).
+       The engine manages the depth-attachment view via qs_attachment_view();
+       these are separate sampler views created by the plugin. */
+    Qs_GpuImageView *shadow_sample_views[QS_CSM_CASCADES];
 
-    /* Per-frame renderable accumulation */
-    Qs_Renderable     renderables[QS_MAX_RENDERABLES];
-    uint32_t          renderable_count;
+    /* Render node handles (kept for removal in renderer_destroy) */
+    Qs_RenderNode *shadow_node;
+    Qs_RenderNode *forward_node;
+    Qs_RenderNode *bloom_node;
+    Qs_RenderNode *composite_node;
 
-    /* Per-frame light accumulation */
-    Qs_LightGPU       lights[QS_MAX_LIGHTS_PER_RENDERER];
-    uint32_t          light_count;
-
-    /* HDR off-screen color target (RGBA16F) */
-    Qs_GpuImage      *hdr_image;
-    Qs_GpuImageView  *hdr_view;
-
-    /* CSM shadow maps: QS_CSM_CASCADES depth images */
-    Qs_GpuImage      *shadow_images[QS_CSM_CASCADES];
-    Qs_GpuImageView  *shadow_views[QS_CSM_CASCADES];         /* depth attachment */
-    Qs_GpuImageView  *shadow_sample_views[QS_CSM_CASCADES]; /* shader sample   */
-
-    /* Bloom ping-pong (half-res RGBA16F) */
-    Qs_GpuImage      *bloom_images[2];
-    Qs_GpuImageView  *bloom_views[2];
-
-    /* Per-frame UBOs (HOST_VISIBLE, persistently mapped) */
-    Qs_GpuBuffer     *frame_ubo;   /* FrameUBO  */
-    Qs_GpuBuffer     *light_ubo;   /* LightUBO  */
-    Qs_GpuBuffer     *shadow_ubo;  /* ShadowUBO */
-
-    /* Descriptor pool + sets */
-    Qs_GpuDescriptorPool  *desc_pool;
-    Qs_GpuDescriptorSet   *frame_desc_set;      /* set=0: forward pass  */
-    Qs_GpuDescriptorSet   *composite_desc_set;  /* tonemap pass         */
-    Qs_GpuDescriptorSet   *bloom_desc_sets[2];  /* bloom ping-pong      */
-
-    /* CSM matrices (updated per frame from the shadow pass) */
-    float shadow_matrices[QS_CSM_CASCADES][16];
-    float shadow_splits[QS_CSM_CASCADES + 1];
-
-    /* Swapchain target set by on_render, used by the composite node */
-    Qs_GpuImageView  *swapchain_view;
-    uint32_t          swapchain_width;
-    uint32_t          swapchain_height;
+    bool ok; /* false until first renderer_on_resize completes */
 };
 
 typedef struct VkRenderer VkRenderer;
 
 /* ----------------------------------------------------------------
-   Shared pipeline resources (pipelines/samplers/layouts kept in
-   VkRenderSystemData and shared across all renderer instances).
+   Shared pipeline resources
+   Shared across all renderer instances for efficiency.  Pipelines,
+   pipeline layouts, descriptor set layouts, and samplers are
+   stateless once created and safe to reuse.
    ---------------------------------------------------------------- */
 typedef struct VkPassResources {
     /* Shadow depth-only pass (CSM) */
@@ -107,15 +78,15 @@ typedef struct VkPassResources {
     /* Forward lit pass */
     Qs_GpuPipeline            *forward_pipeline;
     Qs_GpuPipelineLayout      *forward_layout;
-    Qs_GpuDescriptorSetLayout *frame_set_layout;  /* set=0: UBOs + shadow samplers */
+    Qs_GpuDescriptorSetLayout *frame_set_layout;
 
-    /* Bloom (dual-pass: downsample / upsample) */
+    /* Bloom (downsample / upsample) */
     Qs_GpuPipeline            *bloom_down_pipeline;
     Qs_GpuPipeline            *bloom_up_pipeline;
     Qs_GpuPipelineLayout      *bloom_layout;
     Qs_GpuDescriptorSetLayout *bloom_set_layout;
 
-    /* Composite (tonemap + vignette → swapchain) */
+    /* Composite (ACES tonemap + vignette  swapchain) */
     Qs_GpuPipeline            *composite_pipeline;
     Qs_GpuPipelineLayout      *composite_layout;
     Qs_GpuDescriptorSetLayout *composite_set_layout;
@@ -123,35 +94,35 @@ typedef struct VkPassResources {
     /* Shared samplers */
     Qs_GpuSampler             *linear_sampler;
     Qs_GpuSampler             *point_sampler;
-    Qs_GpuSampler             *shadow_sampler;  /* compare (PCF) */
+    Qs_GpuSampler             *shadow_sampler; /* compare/PCF */
 
     bool ok;
 } VkPassResources;
 
 /* ----------------------------------------------------------------
-   Render-node management helpers.
-   Called directly from vk_forward.c to avoid routing through the
-   engine dispatch layer while the Qs_Renderer handle may not yet
-   exist (attach happens inside renderer_create).
+   vk_renderer.c helpers called from vk_forward.c
    ---------------------------------------------------------------- */
 
-Qs_RenderNode *vk_renderer_add_node_impl(VkRenderer *r,
-                                          const Qs_RenderNodeDesc *desc);
-
-void           vk_renderer_remove_node_impl(VkRenderer *r,
-                                             Qs_RenderNode *node);
-
-/* Retrieve the shared pass resources owned by the global render system. */
+/* Returns the shared pass resources owned by the global render system. */
 VkPassResources *vk_renderer_pass_resources(void);
 
-/* Returns the swapchain image view stored this frame (used by composite node). */
-Qs_GpuImageView *vk_renderer_swapchain_view(VkRenderer *r);
-uint32_t         vk_renderer_swapchain_width(VkRenderer *r);
-uint32_t         vk_renderer_swapchain_height(VkRenderer *r);
+/* ----------------------------------------------------------------
+   vk_forward.c entry points called from vk_renderer.c
+   ---------------------------------------------------------------- */
 
-/* Resize all forward-renderer offscreen images to (w, h).
-   Must be called from OUTSIDE a frame recording callback (e.g. on_resize)
-   because it calls vkDeviceWaitIdle to safely destroy old images first. */
-void vk_forward_resize(VkRenderer *r, uint32_t w, uint32_t h);
+/* Initialises the forward pass and adds render nodes.  Called from
+   renderer_create. */
+void vk_forward_attach(Qs_Engine *engine, VkRenderer *r, Qs_Renderer *handle);
+
+/* Tears down the forward pass.  Called from renderer_destroy. */
+void vk_forward_detach(VkRenderer *r);
+
+/* Called from renderer_on_resize after the engine has resized all
+   viewport-scaled attachments.  Re-writes descriptor sets. */
+void vk_forward_on_resize(VkRenderer *r, uint32_t w, uint32_t h);
+
+/* Destroys all shared pass resources (pipelines, layouts, samplers).
+   Called from vk_render_shutdown after all renderer instances are gone. */
+void vk_pass_resources_shutdown(Qs_GpuContext *gpu, VkPassResources *ps);
 
 #endif /* VK_RENDERER_INTERNAL_H */

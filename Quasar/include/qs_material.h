@@ -57,7 +57,7 @@ typedef struct Qs_MaterialDesc {
 } Qs_MaterialDesc;
 
 /* ================================================================
-   PBR PARAMS â€” GPU-ready parameter block
+   PBR PARAMS - GPU-ready parameter block
    ================================================================ */
 
 typedef struct Qs_PBRParams {
@@ -77,33 +77,6 @@ typedef struct Qs_PBRParams {
     uint32_t double_sided;
     uint32_t _pad[2];
 } Qs_PBRParams;
-
-/* ================================================================
-   MATERIAL BACKEND
-   ================================================================ */
-
-typedef struct Qs_MaterialBackend {
-    const char *name;
-
-    bool (*init)(Qs_GpuContext *gpu, void **out_ctx);
-    void (*shutdown)(void *ctx);
-
-    Qs_Material       *(*create)(void *ctx, Qs_Engine *engine,
-                                  const Qs_MaterialDesc *desc);
-    void               (*destroy)(void *ctx, Qs_Material *material);
-
-    /* Accessors */
-    const char                 *(*mat_name)(const Qs_Material *material);
-    Qs_GpuDescriptorSet        *(*descriptor_set)(const Qs_Material *material);
-    Qs_GpuDescriptorSetLayout  *(*set_layout)(void *ctx);
-    const Qs_PBRParams   *(*params)(const Qs_Material *material);
-    Qs_AlphaMode          (*alpha_mode)(const Qs_Material *material);
-    bool                  (*double_sided)(const Qs_Material *material);
-} Qs_MaterialBackend;
-
-/// Registers the material backend.  Must be called before the Material
-/// system initialises (i.e. in the pluginâ€™s on_load callback).
-void qs_material_backend_register(const Qs_MaterialBackend *backend);
 
 /* ================================================================
    PUBLIC MATERIAL API

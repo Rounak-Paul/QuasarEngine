@@ -1,22 +1,89 @@
 ﻿#include "qs_renderer.h"
+#include "qs_light.h"
 #include "qs_gpu.h"
+#include "qs_mesh.h"
+#include "qs_material.h"
 #include "qs_system.h"
 #include "qs_log.h"
 
 #include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
 
 /* ================================================================
-   ENGINE-OWNED RENDERER HANDLE
+   INTERNAL STRUCT DEFINITIONS
+   These are the full definitions of the opaque types declared in
+   qs_renderer.h.  Only qs_renderer.c needs to see them.
    ================================================================ */
 
-/* Full definition of the opaque Qs_Renderer.  The engine dispatch layer
-   owns handle allocation; the backend owns the impl allocation. */
+#define QS_MAX_RENDER_NODES  16
+#define QS_MAX_ATTACHMENTS   16
+#define QS_MAX_RENDERABLES   4096
+
+struct Qs_RenderNode {
+    char             name[64];
+    int32_t          priority;
+    Qs_RenderNodeFn  execute;
+    void            *user_data;
+    bool             active;
+};
+
+struct Qs_RenderAttachment {
+    char                     name[64];
+    Qs_GpuImageFormat        format;
+    Qs_RenderAttachmentUsage usage;
+    float                    width_scale;
+    float                    height_scale;
+    uint32_t                 fixed_width;
+    uint32_t                 fixed_height;
+    Qs_GpuImage             *image;
+    Qs_GpuImageView         *view;
+    bool                     in_use;
+};
+
 struct Qs_Renderer {
-    const Qs_RendererBackend *backend;  ///< Which backend created this renderer.
-    void                     *ctx;      ///< That backend's system-level context.
-    void                     *impl;     ///< Backend-internal renderer pointer.
+    char name[64];
+
+    const Qs_RendererBackend *backend;
+    void                     *ctx;
+    void                     *impl;
+
+    Qs_GpuContext *gpu;
+
+    /* Camera and display settings */
+    Qs_Camera camera;
+    float     clear_color[4];
+
+    /* Current framebuffer size */
+    uint32_t fb_width;
+    uint32_t fb_height;
+
+    /* Engine-managed depth attachment */
+    Qs_GpuImage    *depth;
+    Qs_GpuImageView *depth_view;
+    bool             depth_enabled;
+
+    /* Plugin-declared named attachments (engine creates / resizes / destroys) */
+    Qs_RenderAttachment attachments[QS_MAX_ATTACHMENTS];
+    uint32_t            attachment_count;
+
+    /* Priority-sorted render pass nodes */
+    Qs_RenderNode nodes[QS_MAX_RENDER_NODES];
+    uint32_t      node_count;
+
+    /* Per-frame renderable and light submission buffers */
+    Qs_Renderable renderables[QS_MAX_RENDERABLES];
+    uint32_t      renderable_count;
+    Qs_LightGPU   lights[QS_LIGHTS_MAX];
+    uint32_t      light_count;
+
+    /* Engine-managed per-frame uniform buffers */
+    Qs_GpuBuffer *frame_ubo;
+    Qs_GpuBuffer *lights_ubo;
+
+    /* Engine-managed default material (used when a renderable has none) */
+    Qs_Material  *default_material;
 };
 
 /* ================================================================
@@ -27,45 +94,37 @@ struct Qs_Renderer {
 
 typedef struct {
     const Qs_RendererBackend *backend;
-    void                     *ctx;       /* Non-NULL after successful init */
+    void                     *ctx;
 } BackendEntry;
 
 static BackendEntry  g_backends[QS_MAX_RENDERER_BACKENDS];
 static uint32_t      g_backend_count;
-static const char   *g_default_backend_name; /* NULL = first registered */
-static bool          g_system_running;       /* True while render system is up */
-static Qs_Engine    *g_engine_ref;           /* Kept for late-register hot-init */
+static const char   *g_default_backend_name;
+static bool          g_system_running;
+static Qs_Engine    *g_engine_ref;
 static Qs_GpuContext *g_gpu_ref;
+static float         g_render_dt;
 
-/* Returns the BackendEntry for the given name, or NULL.  NULL name returns
-   the default backend (first registered unless overridden). */
 static BackendEntry *find_backend(const char *name)
 {
     if (!name) name = g_default_backend_name;
-
     if (name) {
-        for (uint32_t i = 0; i < g_backend_count; i++) {
+        for (uint32_t i = 0; i < g_backend_count; i++)
             if (g_backends[i].backend &&
                 strcmp(g_backends[i].backend->name, name) == 0)
                 return &g_backends[i];
-        }
         return NULL;
     }
-
-    /* No explicit name and no default set: use the first available */
     return (g_backend_count > 0) ? &g_backends[0] : NULL;
 }
 
 void qs_renderer_backend_register(const Qs_RendererBackend *backend)
 {
     if (!backend) return;
-
     if (g_backend_count >= QS_MAX_RENDERER_BACKENDS) {
         QS_LOG_ERROR("Render backend registry full (max %d)", QS_MAX_RENDERER_BACKENDS);
         return;
     }
-
-    /* Ignore duplicates */
     for (uint32_t i = 0; i < g_backend_count; i++) {
         if (g_backends[i].backend &&
             strcmp(g_backends[i].backend->name, backend->name) == 0) {
@@ -73,42 +132,37 @@ void qs_renderer_backend_register(const Qs_RendererBackend *backend)
             return;
         }
     }
-
     g_backends[g_backend_count].backend = backend;
     g_backends[g_backend_count].ctx     = NULL;
 
-    /* If the render system is already running, initialize this backend now */
     if (g_system_running && g_engine_ref && g_gpu_ref) {
-        if (!backend->init(g_engine_ref, g_gpu_ref, &g_backends[g_backend_count].ctx)) {
-            QS_LOG_ERROR("Late-registered render backend '%s' init failed", backend->name);
+        if (!backend->init(g_engine_ref, g_gpu_ref,
+                           &g_backends[g_backend_count].ctx)) {
+            QS_LOG_ERROR("Late-registered render backend '%s' init failed",
+                         backend->name);
             g_backends[g_backend_count].backend = NULL;
             return;
         }
         QS_LOG_INFO("Render backend '%s' hot-registered", backend->name);
     }
-
-    /* First registered backend becomes the default unless one is already set */
     if (g_backend_count == 0 && !g_default_backend_name)
         g_default_backend_name = backend->name;
 
     g_backend_count++;
-    QS_LOG_INFO("Render backend '%s' registered (%u total)", backend->name, g_backend_count);
+    QS_LOG_INFO("Render backend '%s' registered (%u total)",
+                backend->name, g_backend_count);
 }
 
 void qs_renderer_backend_unregister(const char *name)
 {
     if (!name) return;
-
     for (uint32_t i = 0; i < g_backend_count; i++) {
         if (!g_backends[i].backend) continue;
         if (strcmp(g_backends[i].backend->name, name) != 0) continue;
 
-        if (g_system_running && g_backends[i].ctx) {
+        if (g_system_running && g_backends[i].ctx)
             g_backends[i].backend->shutdown(g_backends[i].ctx);
-            QS_LOG_INFO("Render backend '%s' shut down", name);
-        }
 
-        /* If this was the default, transfer default to the next entry */
         if (g_default_backend_name &&
             strcmp(g_default_backend_name, name) == 0) {
             g_default_backend_name = NULL;
@@ -119,8 +173,6 @@ void qs_renderer_backend_unregister(const char *name)
                 }
             }
         }
-
-        /* Compact the array */
         for (uint32_t j = i; j + 1 < g_backend_count; j++)
             g_backends[j] = g_backends[j + 1];
         g_backends[g_backend_count - 1].backend = NULL;
@@ -129,13 +181,266 @@ void qs_renderer_backend_unregister(const char *name)
         QS_LOG_INFO("Render backend '%s' unregistered", name);
         return;
     }
-
     QS_LOG_WARN("Render backend '%s' not found for unregister", name);
 }
 
 void qs_renderer_backend_set_default(const char *name)
 {
     g_default_backend_name = name;
+}
+
+/* ================================================================
+   INTERNAL MATH HELPERS
+   ================================================================ */
+
+static void mat4_identity(float m[16])
+{
+    memset(m, 0, 64);
+    m[0] = m[5] = m[10] = m[15] = 1.0f;
+}
+
+static void mat4_look_at(float out[16], const float eye[3],
+                          const float center[3], const float up[3])
+{
+    float fx = center[0]-eye[0], fy = center[1]-eye[1], fz = center[2]-eye[2];
+    float len = sqrtf(fx*fx+fy*fy+fz*fz);
+    if (len > 1e-6f) { fx/=len; fy/=len; fz/=len; }
+    float sx = fy*up[2]-fz*up[1], sy = fz*up[0]-fx*up[2], sz = fx*up[1]-fy*up[0];
+    len = sqrtf(sx*sx+sy*sy+sz*sz);
+    if (len > 1e-6f) { sx/=len; sy/=len; sz/=len; }
+    float ux = sy*fz-sz*fy, uy = sz*fx-sx*fz, uz = sx*fy-sy*fx;
+    memset(out, 0, 64);
+    out[0]=sx; out[4]=sy; out[8] =sz; out[12]=-(sx*eye[0]+sy*eye[1]+sz*eye[2]);
+    out[1]=ux; out[5]=uy; out[9] =uz; out[13]=-(ux*eye[0]+uy*eye[1]+uz*eye[2]);
+    out[2]=-fx;out[6]=-fy;out[10]=-fz;out[14]= (fx*eye[0]+fy*eye[1]+fz*eye[2]);
+    out[3]=0;  out[7]=0;  out[11]=0;  out[15]=1.0f;
+}
+
+static void mat4_perspective(float out[16], float fov_rad, float aspect,
+                              float near_p, float far_p)
+{
+    memset(out, 0, 64);
+    float t = tanf(fov_rad*0.5f);
+    out[0]  = 1.0f/(aspect*t);
+    out[5]  = -1.0f/t;
+    out[10] = -(far_p+near_p)/(far_p-near_p);
+    out[11] = -1.0f;
+    out[14] = -(2.0f*far_p*near_p)/(far_p-near_p);
+}
+
+static void mat4_ortho(float out[16], float half_h, float aspect,
+                        float near_p, float far_p)
+{
+    memset(out, 0, 64);
+    float half_w = half_h*aspect;
+    out[0]  =  1.0f/half_w;
+    out[5]  = -1.0f/half_h;
+    out[10] = -2.0f/(far_p-near_p);
+    out[14] = -(far_p+near_p)/(far_p-near_p);
+    out[15] =  1.0f;
+}
+
+static void compute_matrices(const Qs_Camera *cam, uint32_t w, uint32_t h,
+                              float view[16], float proj[16])
+{
+    mat4_look_at(view, cam->position, cam->target, cam->up);
+    float aspect = (h > 0) ? (float)w/(float)h : 1.0f;
+    if (cam->projection == QS_PROJECTION_ORTHOGRAPHIC) {
+        float hh = cam->ortho_size > 0.0f ? cam->ortho_size : 5.0f;
+        mat4_ortho(proj, hh, aspect,
+                   cam->near_plane!=0.0f?cam->near_plane:0.1f,
+                   cam->far_plane !=0.0f?cam->far_plane :100.0f);
+    } else {
+        float fov = cam->fov_deg > 0.0f ? cam->fov_deg : 60.0f;
+        mat4_perspective(proj, fov*3.14159265f/180.0f, aspect,
+                         cam->near_plane!=0.0f?cam->near_plane:0.1f,
+                         cam->far_plane !=0.0f?cam->far_plane :1000.0f);
+    }
+}
+
+static void camera_defaults(Qs_Camera *cam)
+{
+    if (cam->up[0]==0.0f && cam->up[1]==0.0f && cam->up[2]==0.0f)
+        cam->up[1] = 1.0f;
+    if (cam->position[0]==0.0f && cam->position[1]==0.0f && cam->position[2]==0.0f)
+        cam->position[2] = 5.0f;
+}
+
+static int node_compare(const void *a, const void *b)
+{
+    const Qs_RenderNode *na = a, *nb = b;
+    return (na->priority > nb->priority) - (na->priority < nb->priority);
+}
+
+/* ================================================================
+   ATTACHMENT RESOURCE HELPERS
+   ================================================================ */
+
+static void destroy_attachment_resource(Qs_Renderer *r, Qs_RenderAttachment *att)
+{
+    if (att->view)  { qs_gpu_destroy_image_view(r->gpu, att->view);  att->view  = NULL; }
+    if (att->image) { qs_gpu_destroy_image(r->gpu, att->image);      att->image = NULL; }
+}
+
+static bool create_attachment_resource(Qs_Renderer *r, Qs_RenderAttachment *att,
+                                        uint32_t w, uint32_t h)
+{
+    Qs_GpuImageUsage usage_flags = (att->usage == QS_ATTACHMENT_DEPTH)
+        ? (QS_GPU_IMAGE_DEPTH_ATTACHMENT | QS_GPU_IMAGE_SAMPLED)
+        : (QS_GPU_IMAGE_COLOR_ATTACHMENT | QS_GPU_IMAGE_SAMPLED);
+
+    att->image = qs_gpu_create_image(r->gpu, &(Qs_GpuImageDesc){
+        .width      = w,
+        .height     = h,
+        .mip_levels = 1,
+        .format     = att->format,
+        .usage      = usage_flags,
+    });
+    if (!att->image) return false;
+
+    Qs_GpuImageAspect aspect = (att->usage == QS_ATTACHMENT_DEPTH)
+        ? QS_GPU_IMAGE_ASPECT_DEPTH
+        : QS_GPU_IMAGE_ASPECT_COLOR;
+
+    att->view = qs_gpu_create_image_view_for(r->gpu, att->image, aspect);
+    if (!att->view) {
+        qs_gpu_destroy_image(r->gpu, att->image); att->image = NULL;
+        return false;
+    }
+
+    /* Initialise layout to SHADER_READ so the first per-frame barrier can
+       transition FROM it without a validation error. */
+    Qs_GpuCmd *cmd = qs_gpu_begin_transfer(r->gpu);
+    qs_cmd_image_barrier(cmd, &(Qs_GpuImageBarrier){
+        .image      = att->image,
+        .old_layout = QS_GPU_IMAGE_LAYOUT_UNDEFINED,
+        .new_layout = QS_GPU_IMAGE_LAYOUT_SHADER_READ,
+        .aspect     = aspect,
+        .base_mip   = 0,
+        .mip_count  = 1,
+    });
+    qs_gpu_end_transfer(r->gpu, cmd);
+    return true;
+}
+
+/* ================================================================
+   DEPTH ATTACHMENT HELPERS
+   ================================================================ */
+
+static void destroy_depth(Qs_Renderer *r)
+{
+    if (r->depth_view) { qs_gpu_destroy_image_view(r->gpu, r->depth_view); r->depth_view = NULL; }
+    if (r->depth)      { qs_gpu_destroy_image(r->gpu, r->depth);           r->depth      = NULL; }
+}
+
+static void recreate_depth(Qs_Renderer *r, uint32_t w, uint32_t h)
+{
+    destroy_depth(r);
+    if (w == 0 || h == 0) return;
+    r->depth = qs_gpu_create_image(r->gpu, &(Qs_GpuImageDesc){
+        .width=w, .height=h, .mip_levels=1,
+        .format=QS_GPU_FORMAT_DEPTH_AUTO,
+        .usage =QS_GPU_IMAGE_DEPTH_ATTACHMENT,
+    });
+    if (!r->depth) return;
+    r->depth_view = qs_gpu_create_image_view_for(r->gpu, r->depth,
+                                                  QS_GPU_IMAGE_ASPECT_DEPTH);
+    if (!r->depth_view) {
+        qs_gpu_destroy_image(r->gpu, r->depth); r->depth = NULL;
+    }
+}
+
+/* ================================================================
+   VIEWPORT CALLBACKS  (engine-registered, not plugin-registered)
+   ================================================================ */
+
+static void renderer_on_render(const Qs_GpuFrame *frame,
+                                Qs_Viewport *vp, void *user_data)
+{
+    (void)vp;
+    Qs_Renderer *r = user_data;
+    uint32_t w = frame->width, h = frame->height;
+    if (w == 0 || h == 0) return;
+
+    /* Compute view / projection matrices */
+    float view[16], proj[16];
+    compute_matrices(&r->camera, w, h, view, proj);
+
+    /* Write FrameUBO */
+    Qs_FrameUBO *fubo = qs_gpu_map_buffer(r->gpu, r->frame_ubo);
+    if (fubo) {
+        memcpy(fubo->view, view, 64);
+        memcpy(fubo->proj, proj, 64);
+        mat4_identity(fubo->inv_view_proj);
+        fubo->cam_pos[0]    = r->camera.position[0];
+        fubo->cam_pos[1]    = r->camera.position[1];
+        fubo->cam_pos[2]    = r->camera.position[2];
+        fubo->time          = g_render_dt;
+        fubo->screen_width  = (float)w;
+        fubo->screen_height = (float)h;
+        qs_gpu_unmap_buffer(r->gpu, r->frame_ubo);
+    }
+
+    /* Write LightsUBO */
+    Qs_LightsUBO *lubo = qs_gpu_map_buffer(r->gpu, r->lights_ubo);
+    if (lubo) {
+        lubo->count = r->light_count < QS_LIGHTS_MAX ? r->light_count:QS_LIGHTS_MAX;
+        memcpy(lubo->lights, r->lights, lubo->count * sizeof(Qs_LightGPU));
+        qs_gpu_unmap_buffer(r->gpu, r->lights_ubo);
+    }
+
+    /* Invoke render nodes */
+    Qs_RenderContext ctx = {
+        .renderer         = r,
+        .cmd              = frame->cmd,
+        .width            = w,
+        .height           = h,
+        .dt               = g_render_dt,
+        .renderables      = r->renderables,
+        .renderable_count = r->renderable_count,
+        .lights           = r->lights,
+        .light_count      = r->light_count,
+        .swapchain_view   = frame->color_target,
+        .swapchain_width  = w,
+        .swapchain_height = h,
+    };
+    memcpy(ctx.view, view, 64);
+    memcpy(ctx.proj, proj, 64);
+
+    for (uint32_t i = 0; i < r->node_count; i++) {
+        if (r->nodes[i].active && r->nodes[i].execute)
+            r->nodes[i].execute(&ctx, r->nodes[i].user_data);
+    }
+}
+
+static void renderer_on_resize(Qs_Viewport *vp, uint32_t w, uint32_t h,
+                                void *user_data)
+{
+    (void)vp;
+    Qs_Renderer *r = user_data;
+    r->fb_width  = w;
+    r->fb_height = h;
+    if (w == 0 || h == 0) return;
+
+    /* Recreate engine-managed depth buffer */
+    if (r->depth_enabled)
+        recreate_depth(r, w, h);
+
+    /* Recreate viewport-scaled attachments (fixed-size are skipped) */
+    for (uint32_t i = 0; i < r->attachment_count; i++) {
+        Qs_RenderAttachment *att = &r->attachments[i];
+        if (!att->in_use || att->fixed_width > 0) continue;
+        uint32_t aw = (uint32_t)(w * att->width_scale  + 0.5f);
+        uint32_t ah = (uint32_t)(h * att->height_scale + 0.5f);
+        if (aw < 1) aw = 1;
+        if (ah < 1) ah = 1;
+        destroy_attachment_resource(r, att);
+        create_attachment_resource(r, att, aw, ah);
+    }
+
+    /* Notify backend so it can re-write descriptor sets */
+    if (r->backend && r->backend->renderer_on_resize && r->impl)
+        r->backend->renderer_on_resize(r->ctx, r->impl, w, h);
 }
 
 /* ================================================================
@@ -149,7 +454,6 @@ static bool render_sys_init(Qs_System *sys, Qs_Engine *engine)
         QS_LOG_ERROR("Render system: no backends registered");
         return false;
     }
-
     Qs_GpuContext *gpu = qs_engine_gpu(engine);
     g_engine_ref = engine;
     g_gpu_ref    = gpu;
@@ -165,38 +469,32 @@ static bool render_sys_init(Qs_System *sys, Qs_Engine *engine)
         QS_LOG_INFO("Render backend '%s' initialised", g_backends[i].backend->name);
         any_ok = true;
     }
-
     if (!any_ok) {
         QS_LOG_ERROR("Render system: all backends failed to initialise");
         return false;
     }
-
     g_system_running = true;
     return true;
 }
 
 static void render_sys_shutdown(Qs_System *sys, Qs_Engine *engine)
 {
-    (void)sys;
-    (void)engine;
+    (void)sys; (void)engine;
     g_system_running = false;
-
     for (uint32_t i = 0; i < g_backend_count; i++) {
         if (g_backends[i].backend && g_backends[i].ctx) {
             g_backends[i].backend->shutdown(g_backends[i].ctx);
             g_backends[i].ctx = NULL;
-            QS_LOG_INFO("Render backend '%s' shut down", g_backends[i].backend->name);
         }
     }
-
     g_engine_ref = NULL;
     g_gpu_ref    = NULL;
 }
 
 static void render_sys_update(Qs_System *sys, Qs_Engine *engine, float dt)
 {
-    (void)sys;
-    (void)engine;
+    (void)sys; (void)engine;
+    g_render_dt = dt;
     for (uint32_t i = 0; i < g_backend_count; i++) {
         if (g_backends[i].backend && g_backends[i].ctx &&
             g_backends[i].backend->update)
@@ -204,7 +502,6 @@ static void render_sys_update(Qs_System *sys, Qs_Engine *engine, float dt)
     }
 }
 
-/* Internal — called from engine.c, not part of the public header. */
 Qs_SystemDesc qs_render_system_desc(void)
 {
     return (Qs_SystemDesc){
@@ -217,7 +514,7 @@ Qs_SystemDesc qs_render_system_desc(void)
 }
 
 /* ================================================================
-   PUBLIC API DISPATCHERS
+   PUBLIC API
    ================================================================ */
 
 Qs_Renderer *qs_renderer_create(Qs_Engine *engine, const Qs_RendererDesc *desc)
@@ -229,22 +526,65 @@ Qs_Renderer *qs_renderer_create(Qs_Engine *engine, const Qs_RendererDesc *desc)
         return NULL;
     }
 
-    void *impl = entry->backend->renderer_create(entry->ctx, engine, desc);
-    if (!impl) return NULL;
-
     Qs_Renderer *r = calloc(1, sizeof(Qs_Renderer));
-    if (!r) {
-        entry->backend->renderer_destroy(entry->ctx, impl);
+    if (!r) return NULL;
+
+    r->backend       = entry->backend;
+    r->ctx           = entry->ctx;
+    r->gpu           = g_gpu_ref;
+    r->depth_enabled = desc ? desc->depth_test : true;
+    if (desc) {
+        if (desc->name)
+            snprintf(r->name, sizeof(r->name), "%s", desc->name);
+        memcpy(r->clear_color, desc->clear_color, sizeof(r->clear_color));
+        r->camera = desc->camera;
+    }
+    camera_defaults(&r->camera);
+
+    /* Create engine-owned per-frame UBOs before calling renderer_create so the
+       backend can query them via qs_renderer_get_frame_ubo / get_lights_ubo. */
+    r->frame_ubo = qs_gpu_create_buffer(r->gpu, &(Qs_GpuBufferDesc){
+        .size=sizeof(Qs_FrameUBO), .usage=QS_GPU_BUFFER_UNIFORM,
+        .memory=QS_GPU_MEMORY_HOST_VISIBLE });
+    r->lights_ubo = qs_gpu_create_buffer(r->gpu, &(Qs_GpuBufferDesc){
+        .size=sizeof(Qs_LightsUBO), .usage=QS_GPU_BUFFER_UNIFORM,
+        .memory=QS_GPU_MEMORY_HOST_VISIBLE });
+    if (!r->frame_ubo || !r->lights_ubo) {
+        QS_LOG_ERROR("qs_renderer_create: UBO allocation failed");
+        if (r->frame_ubo)  qs_gpu_destroy_buffer(r->gpu, r->frame_ubo);
+        if (r->lights_ubo) qs_gpu_destroy_buffer(r->gpu, r->lights_ubo);
+        free(r);
         return NULL;
     }
 
-    r->backend = entry->backend;
-    r->ctx     = entry->ctx;
-    r->impl    = impl;
+    /* Call backend with the pre-populated handle.  The backend may call
+       qs_renderer_add_attachment() and qs_renderer_add_node() here. */
+    r->impl = entry->backend->renderer_create(entry->ctx, engine, desc, r);
+    if (!r->impl) {
+        /* Destroy any attachments the backend may have declared before failing */
+        for (uint32_t i = 0; i < r->attachment_count; i++)
+            destroy_attachment_resource(r, &r->attachments[i]);
+        qs_gpu_destroy_buffer(r->gpu, r->frame_ubo);
+        qs_gpu_destroy_buffer(r->gpu, r->lights_ubo);
+        free(r);
+        return NULL;
+    }
 
-    /* Give the backend a chance to store the engine handle back-reference */
-    if (entry->backend->renderer_post_create)
-        entry->backend->renderer_post_create(impl, r);
+    /* Create the engine-owned default material now that the backend (and thus
+       the material system) has been fully initialised. */
+    static const Qs_MaterialDesc s_fallback = {
+        .name                 = "_renderer_default",
+        .base_color_factor    = {0.8f, 0.8f, 0.8f, 1.0f},
+        .metallic_factor      = 0.0f,
+        .roughness_factor     = 0.8f,
+        .occlusion_strength   = 1.0f,
+        .normal_scale         = 1.0f,
+    };
+    const Qs_MaterialDesc *mat_desc = (desc && desc->default_material)
+                                      ? desc->default_material : &s_fallback;
+    r->default_material = qs_material_create(engine, mat_desc);
+    if (!r->default_material)
+        QS_LOG_WARN("qs_renderer_create: default material creation failed");
 
     return r;
 }
@@ -252,97 +592,221 @@ Qs_Renderer *qs_renderer_create(Qs_Engine *engine, const Qs_RendererDesc *desc)
 void qs_renderer_destroy(Qs_Renderer *renderer)
 {
     if (!renderer) return;
+    /* Backend cleanup first (frees descriptor sets that reference engine UBOs) */
     if (renderer->backend && renderer->backend->renderer_destroy)
         renderer->backend->renderer_destroy(renderer->ctx, renderer->impl);
+    /* Engine resource cleanup */
+    if (renderer->default_material) {
+        qs_material_destroy(renderer->default_material);
+        renderer->default_material = NULL;
+    }
+    destroy_depth(renderer);
+    for (uint32_t i = 0; i < renderer->attachment_count; i++)
+        destroy_attachment_resource(renderer, &renderer->attachments[i]);
+    if (renderer->frame_ubo)  qs_gpu_destroy_buffer(renderer->gpu, renderer->frame_ubo);
+    if (renderer->lights_ubo) qs_gpu_destroy_buffer(renderer->gpu, renderer->lights_ubo);
     free(renderer);
 }
 
 void qs_renderer_bind(Qs_Renderer *renderer, Qs_Viewport *viewport)
 {
-    if (!renderer || !viewport || !renderer->backend->renderer_bind) return;
-    renderer->backend->renderer_bind(renderer->ctx, renderer->impl, viewport);
+    if (!renderer || !viewport) return;
+    qs_viewport_set_callbacks(viewport, renderer_on_render, renderer,
+                               renderer_on_resize, renderer);
+    /* Trigger resize immediately for viewports that already have a size */
+    uint32_t w = qs_viewport_width(viewport);
+    uint32_t h = qs_viewport_height(viewport);
+    if (w > 0 && h > 0)
+        renderer_on_resize(viewport, w, h, renderer);
 }
 
-Qs_Camera *qs_renderer_camera(Qs_Renderer *renderer)
+Qs_Camera *qs_renderer_camera(Qs_Renderer *r)
 {
-    if (!renderer || !renderer->backend->renderer_camera) return NULL;
-    return renderer->backend->renderer_camera(renderer->impl);
+    return r ? &r->camera : NULL;
 }
 
-void qs_renderer_set_clear_color(Qs_Renderer *renderer, const float color[4])
+void qs_renderer_set_clear_color(Qs_Renderer *r, const float color[4])
 {
-    if (!renderer || !renderer->backend->renderer_set_clear_color) return;
-    renderer->backend->renderer_set_clear_color(renderer->impl, color);
+    if (r && color) memcpy(r->clear_color, color, 16);
 }
 
-Qs_RenderNode *qs_renderer_add_node(Qs_Renderer *renderer, const Qs_RenderNodeDesc *desc)
+const float *qs_renderer_clear_color(const Qs_Renderer *r)
 {
-    if (!renderer || !desc || !renderer->backend->renderer_add_node) return NULL;
-    return renderer->backend->renderer_add_node(renderer->impl, desc);
+    return r ? r->clear_color : NULL;
 }
 
-void qs_renderer_remove_node(Qs_Renderer *renderer, Qs_RenderNode *node)
+const char *qs_renderer_name(const Qs_Renderer *r)
 {
-    if (!renderer || !node || !renderer->backend->renderer_remove_node) return;
-    renderer->backend->renderer_remove_node(renderer->impl, node);
+    return r ? r->name : NULL;
 }
 
-const char *qs_renderer_name(const Qs_Renderer *renderer)
+void qs_renderer_extents(const Qs_Renderer *r, uint32_t *out_w, uint32_t *out_h)
 {
-    if (!renderer || !renderer->backend->renderer_name) return NULL;
-    return renderer->backend->renderer_name(renderer->impl);
+    if (out_w) *out_w = r ? r->fb_width  : 0;
+    if (out_h) *out_h = r ? r->fb_height : 0;
 }
 
-void qs_renderer_extents(const Qs_Renderer *renderer,
-                          uint32_t *out_width, uint32_t *out_height)
+Qs_RenderNode *qs_renderer_add_node(Qs_Renderer *r, const Qs_RenderNodeDesc *desc)
 {
-    if (out_width)  *out_width  = 0;
-    if (out_height) *out_height = 0;
-    if (!renderer || !renderer->backend->renderer_extents) return;
-    renderer->backend->renderer_extents(renderer->impl, out_width, out_height);
+    if (!r || !desc || !desc->execute) return NULL;
+    if (r->node_count >= QS_MAX_RENDER_NODES) {
+        QS_LOG_WARN("qs_renderer_add_node: node limit reached on '%s'", r->name);
+        return NULL;
+    }
+    Qs_RenderNode *node = &r->nodes[r->node_count++];
+    memset(node, 0, sizeof(*node));
+    node->active    = true;
+    node->priority  = desc->priority;
+    node->execute   = desc->execute;
+    node->user_data = desc->user_data;
+    if (desc->name) snprintf(node->name, sizeof(node->name), "%s", desc->name);
+    qsort(r->nodes, r->node_count, sizeof(Qs_RenderNode), node_compare);
+    return node;
 }
 
-void qs_renderer_submit_light(Qs_Renderer *renderer, Qs_Light *light)
+void qs_renderer_remove_node(Qs_Renderer *r, Qs_RenderNode *node)
 {
-    if (!renderer || !light || !renderer->backend->submit_light) return;
-    renderer->backend->submit_light(renderer->impl, light);
-}
-
-void qs_renderer_clear_lights(Qs_Renderer *renderer)
-{
-    if (!renderer || !renderer->backend->clear_lights) return;
-    renderer->backend->clear_lights(renderer->impl);
-}
-
-const Qs_LightGPU *qs_renderer_lights(const Qs_Renderer *renderer, uint32_t *out_count)
-{
-    if (out_count) *out_count = 0;
-    if (!renderer || !renderer->backend->get_lights) return NULL;
-    return renderer->backend->get_lights(renderer->impl, out_count);
+    if (!r || !node) return;
+    for (uint32_t i = 0; i < r->node_count; i++) {
+        if (&r->nodes[i] == node) {
+            memmove(&r->nodes[i], &r->nodes[i+1],
+                    (r->node_count-i-1)*sizeof(Qs_RenderNode));
+            r->node_count--;
+            return;
+        }
+    }
 }
 
 /* ================================================================
-   RENDERABLE SUBMISSION DISPATCHERS
+   RENDER ATTACHMENT API
    ================================================================ */
 
-void qs_renderer_submit_renderable(Qs_Renderer *renderer, const Qs_Renderable *renderable)
+Qs_RenderAttachment *qs_renderer_add_attachment(Qs_Renderer *r,
+                                                  const Qs_RenderAttachmentDesc *desc)
 {
-    if (!renderer || !renderable || !renderer->backend->submit_renderable) return;
-    renderer->backend->submit_renderable(renderer->impl, renderable);
+    if (!r || !desc) return NULL;
+    if (r->attachment_count >= QS_MAX_ATTACHMENTS) {
+        QS_LOG_ERROR("qs_renderer_add_attachment: attachment limit reached");
+        return NULL;
+    }
+    Qs_RenderAttachment *att = &r->attachments[r->attachment_count++];
+    memset(att, 0, sizeof(*att));
+    att->in_use       = true;
+    att->format       = desc->format;
+    att->usage        = desc->usage;
+    att->width_scale  = desc->width_scale;
+    att->height_scale = desc->height_scale;
+    att->fixed_width  = desc->fixed_width;
+    att->fixed_height = desc->fixed_height;
+    if (desc->name) snprintf(att->name, sizeof(att->name), "%s", desc->name);
+
+    uint32_t w, h;
+    if (desc->fixed_width > 0 && desc->fixed_height > 0) {
+        /* Fixed-size: create immediately */
+        w = desc->fixed_width;
+        h = desc->fixed_height;
+    } else {
+        /* Viewport-scaled: create 1x1 placeholder; will be resized on first bind */
+        w = 1; h = 1;
+    }
+    if (!create_attachment_resource(r, att, w, h)) {
+        QS_LOG_ERROR("qs_renderer_add_attachment: failed to create '%s'",
+                     att->name);
+        att->in_use = false;
+        r->attachment_count--;
+        return NULL;
+    }
+    return att;
 }
 
-void qs_renderer_clear_renderables(Qs_Renderer *renderer)
+Qs_GpuImageView *qs_attachment_view(const Qs_RenderAttachment *att)
 {
-    if (!renderer || !renderer->backend->clear_renderables) return;
-    renderer->backend->clear_renderables(renderer->impl);
+    return att ? att->view : NULL;
 }
 
-const Qs_Renderable *qs_renderer_renderables(const Qs_Renderer *renderer, uint32_t *out_count)
+Qs_GpuImage *qs_attachment_image(const Qs_RenderAttachment *att)
 {
-    if (out_count) *out_count = 0;
-    if (!renderer || !renderer->backend->get_renderables) return NULL;
-    return renderer->backend->get_renderables(renderer->impl, out_count);
+    return att ? att->image : NULL;
 }
 
+Qs_GpuImageView *qs_renderer_depth_view(const Qs_Renderer *r)
+{
+    return (r && r->depth_enabled) ? r->depth_view : NULL;
+}
 
+Qs_GpuBuffer *qs_renderer_get_frame_ubo(const Qs_Renderer *r)
+{
+    return r ? r->frame_ubo : NULL;
+}
 
+Qs_GpuBuffer *qs_renderer_get_lights_ubo(const Qs_Renderer *r)
+{
+    return r ? r->lights_ubo : NULL;
+}
+
+/* ================================================================
+   RENDERABLE / LIGHT SUBMISSION
+   ================================================================ */
+
+void qs_renderer_submit_renderable(Qs_Renderer *r, const Qs_RenderableDesc *desc)
+{
+    if (!r || !desc || !desc->mesh) return;
+    if (r->renderable_count >= QS_MAX_RENDERABLES) return;
+
+    /* Resolve material: use desc->material if provided, else renderer default */
+    Qs_Material *mat = desc->material ? desc->material : r->default_material;
+
+    Qs_Renderable *ren = &r->renderables[r->renderable_count++];
+
+    /* Extract mesh GPU data */
+    ren->vertex_buffer = qs_mesh_vertex_buffer(desc->mesh);
+    ren->index_buffer  = qs_mesh_index_buffer(desc->mesh);
+    ren->vertex_count  = qs_mesh_vertex_count(desc->mesh);
+    ren->index_count   = qs_mesh_index_count(desc->mesh);
+    ren->index_16bit   = (qs_mesh_index_type(desc->mesh) == QS_INDEX_TYPE_UINT16);
+
+    /* Extract material GPU data */
+    ren->material_set  = mat ? qs_material_descriptor_set(mat) : NULL;
+    ren->alpha_mode    = mat ? qs_material_alpha_mode(mat)      : QS_ALPHA_MODE_OPAQUE;
+    ren->double_sided  = mat ? qs_material_double_sided(mat)    : false;
+    if (mat) {
+        const Qs_PBRParams *p = qs_material_params(mat);
+        if (p) ren->material_params = *p;
+    }
+
+    /* Transform and culling */
+    memcpy(ren->transform, desc->transform, 64);
+    ren->bounds          = desc->bounds;
+    ren->cast_shadows    = desc->cast_shadows;
+    ren->receive_shadows = desc->receive_shadows;
+}
+
+void qs_renderer_clear_renderables(Qs_Renderer *r)
+{
+    if (r) r->renderable_count = 0;
+}
+
+const Qs_Renderable *qs_renderer_renderables(const Qs_Renderer *r, uint32_t *out_count)
+{
+    if (out_count) *out_count = r ? r->renderable_count : 0;
+    return (r && r->renderable_count > 0) ? r->renderables : NULL;
+}
+
+void qs_renderer_submit_light(Qs_Renderer *r, Qs_Light *light)
+{
+    if (!r || !light) return;
+    if (!qs_light_is_active(light)) return;
+    if (r->light_count < QS_LIGHTS_MAX)
+        qs_light_pack_gpu(light, &r->lights[r->light_count++]);
+}
+
+void qs_renderer_clear_lights(Qs_Renderer *r)
+{
+    if (r) r->light_count = 0;
+}
+
+const Qs_LightGPU *qs_renderer_lights(const Qs_Renderer *r, uint32_t *out_count)
+{
+    if (out_count) *out_count = r ? r->light_count : 0;
+    return (r && r->light_count > 0) ? r->lights : NULL;
+}
