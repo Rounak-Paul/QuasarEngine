@@ -12,58 +12,14 @@ void vk_forward_detach(VkRenderer *renderer);
 #include <string.h>
 #include <math.h>
 
-#define QS_MAX_RENDERERS           32
-#define QS_MAX_RENDER_NODES        16
-#define QS_MAX_LIGHTS_PER_RENDERER 128
-
-/* ================================================================
-   CONCRETE TYPES   (plugin-internal)
-   ================================================================ */
-
-struct Qs_RenderNode {
-    char              name[64];
-    int32_t           priority;
-    Qs_RenderNodeFn   execute;
-    void             *user_data;
-    bool              active;
-};
-
-/* Plugin-internal renderer struct.  The engine wraps this in an
-   engine-owned Qs_Renderer handle; the back-reference is set via
-   vk_renderer_post_create so render callbacks can populate
-   Qs_RenderContext.renderer correctly. */
-struct VkRenderer {
-    Qs_Renderer      *handle;    /* engine-owned wrapper (set post-create) */
-
-    char              name[64];
-    bool              in_use;
-
-    Qs_GpuContext    *gpu;
-    Qs_GpuImage      *depth;
-    Qs_GpuImageView  *depth_view;
-    bool              depth_enabled;
-
-    float             clear_color[4];
-    uint32_t          fb_width;
-    uint32_t          fb_height;
-
-    Qs_Camera         camera;
-
-    Qs_RenderNode     nodes[QS_MAX_RENDER_NODES];
-    uint32_t          node_count;
-
-    float             dt;
-
-    /* Per-frame light accumulation */
-    Qs_LightGPU       lights[QS_MAX_LIGHTS_PER_RENDERER];
-    uint32_t          light_count;
-};
+/* VkRenderer struct and constants defined in vk_renderer_internal.h */
 
 typedef struct {
     Qs_GpuContext    *gpu;
     VkRenderer        renderers[QS_MAX_RENDERERS];
     uint32_t          count;
     float             dt;
+    VkPassResources   passes;  /* shared pipelines/samplers/layouts */
 } VkRenderSystemData;
 
 static VkRenderSystemData *g_render_system;
@@ -196,17 +152,10 @@ static void on_render(const Qs_GpuFrame *frame, Qs_Viewport *vp, void *user_data
         recreate_depth(r, w, h);
     if (!r->depth_enabled) { r->fb_width = w; r->fb_height = h; }
 
-    Qs_GpuRenderTarget target = {
-        .color       = frame->color_target,
-        .depth       = (r->depth_enabled && r->depth_view) ? r->depth_view : NULL,
-        .clear_color = { r->clear_color[0], r->clear_color[1],
-                         r->clear_color[2], r->clear_color[3] },
-        .clear_depth = 1.0f,
-        .width       = w,
-        .height      = h,
-    };
-    qs_cmd_begin_rendering(frame->cmd, &target);
-    qs_cmd_set_viewport(frame->cmd, w, h);
+    /* Store swapchain target for the composite node to use */
+    r->swapchain_view   = frame->color_target;
+    r->swapchain_width  = w;
+    r->swapchain_height = h;
 
     Qs_RenderContext ctx = {
         .renderer = r->handle,
@@ -217,21 +166,29 @@ static void on_render(const Qs_GpuFrame *frame, Qs_Viewport *vp, void *user_data
     };
     compute_matrices(&r->camera, w, h, ctx.view, ctx.proj);
 
+    /* Each node manages its own qs_cmd_begin_rendering / qs_cmd_end_rendering scope.
+       The composite node (priority=300) renders into the swapchain image. */
     for (uint32_t i = 0; i < r->node_count; i++) {
         if (r->nodes[i].active && r->nodes[i].execute)
             r->nodes[i].execute(&ctx, r->nodes[i].user_data);
     }
-
-    qs_cmd_end_rendering(frame->cmd);
 }
 
 static void on_resize(Qs_Viewport *vp, uint32_t w, uint32_t h, void *user_data)
 {
     (void)vp;
     VkRenderer *r = user_data;
-    if (r->depth_enabled && w > 0 && h > 0)
-        recreate_depth(r, w, h);
-    else { r->fb_width = w; r->fb_height = h; }
+    if (w > 0 && h > 0) {
+        if (r->depth_enabled)
+            recreate_depth(r, w, h);
+        else { r->fb_width = w; r->fb_height = h; }
+        /* Resize the forward-renderer offscreen images (HDR, bloom, shadows).
+           Safe here: on_resize fires outside the frame-recording callback so
+           vkDeviceWaitIdle (called inside fwd_destroy_offscreen) cannot deadlock. */
+        vk_forward_resize(r, w, h);
+    } else {
+        r->fb_width = w; r->fb_height = h;
+    }
 }
 
 /* ================================================================
@@ -344,6 +301,14 @@ static void vk_renderer_bind(void *ctx, void *impl, Qs_Viewport *viewport)
     VkRenderer *renderer = impl;
     if (!renderer || !viewport) return;
     qs_viewport_set_callbacks(viewport, on_render, renderer, on_resize, renderer);
+
+    /* Trigger an initial resize if the viewport already has a non-zero size.
+       Guarantees vk_forward_resize is called before the first on_render, even if
+       Causality does not fire on_resize for the initial static layout size. */
+    uint32_t w = qs_viewport_width(viewport);
+    uint32_t h = qs_viewport_height(viewport);
+    if (w > 0 && h > 0)
+        on_resize(viewport, w, h, renderer);
 }
 
 /* post_create: called by the engine dispatch layer once it has wrapped
@@ -454,6 +419,48 @@ static const Qs_LightGPU *vk_get_lights(const void *impl, uint32_t *out_count)
 }
 
 /* ================================================================
+   RENDERABLE SUBMISSION
+   ================================================================ */
+
+static void vk_submit_renderable(void *impl, const Qs_Renderable *renderable)
+{
+    VkRenderer *r = impl;
+    if (!r || !renderable) return;
+    if (r->renderable_count < QS_MAX_RENDERABLES)
+        r->renderables[r->renderable_count++] = *renderable;
+}
+
+static void vk_clear_renderables(void *impl)
+{
+    VkRenderer *r = impl;
+    if (r) r->renderable_count = 0;
+}
+
+static const Qs_Renderable *vk_get_renderables(const void *impl, uint32_t *out_count)
+{
+    const VkRenderer *r = impl;
+    if (!r || r->renderable_count == 0) {
+        if (out_count) *out_count = 0;
+        return NULL;
+    }
+    if (out_count) *out_count = r->renderable_count;
+    return r->renderables;
+}
+
+/* ================================================================
+   PASS RESOURCES ACCESSOR
+   ================================================================ */
+
+VkPassResources *vk_renderer_pass_resources(void)
+{
+    return g_render_system ? &g_render_system->passes : NULL;
+}
+
+Qs_GpuImageView *vk_renderer_swapchain_view(VkRenderer *r)   { return r ? r->swapchain_view   : NULL; }
+uint32_t         vk_renderer_swapchain_width(VkRenderer *r)  { return r ? r->swapchain_width  : 0;    }
+uint32_t         vk_renderer_swapchain_height(VkRenderer *r) { return r ? r->swapchain_height : 0;    }
+
+/* ================================================================
    BACKEND STRUCT
    ================================================================ */
 
@@ -475,5 +482,8 @@ const Qs_RendererBackend vk_renderer_backend = {
     .submit_light             = vk_submit_light,
     .clear_lights             = vk_clear_lights,
     .get_lights               = vk_get_lights,
+    .submit_renderable        = vk_submit_renderable,
+    .clear_renderables        = vk_clear_renderables,
+    .get_renderables          = vk_get_renderables,
 };
 

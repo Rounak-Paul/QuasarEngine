@@ -321,5 +321,28 @@ const Qs_LightGPU *qs_renderer_lights(const Qs_Renderer *renderer, uint32_t *out
     return renderer->backend->get_lights(renderer->impl, out_count);
 }
 
+/* ================================================================
+   RENDERABLE SUBMISSION DISPATCHERS
+   ================================================================ */
+
+void qs_renderer_submit_renderable(Qs_Renderer *renderer, const Qs_Renderable *renderable)
+{
+    if (!renderer || !renderable || !renderer->backend->submit_renderable) return;
+    renderer->backend->submit_renderable(renderer->impl, renderable);
+}
+
+void qs_renderer_clear_renderables(Qs_Renderer *renderer)
+{
+    if (!renderer || !renderer->backend->clear_renderables) return;
+    renderer->backend->clear_renderables(renderer->impl);
+}
+
+const Qs_Renderable *qs_renderer_renderables(const Qs_Renderer *renderer, uint32_t *out_count)
+{
+    if (out_count) *out_count = 0;
+    if (!renderer || !renderer->backend->get_renderables) return NULL;
+    return renderer->backend->get_renderables(renderer->impl, out_count);
+}
+
 
 

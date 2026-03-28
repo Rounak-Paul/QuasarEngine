@@ -89,6 +89,7 @@ static VkFormat gpu_format_to_vk(Qs_GpuImageFormat fmt)
         /* Caller should resolve DEPTH_AUTO before calling this */
         return VK_FORMAT_D32_SFLOAT;
     }
+    case QS_GPU_FORMAT_NONE: return VK_FORMAT_UNDEFINED;
     default: return VK_FORMAT_R8G8B8A8_UNORM;
     }
 }
@@ -926,6 +927,26 @@ void qs_gpu_write_image_descriptor(Qs_GpuContext *gpu, Qs_GpuDescriptorSet *set,
     vkUpdateDescriptorSets(ca_gpu_device(to_ca(gpu)), 1, &write, 0, NULL);
 }
 
+void qs_gpu_write_buffer_descriptor(Qs_GpuContext *gpu, Qs_GpuDescriptorSet *set,
+                                     uint32_t binding, Qs_GpuBuffer *buffer,
+                                     uint64_t offset, uint64_t range)
+{
+    VkDescriptorBufferInfo buf_info = {
+        .buffer = buffer->buffer,
+        .offset = (VkDeviceSize)offset,
+        .range  = (VkDeviceSize)(range == 0 ? buffer->size : range),
+    };
+    VkWriteDescriptorSet write = {
+        .sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+        .dstSet          = set->set,
+        .dstBinding      = binding,
+        .descriptorCount = 1,
+        .descriptorType  = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+        .pBufferInfo     = &buf_info,
+    };
+    vkUpdateDescriptorSets(ca_gpu_device(to_ca(gpu)), 1, &write, 0, NULL);
+}
+
 /* ================================================================
    PIPELINE IMPLEMENTATION
    ================================================================ */
@@ -1094,21 +1115,25 @@ Qs_GpuPipeline *qs_gpu_create_graphics_pipeline(Qs_GpuContext *gpu,
         .colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
                           VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT,
     };
-    VkPipelineColorBlendStateCreateInfo color_blend = {
-        .sType           = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
-        .attachmentCount = 1,
-        .pAttachments    = &blend_att,
-    };
 
     VkFormat color_vk = gpu_format_to_vk(desc->color_format);
     VkFormat depth_vk = (desc->depth_format == QS_GPU_FORMAT_DEPTH_AUTO)
         ? (desc->depth_test ? pick_depth_format(pd) : VK_FORMAT_UNDEFINED)
         : gpu_format_to_vk(desc->depth_format);
 
+    bool has_color = (desc->color_format != QS_GPU_FORMAT_NONE) &&
+                     (color_vk != VK_FORMAT_UNDEFINED);
+
+    VkPipelineColorBlendStateCreateInfo color_blend = {
+        .sType           = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
+        .attachmentCount = has_color ? 1 : 0,
+        .pAttachments    = has_color ? &blend_att : NULL,
+    };
+
     VkPipelineRenderingCreateInfo rendering_ci = {
         .sType                   = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO,
-        .colorAttachmentCount    = 1,
-        .pColorAttachmentFormats = &color_vk,
+        .colorAttachmentCount    = has_color ? 1 : 0,
+        .pColorAttachmentFormats = has_color ? &color_vk : NULL,
         .depthAttachmentFormat   = depth_vk,
     };
 
@@ -1173,7 +1198,7 @@ void qs_cmd_begin_rendering(Qs_GpuCmd *cmd, const Qs_GpuRenderTarget *target)
 {
     VkRenderingAttachmentInfo color_att = {
         .sType       = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
-        .imageView   = target->color->view,
+        .imageView   = target->color ? target->color->view : VK_NULL_HANDLE,
         .imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
         .loadOp      = VK_ATTACHMENT_LOAD_OP_CLEAR,
         .storeOp     = VK_ATTACHMENT_STORE_OP_STORE,
@@ -1187,15 +1212,15 @@ void qs_cmd_begin_rendering(Qs_GpuCmd *cmd, const Qs_GpuRenderTarget *target)
         .imageView   = target->depth ? target->depth->view : VK_NULL_HANDLE,
         .imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
         .loadOp      = VK_ATTACHMENT_LOAD_OP_CLEAR,
-        .storeOp     = VK_ATTACHMENT_STORE_OP_DONT_CARE,
+        .storeOp     = VK_ATTACHMENT_STORE_OP_STORE,
         .clearValue  = { .depthStencil = { target->clear_depth, 0 } },
     };
     VkRenderingInfo ri = {
         .sType                = VK_STRUCTURE_TYPE_RENDERING_INFO,
         .renderArea           = { .offset = {0, 0}, .extent = { target->width, target->height } },
         .layerCount           = 1,
-        .colorAttachmentCount = 1,
-        .pColorAttachments    = &color_att,
+        .colorAttachmentCount = target->color ? 1 : 0,
+        .pColorAttachments    = target->color ? &color_att : NULL,
         .pDepthAttachment     = target->depth ? &depth_att : NULL,
     };
     vkCmdBeginRendering(cmd->cmd, &ri);

@@ -48,6 +48,7 @@ typedef enum Qs_GpuImageFormat {
     QS_GPU_FORMAT_D32_SFLOAT_S8  = 7,
     QS_GPU_FORMAT_D24_UNORM_S8   = 8,
     QS_GPU_FORMAT_DEPTH_AUTO     = 9,  ///< Engine selects best available depth format
+    QS_GPU_FORMAT_NONE           = 10, ///< No color attachment (depth-only pass)
 } Qs_GpuImageFormat;
 
 typedef enum {
@@ -356,6 +357,11 @@ void qs_gpu_free_descriptor_set(Qs_GpuContext *gpu, Qs_GpuDescriptorPool *pool,
 void qs_gpu_write_image_descriptor(Qs_GpuContext *gpu, Qs_GpuDescriptorSet *set,
                                     uint32_t binding,
                                     Qs_GpuSampler *sampler, Qs_GpuImageView *view);
+
+/// Writes a uniform buffer binding into a descriptor set.
+void qs_gpu_write_buffer_descriptor(Qs_GpuContext *gpu, Qs_GpuDescriptorSet *set,
+                                     uint32_t binding, Qs_GpuBuffer *buffer,
+                                     uint64_t offset, uint64_t range);
 
 /* ================================================================
    PIPELINE API

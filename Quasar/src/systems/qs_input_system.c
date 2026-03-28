@@ -5,8 +5,15 @@
 #include <string.h>
 
 typedef struct {
-    bool current[QS_KEY_MAX];
-    bool previous[QS_KEY_MAX];
+    bool  current[QS_KEY_MAX];
+    bool  previous[QS_KEY_MAX];
+
+    /* Mouse state */
+    bool  mouse_current[QS_MOUSE_BUTTON_COUNT];
+    bool  mouse_previous[QS_MOUSE_BUTTON_COUNT];
+    float mouse_x,      mouse_y;        /* current position */
+    float mouse_prev_x, mouse_prev_y;   /* saved at frame start */
+    float scroll_dx,    scroll_dy;      /* accumulated, cleared each frame */
 } Qs_InputState;
 
 static Qs_InputState *g_input = NULL;
@@ -15,8 +22,13 @@ static bool input_system_init(Qs_System *system, Qs_Engine *engine)
 {
     (void)engine;
     g_input = (Qs_InputState *)qs_system_data(system);
-    memset(g_input->current,  0, sizeof(g_input->current));
-    memset(g_input->previous, 0, sizeof(g_input->previous));
+    memset(g_input->current,        0, sizeof(g_input->current));
+    memset(g_input->previous,       0, sizeof(g_input->previous));
+    memset(g_input->mouse_current,  0, sizeof(g_input->mouse_current));
+    memset(g_input->mouse_previous, 0, sizeof(g_input->mouse_previous));
+    g_input->mouse_x = g_input->mouse_y = 0.0f;
+    g_input->mouse_prev_x = g_input->mouse_prev_y = 0.0f;
+    g_input->scroll_dx = g_input->scroll_dy = 0.0f;
     return true;
 }
 
@@ -33,7 +45,12 @@ static void input_system_update(Qs_System *system, Qs_Engine *engine, float dt)
     (void)engine;
     (void)dt;
     if (!g_input) return;
-    memcpy(g_input->previous, g_input->current, sizeof(g_input->current));
+    memcpy(g_input->previous,       g_input->current,       sizeof(g_input->current));
+    memcpy(g_input->mouse_previous, g_input->mouse_current, sizeof(g_input->mouse_current));
+    g_input->mouse_prev_x = g_input->mouse_x;
+    g_input->mouse_prev_y = g_input->mouse_y;
+    g_input->scroll_dx    = 0.0f;
+    g_input->scroll_dy    = 0.0f;
 }
 
 Qs_SystemDesc qs_input_system_desc(void)
@@ -89,6 +106,66 @@ bool qs_input_key_released(Qs_Key key)
 {
     if (!g_input || key < 0 || key >= QS_KEY_MAX) return false;
     return !g_input->current[key] && g_input->previous[key];
+}
+
+/* ================================================================
+   MOUSE IMPLEMENTATION
+   ================================================================ */
+
+void qs_input_mouse_button_event(Qs_MouseButton button, int action)
+{
+    if (!g_input || button < 0 || (int)button >= QS_MOUSE_BUTTON_COUNT) return;
+    g_input->mouse_current[button] = (action != 0);
+}
+
+void qs_input_mouse_pos_event(double x, double y)
+{
+    if (!g_input) return;
+    g_input->mouse_x = (float)x;
+    g_input->mouse_y = (float)y;
+}
+
+void qs_input_mouse_scroll_event(double dx, double dy)
+{
+    if (!g_input) return;
+    g_input->scroll_dx += (float)dx;
+    g_input->scroll_dy += (float)dy;
+}
+
+bool qs_input_mouse_down(Qs_MouseButton button)
+{
+    if (!g_input || button < 0 || (int)button >= QS_MOUSE_BUTTON_COUNT) return false;
+    return g_input->mouse_current[button];
+}
+
+bool qs_input_mouse_pressed(Qs_MouseButton button)
+{
+    if (!g_input || button < 0 || (int)button >= QS_MOUSE_BUTTON_COUNT) return false;
+    return g_input->mouse_current[button] && !g_input->mouse_previous[button];
+}
+
+bool qs_input_mouse_released(Qs_MouseButton button)
+{
+    if (!g_input || button < 0 || (int)button >= QS_MOUSE_BUTTON_COUNT) return false;
+    return !g_input->mouse_current[button] && g_input->mouse_previous[button];
+}
+
+void qs_input_mouse_pos(float *out_x, float *out_y)
+{
+    if (out_x) *out_x = g_input ? g_input->mouse_x : 0.0f;
+    if (out_y) *out_y = g_input ? g_input->mouse_y : 0.0f;
+}
+
+void qs_input_mouse_delta(float *out_dx, float *out_dy)
+{
+    if (out_dx) *out_dx = g_input ? (g_input->mouse_x - g_input->mouse_prev_x) : 0.0f;
+    if (out_dy) *out_dy = g_input ? (g_input->mouse_y - g_input->mouse_prev_y) : 0.0f;
+}
+
+void qs_input_mouse_scroll(float *out_dx, float *out_dy)
+{
+    if (out_dx) *out_dx = g_input ? g_input->scroll_dx : 0.0f;
+    if (out_dy) *out_dy = g_input ? g_input->scroll_dy : 0.0f;
 }
 
 const char *qs_key_name(Qs_Key key)

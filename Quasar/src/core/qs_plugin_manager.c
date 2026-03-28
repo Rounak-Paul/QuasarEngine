@@ -167,7 +167,10 @@ static void save_state(Qs_PluginManager *pm)
 
     for (uint32_t i = 0; i < pm->count; i++) {
         Qs_PluginState *s = &pm->entries[i];
-        if (s->id[0] == '\0') continue;
+        /* Skip entries with no id, and skip path-less placeholder entries
+           created by load_state — they are superseded by the real DLL entry
+           once it is discovered on disk (which sets both id and path). */
+        if (s->id[0] == '\0' || s->path[0] == '\0') continue;
         cJSON *obj = cJSON_CreateObject();
         cJSON_AddStringToObject(obj, "id", s->id);
         cJSON_AddBoolToObject(obj, "enabled", s->enabled);

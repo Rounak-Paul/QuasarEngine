@@ -101,4 +101,43 @@ bool qs_input_key_released(Qs_Key key);
 /// Returns the human-readable name for a key code.
 const char *qs_key_name(Qs_Key key);
 
+/* ================================================================
+   MOUSE INPUT
+   ================================================================ */
+
+/// Mouse button identifiers.
+typedef enum Qs_MouseButton {
+    QS_MOUSE_LEFT   = 0,
+    QS_MOUSE_RIGHT  = 1,
+    QS_MOUSE_MIDDLE = 2,
+    QS_MOUSE_BUTTON_COUNT = 8,
+} Qs_MouseButton;
+
+/// Feed a mouse button event into the input system.  Called by the platform layer.
+void qs_input_mouse_button_event(Qs_MouseButton button, int action);
+
+/// Feed a cursor position event into the input system.  Called by the platform layer.
+void qs_input_mouse_pos_event(double x, double y);
+
+/// Feed a scroll event into the input system.  Called by the platform layer.
+void qs_input_mouse_scroll_event(double dx, double dy);
+
+/// Returns true while the button is held down.
+bool qs_input_mouse_down(Qs_MouseButton button);
+
+/// Returns true on the first frame the button was pressed.
+bool qs_input_mouse_pressed(Qs_MouseButton button);
+
+/// Returns true on the frame the button was released.
+bool qs_input_mouse_released(Qs_MouseButton button);
+
+/// Fills *out_x/*out_y with the current cursor position.
+void qs_input_mouse_pos(float *out_x, float *out_y);
+
+/// Fills *out_dx/*out_dy with cursor movement since the previous frame.
+void qs_input_mouse_delta(float *out_dx, float *out_dy);
+
+/// Fills *out_dx/*out_dy with accumulated scroll since the previous frame (auto-cleared).
+void qs_input_mouse_scroll(float *out_dx, float *out_dy);
+
 #endif

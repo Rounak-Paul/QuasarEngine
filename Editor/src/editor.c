@@ -1,4 +1,5 @@
 #include "editor.h"
+#include "ed_camera.h"
 #include "ui/ed_menu_bar.h"
 #include "ui/ed_toolbar.h"
 #include "ui/ed_layout.h"
@@ -18,6 +19,7 @@ struct Editor {
     Qs_Renderer   *scene_renderer;
     Ca_Viewport   *scene_viewport;
     Qs_Entity      selected_entity;
+    EditorCamera   cam;
 };
 
 /* ---- Editor CSS theme (Quasar Dark) ---- */
@@ -522,6 +524,25 @@ static void editor_build_ui(Editor *ed)
     ca_ui_end();
 }
 
+static void on_mouse_button(const Ca_Event *event, void *userdata)
+{
+    (void)userdata;
+    qs_input_mouse_button_event((Qs_MouseButton)event->mouse_button.button,
+                                event->mouse_button.action);
+}
+
+static void on_mouse_move(const Ca_Event *event, void *userdata)
+{
+    (void)userdata;
+    qs_input_mouse_pos_event(event->mouse_pos.x, event->mouse_pos.y);
+}
+
+static void on_mouse_scroll(const Ca_Event *event, void *userdata)
+{
+    (void)userdata;
+    qs_input_mouse_scroll_event(event->mouse_scroll.dx, event->mouse_scroll.dy);
+}
+
 static void on_key_event(const Ca_Event *event, void *userdata)
 {
     (void)userdata;
@@ -530,12 +551,72 @@ static void on_key_event(const Ca_Event *event, void *userdata)
                        event->key.mods);
 }
 
+/* Builds a column-major 4x4 TRS model matrix from a Qs_Transform. */
+static void trs_to_matrix(const Qs_Transform *t, float m[16])
+{
+    if (!t) {
+        for (int i = 0; i < 16; i++) m[i] = 0.0f;
+        m[0] = m[5] = m[10] = m[15] = 1.0f;
+        return;
+    }
+    float qx = t->rotation[0], qy = t->rotation[1];
+    float qz = t->rotation[2], qw = t->rotation[3];
+    float sx = t->scale[0],    sy = t->scale[1],    sz = t->scale[2];
+    float px = t->position[0], py = t->position[1], pz = t->position[2];
+    float xx = qx*qx, yy = qy*qy, zz = qz*qz;
+    float xy = qx*qy, xz = qx*qz, yz = qy*qz;
+    float wx = qw*qx, wy = qw*qy, wz = qw*qz;
+    m[ 0] = (1.0f - 2.0f*(yy+zz)) * sx;  m[ 1] = (2.0f*(xy+wz)) * sx;
+    m[ 2] = (2.0f*(xz-wy)) * sx;         m[ 3] = 0.0f;
+    m[ 4] = (2.0f*(xy-wz)) * sy;         m[ 5] = (1.0f - 2.0f*(xx+zz)) * sy;
+    m[ 6] = (2.0f*(yz+wx)) * sy;         m[ 7] = 0.0f;
+    m[ 8] = (2.0f*(xz+wy)) * sz;         m[ 9] = (2.0f*(yz-wx)) * sz;
+    m[10] = (1.0f - 2.0f*(xx+yy)) * sz;  m[11] = 0.0f;
+    m[12] = px; m[13] = py; m[14] = pz;  m[15] = 1.0f;
+}
+
 static void on_frame(Qs_Engine *engine, void *userdata)
 {
     (void)engine;
     Editor *ed = userdata;
     if (ed->scene_viewport)
         ca_viewport_request_redraw(ed->scene_viewport);
+    ed_camera_update(&ed->cam, ed->scene_renderer, qs_engine_dt(ed->engine));
+
+    /* Submit scene renderables and lights for this frame */
+    Qs_Scene *scene = qs_scene_active();
+    if (scene && ed->scene_renderer) {
+        qs_renderer_clear_renderables(ed->scene_renderer);
+        qs_renderer_clear_lights(ed->scene_renderer);
+
+        for (Qs_Entity e = qs_scene_first(scene, qs_mesh_comp_type());
+             e != QS_ENTITY_INVALID;
+             e = qs_scene_next(scene, qs_mesh_comp_type(), e))
+        {
+            Qs_MeshComp  *mc = qs_entity_get(scene, e, qs_mesh_comp_type());
+            if (!mc || !mc->visible || !mc->mesh || !mc->material) continue;
+            Qs_Transform *tr = qs_entity_get(scene, e, qs_transform_type());
+            Qs_Renderable r;
+            r.mesh            = mc->mesh;
+            r.material        = mc->material;
+            r.cast_shadows    = true;
+            r.receive_shadows = true;
+            r.bounds.min[0] = r.bounds.min[1] = r.bounds.min[2] = -100.0f;
+            r.bounds.max[0] = r.bounds.max[1] = r.bounds.max[2] =  100.0f;
+            trs_to_matrix(tr, r.transform);
+            qs_renderer_submit_renderable(ed->scene_renderer, &r);
+        }
+
+        for (Qs_Entity e = qs_scene_first(scene, qs_light_comp_type());
+             e != QS_ENTITY_INVALID;
+             e = qs_scene_next(scene, qs_light_comp_type(), e))
+        {
+            Qs_LightComp *lc = qs_entity_get(scene, e, qs_light_comp_type());
+            if (!lc || !lc->light) continue;
+            qs_renderer_submit_light(ed->scene_renderer, lc->light);
+        }
+    }
+
     ed_console_update(ed);
     ed_inspector_update(ed);
     ed_file_browser_update();
@@ -710,6 +791,28 @@ static bool editor_load_scene(Editor *ed, const char *path)
                                          mc->material_name);
     }
 
+    /* Add a default directional sun light if the scene has no lights */
+    if (qs_scene_first(scene, qs_light_comp_type()) == QS_ENTITY_INVALID) {
+        Qs_LightDesc sun_desc;
+        sun_desc.name           = "Sun";
+        sun_desc.type           = QS_LIGHT_DIRECTIONAL;
+        sun_desc.position[0]    = 0.0f;  sun_desc.position[1] = 0.0f;  sun_desc.position[2] = 0.0f;
+        sun_desc.direction[0]   = -0.577f;
+        sun_desc.direction[1]   = -0.577f;
+        sun_desc.direction[2]   = -0.577f;
+        sun_desc.color[0]       = 1.0f;
+        sun_desc.color[1]       = 0.95f;
+        sun_desc.color[2]       = 0.9f;
+        sun_desc.intensity      = 3.0f;
+        sun_desc.range          = 0.0f;
+        sun_desc.inner_cone_deg = 0.0f;
+        sun_desc.outer_cone_deg = 0.0f;
+        sun_desc.cast_shadows   = true;
+        Qs_Entity sun = qs_entity_create(scene, "Sun");
+        Qs_LightComp *lc = qs_entity_add(scene, sun, qs_light_comp_type());
+        if (lc) lc->light = qs_light_create(ed->engine, &sun_desc);
+    }
+
     cJSON_Delete(root);
     QS_LOG_INFO("Scene loaded: %s", path);
     return true;
@@ -782,9 +885,13 @@ Editor *editor_create(const EditorDesc *desc)
 
     ed_file_browser_init(ca_window_instance(qs_engine_window(ed->engine)));
 
-    qs_engine_set_event_handler(ed->engine, CA_EVENT_KEY, on_key_event, ed);
+    qs_engine_set_event_handler(ed->engine, CA_EVENT_KEY,          on_key_event,    ed);
+    qs_engine_set_event_handler(ed->engine, CA_EVENT_MOUSE_BUTTON, on_mouse_button, ed);
+    qs_engine_set_event_handler(ed->engine, CA_EVENT_MOUSE_MOVE,   on_mouse_move,   ed);
+    qs_engine_set_event_handler(ed->engine, CA_EVENT_MOUSE_SCROLL, on_mouse_scroll, ed);
     qs_engine_set_on_frame(ed->engine, on_frame, ed);
     qs_log_set_listener(on_log, ed);
+    ed_camera_init(&ed->cam);
 
     return ed;
 }

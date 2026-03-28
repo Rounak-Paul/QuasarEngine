@@ -11,6 +11,9 @@ typedef struct Qs_Renderer      Qs_Renderer;    ///< Opaque — defined by the r
 typedef struct Qs_RenderNode    Qs_RenderNode;  ///< Opaque — defined by the renderer backend.
 typedef struct Qs_Light         Qs_Light;
 typedef struct Qs_LightGPU      Qs_LightGPU;    ///< Full definition in qs_light.h.
+typedef struct Qs_Mesh          Qs_Mesh;
+typedef struct Qs_Material      Qs_Material;
+typedef struct Qs_Renderable    Qs_Renderable;
 
 /* ================================================================
    CAMERA
@@ -135,6 +138,12 @@ typedef struct Qs_RendererBackend {
     void              (*submit_light)(void *impl, Qs_Light *light);
     void              (*clear_lights)(void *impl);
     const Qs_LightGPU *(*get_lights)(const void *impl, uint32_t *out_count);
+
+    /* --- Per-frame renderable submission ------------------------- */
+
+    void                  (*submit_renderable)(void *impl, const Qs_Renderable *renderable);
+    void                  (*clear_renderables)(void *impl);
+    const Qs_Renderable   *(*get_renderables)(const void *impl, uint32_t *out_count);
 } Qs_RendererBackend;
 
 /// Registers a renderer backend.  Multiple backends may be registered
@@ -177,6 +186,42 @@ Qs_RenderNode *qs_renderer_add_node(Qs_Renderer *renderer,
 
 /// Removes a render pass node from the pipeline.
 void qs_renderer_remove_node(Qs_Renderer *renderer, Qs_RenderNode *node);
+
+/* ================================================================
+   RENDERABLE SUBMISSION
+   Scene iterates scene entities, performs frustum/BVH culling, then
+   submits visible Qs_Renderable objects each frame.  The renderer is
+   scene-agnostic — it only consumes what is submitted.
+   ================================================================ */
+
+/// World-space axis-aligned bounding box (scene-side computed, fed into renderer).
+typedef struct Qs_AABB {
+    float min[3];
+    float max[3];
+} Qs_AABB;
+
+/// One visible geometry submission.
+typedef struct Qs_Renderable {
+    Qs_Mesh     *mesh;
+    Qs_Material *material;
+    float        transform[16]; ///< Column-major model matrix (world space).
+    Qs_AABB      bounds;        ///< World-space AABB (for per-frame culling by backend).
+    bool         cast_shadows;
+    bool         receive_shadows;
+} Qs_Renderable;
+
+/// Submits one renderable for this frame.
+void qs_renderer_submit_renderable(Qs_Renderer *renderer, const Qs_Renderable *renderable);
+
+/// Clears all submitted renderables (call at the start of each frame).
+void qs_renderer_clear_renderables(Qs_Renderer *renderer);
+
+/// Returns a pointer to the current renderable array and its count.
+const Qs_Renderable *qs_renderer_renderables(const Qs_Renderer *renderer, uint32_t *out_count);
+
+/* ================================================================
+   NAME / EXTENTS ACCESSORS
+   ================================================================ */
 
 /// Returns the renderer's debug name.
 const char *qs_renderer_name(const Qs_Renderer *renderer);
