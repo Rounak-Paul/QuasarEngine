@@ -1,13 +1,12 @@
 ﻿#ifndef QS_MATERIAL_H
 #define QS_MATERIAL_H
 
-#include <vulkan/vulkan.h>
+#include "qs_gpu.h"
 #include <stdbool.h>
 #include <stdint.h>
 
 typedef struct Qs_Engine     Qs_Engine;
-typedef struct Ca_Instance   Ca_Instance;
-typedef struct Qs_Material   Qs_Material;  ///< Opaque â€” defined by the material backend.
+typedef struct Qs_Material   Qs_Material;  ///< Opaque — defined by the material backend.
 typedef struct Qs_Texture    Qs_Texture;
 
 /* ================================================================
@@ -86,7 +85,7 @@ typedef struct Qs_PBRParams {
 typedef struct Qs_MaterialBackend {
     const char *name;
 
-    bool (*init)(Ca_Instance *ca, void **out_ctx);
+    bool (*init)(Qs_GpuContext *gpu, void **out_ctx);
     void (*shutdown)(void *ctx);
 
     Qs_Material       *(*create)(void *ctx, Qs_Engine *engine,
@@ -94,9 +93,9 @@ typedef struct Qs_MaterialBackend {
     void               (*destroy)(void *ctx, Qs_Material *material);
 
     /* Accessors */
-    const char           *(*mat_name)(const Qs_Material *material);
-    VkDescriptorSet       (*descriptor_set)(const Qs_Material *material);
-    VkDescriptorSetLayout (*set_layout)(void *ctx);
+    const char                 *(*mat_name)(const Qs_Material *material);
+    Qs_GpuDescriptorSet        *(*descriptor_set)(const Qs_Material *material);
+    Qs_GpuDescriptorSetLayout  *(*set_layout)(void *ctx);
     const Qs_PBRParams   *(*params)(const Qs_Material *material);
     Qs_AlphaMode          (*alpha_mode)(const Qs_Material *material);
     bool                  (*double_sided)(const Qs_Material *material);
@@ -122,10 +121,10 @@ const char *qs_material_name(const Qs_Material *material);
 /// Returns the descriptor set containing all PBR texture bindings.
 /// Layout: binding 0 = base_color, 1 = metallic_roughness, 2 = normal,
 ///         3 = occlusion, 4 = emissive.
-VkDescriptorSet qs_material_descriptor_set(const Qs_Material *material);
+Qs_GpuDescriptorSet *qs_material_descriptor_set(const Qs_Material *material);
 
 /// Returns the descriptor set layout shared by all materials.
-VkDescriptorSetLayout qs_material_set_layout(void);
+Qs_GpuDescriptorSetLayout *qs_material_set_layout(void);
 
 /// Returns the materialâ€™s PBR parameters for GPU upload.
 const Qs_PBRParams *qs_material_params(const Qs_Material *material);

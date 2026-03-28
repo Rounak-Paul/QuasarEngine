@@ -5,7 +5,6 @@
 #include <stdbool.h>
 
 typedef struct Qs_Engine        Qs_Engine;
-typedef struct Ca_Window        Ca_Window;
 typedef struct Qs_PluginManager Qs_PluginManager;
 typedef struct Qs_PluginState   Qs_PluginState;
 
@@ -63,11 +62,11 @@ typedef struct Qs_PluginDesc {
 
     /// Called each editor frame to draw per-plugin inspector UI.
     /// Only called when an editor window is present.  May be NULL.
-    void (*on_inspector_gui)(Qs_Engine *engine, Ca_Window *win);
+    void (*on_inspector_gui)(Qs_Engine *engine);
 
     /// Called each editor frame to draw items inside the Plugins menu.
     /// May be NULL.
-    void (*on_menu_gui)(Qs_Engine *engine, Ca_Window *win);
+    void (*on_menu_gui)(Qs_Engine *engine);
 } Qs_PluginDesc;
 
 /// Entry point function type.  Every plugin library must export a function

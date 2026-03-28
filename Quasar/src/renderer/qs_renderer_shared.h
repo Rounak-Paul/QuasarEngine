@@ -6,8 +6,8 @@
 
 #include "qs_renderer.h"
 
-/* Set by qs_renderer.c during render system init; used by the forward
-   dispatcher (qs_forward.c) without adding a public API dependency. */
+/* Set by qs_renderer.c during render system init; accessible to other
+   renderer dispatchers without adding a public API dependency. */
 extern const Qs_RendererBackend *g_renderer_backend;
 extern void                     *g_render_ctx;
 

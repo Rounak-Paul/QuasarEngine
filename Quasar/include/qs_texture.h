@@ -1,13 +1,12 @@
 ﻿#ifndef QS_TEXTURE_H
 #define QS_TEXTURE_H
 
-#include <vulkan/vulkan.h>
+#include "qs_gpu.h"
 #include <stdbool.h>
 #include <stdint.h>
 
 typedef struct Qs_Engine       Qs_Engine;
-typedef struct Ca_Instance     Ca_Instance;
-typedef struct Qs_Texture      Qs_Texture;     ///< Opaque â€” defined by the texture backend.
+typedef struct Qs_Texture      Qs_Texture;     ///< Opaque — defined by the texture backend.
 
 /* ================================================================
    TEXTURE FORMAT
@@ -62,7 +61,7 @@ typedef struct Qs_TextureBackend {
 
     /// Set up descriptor pools and default textures.  VkDevice is obtained
     /// via Ca_Instance (the render system will already be initialised).
-    bool (*init)(Ca_Instance *ca, void **out_ctx);
+    bool (*init)(Qs_GpuContext *gpu, void **out_ctx);
 
     /// Destroy all textures and release ctx.
     void (*shutdown)(void *ctx);
@@ -74,9 +73,9 @@ typedef struct Qs_TextureBackend {
     void        (*destroy)(void *ctx, Qs_Texture *texture);
 
     /* Accessors */
-    const char  *(*tex_name)(const Qs_Texture *texture);
-    VkImageView  (*image_view)(const Qs_Texture *texture);
-    VkSampler    (*sampler)(const Qs_Texture *texture);
+    const char       *(*tex_name)(const Qs_Texture *texture);
+    Qs_GpuImageView  *(*image_view)(const Qs_Texture *texture);
+    Qs_GpuSampler    *(*sampler)(const Qs_Texture *texture);
     void         (*extents)(const Qs_Texture *texture,
                             uint32_t *out_w, uint32_t *out_h);
     uint32_t     (*mip_levels)(const Qs_Texture *texture);
@@ -99,11 +98,11 @@ void qs_texture_destroy(Qs_Texture *texture);
 /// Returns the debug name.
 const char *qs_texture_name(const Qs_Texture *texture);
 
-/// Returns the VkImageView for shader binding.
-VkImageView qs_texture_image_view(const Qs_Texture *texture);
+/// Returns the image view for shader binding.
+Qs_GpuImageView *qs_texture_image_view(const Qs_Texture *texture);
 
-/// Returns the VkSampler for shader binding.
-VkSampler qs_texture_sampler(const Qs_Texture *texture);
+/// Returns the sampler for shader binding.
+Qs_GpuSampler *qs_texture_sampler(const Qs_Texture *texture);
 
 /// Returns the texture dimensions.
 void qs_texture_extents(const Qs_Texture *texture,

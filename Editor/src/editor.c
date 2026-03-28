@@ -757,7 +757,7 @@ Editor *editor_create(const EditorDesc *desc)
 
     ed->scene_renderer = qs_renderer_create(ed->engine, &(Qs_RendererDesc){
         .name        = "scene",
-        .clear_color = {{ 0.0f, 0.0f, 0.0f, 1.0f }},
+        .clear_color = { 0.0f, 0.0f, 0.0f, 1.0f },
         .depth_test  = true,
     });
 
@@ -770,9 +770,6 @@ Editor *editor_create(const EditorDesc *desc)
     cam->target[1]   =  0.5f;
     cam->target[2]   =  0.0f;
 
-    /* Initialize forward rendering pipeline */
-    qs_forward_init(ed->engine, ed->scene_renderer);
-
     /* ---- Load scene from project ---- */
     if (ed->project) {
         char scene_path[512];
@@ -783,7 +780,7 @@ Editor *editor_create(const EditorDesc *desc)
 
     editor_build_ui(ed);
 
-    ed_file_browser_init(qs_engine_ca_instance(ed->engine));
+    ed_file_browser_init(ca_window_instance(qs_engine_window(ed->engine)));
 
     qs_engine_set_event_handler(ed->engine, CA_EVENT_KEY, on_key_event, ed);
     qs_engine_set_on_frame(ed->engine, on_frame, ed);
@@ -831,7 +828,6 @@ void editor_set_selected_entity(Editor *ed, Qs_Entity entity)
 void editor_destroy(Editor *ed)
 {
     if (!ed) return;
-    qs_forward_shutdown();
     qs_engine_destroy(ed->engine);
     qs_project_destroy(ed->project);
     free(ed);

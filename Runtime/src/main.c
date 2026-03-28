@@ -23,7 +23,7 @@ int main(void)
 
     Qs_Renderer *renderer = qs_renderer_create(engine, &(Qs_RendererDesc){
         .name        = "main",
-        .clear_color = {{ 0.05f, 0.05f, 0.10f, 1.0f }},
+        .clear_color = { 0.05f, 0.05f, 0.10f, 1.0f },
         .depth_test  = true,
     });
 
@@ -31,7 +31,7 @@ int main(void)
         .direction = CA_VERTICAL,
     });
     s_vp = ca_viewport(&(Ca_ViewportDesc){ 0 });
-    qs_renderer_bind(renderer, s_vp);
+    qs_renderer_bind(renderer, (Qs_Viewport *)s_vp);
     ca_ui_end();
 
     qs_engine_set_on_frame(engine, on_frame, NULL);

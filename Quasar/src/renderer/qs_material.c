@@ -1,4 +1,5 @@
 ﻿#include "qs_material.h"
+#include "qs_gpu.h"
 #include "qs_system.h"
 #include "qs_log.h"
 
@@ -14,9 +15,6 @@ void qs_material_backend_register(const Qs_MaterialBackend *backend)
 
 typedef struct { void *ctx; } Qs_MaterialSystemState;
 
-typedef struct Ca_Instance Ca_Instance;
-Ca_Instance *qs_engine_ca_instance(Qs_Engine *engine);
-
 static bool material_sys_init(Qs_System *sys, Qs_Engine *engine)
 {
     Qs_MaterialSystemState *state = (Qs_MaterialSystemState *)qs_system_data(sys);
@@ -24,8 +22,8 @@ static bool material_sys_init(Qs_System *sys, Qs_Engine *engine)
         QS_LOG_ERROR("Material system: no backend registered");
         return false;
     }
-    Ca_Instance *ca = qs_engine_ca_instance(engine);
-    if (!g_material_backend->init(ca, &state->ctx)) {
+    Qs_GpuContext *gpu = qs_engine_gpu(engine);
+    if (!g_material_backend->init(gpu, &state->ctx)) {
         QS_LOG_ERROR("Material backend '%s' init failed", g_material_backend->name);
         return false;
     }
@@ -73,15 +71,15 @@ const char *qs_material_name(const Qs_Material *material)
     return g_material_backend->mat_name(material);
 }
 
-VkDescriptorSet qs_material_descriptor_set(const Qs_Material *material)
+Qs_GpuDescriptorSet *qs_material_descriptor_set(const Qs_Material *material)
 {
-    if (!material || !g_material_backend || !g_material_backend->descriptor_set) return VK_NULL_HANDLE;
+    if (!material || !g_material_backend || !g_material_backend->descriptor_set) return NULL;
     return g_material_backend->descriptor_set(material);
 }
 
-VkDescriptorSetLayout qs_material_set_layout(void)
+Qs_GpuDescriptorSetLayout *qs_material_set_layout(void)
 {
-    if (!g_material_backend || !g_material_backend->set_layout) return VK_NULL_HANDLE;
+    if (!g_material_backend || !g_material_backend->set_layout) return NULL;
     return g_material_backend->set_layout(g_material_ctx);
 }
 

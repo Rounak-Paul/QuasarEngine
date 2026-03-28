@@ -51,6 +51,7 @@ target_precompile_headers(Quasar PRIVATE src/qs_pch.h)
 target_include_directories(Quasar
     PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/vendors/causality/causality/include
         ${CMAKE_CURRENT_SOURCE_DIR}/vendors/cgltf
         ${CMAKE_CURRENT_SOURCE_DIR}/vendors/stb
     PRIVATE
@@ -60,6 +61,8 @@ target_include_directories(Quasar
 
 target_link_libraries(Quasar
     PUBLIC
+        Vulkan::Vulkan
+    PRIVATE
         causality
         OpenAL::OpenAL
         meshoptimizer

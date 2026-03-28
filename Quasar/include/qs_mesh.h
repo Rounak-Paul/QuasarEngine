@@ -1,13 +1,12 @@
 ﻿#ifndef QS_MESH_H
 #define QS_MESH_H
 
-#include <vulkan/vulkan.h>
+#include "qs_gpu.h"
 #include <stdbool.h>
 #include <stdint.h>
 
 typedef struct Qs_Engine     Qs_Engine;
-typedef struct Ca_Instance   Ca_Instance;
-typedef struct Qs_Mesh       Qs_Mesh;   ///< Opaque â€” defined by the mesh backend.
+typedef struct Qs_Mesh       Qs_Mesh;   ///< Opaque — defined by the mesh backend.
 
 /* ================================================================
    VERTEX FORMAT â€” PBR-ready interleaved vertex
@@ -48,7 +47,7 @@ typedef struct Qs_MeshDesc {
 typedef struct Qs_MeshBackend {
     const char *name;
 
-    bool        (*init)(Ca_Instance *ca, void **out_ctx);
+    bool        (*init)(Qs_GpuContext *gpu, void **out_ctx);
     void        (*shutdown)(void *ctx);
 
     Qs_Mesh    *(*create)(void *ctx, Qs_Engine *engine, const Qs_MeshDesc *desc);
@@ -56,13 +55,10 @@ typedef struct Qs_MeshBackend {
 
     /* Accessors */
     const char  *(*mesh_name)(const Qs_Mesh *mesh);
-    VkBuffer     (*vertex_buffer)(const Qs_Mesh *mesh);
-    VkBuffer     (*index_buffer)(const Qs_Mesh *mesh);
     uint32_t     (*vertex_count)(const Qs_Mesh *mesh);
     uint32_t     (*index_count)(const Qs_Mesh *mesh);
-    VkIndexType  (*vk_index_type)(const Qs_Mesh *mesh);
-    void         (*bind)(const Qs_Mesh *mesh, VkCommandBuffer cmd);
-    void         (*draw)(const Qs_Mesh *mesh, VkCommandBuffer cmd);
+    void         (*bind)(const Qs_Mesh *mesh, Qs_GpuCmd *cmd);
+    void         (*draw)(const Qs_Mesh *mesh, Qs_GpuCmd *cmd);
 } Qs_MeshBackend;
 
 /// Registers the mesh backend.  Must be called before the Mesh
@@ -82,25 +78,16 @@ void qs_mesh_destroy(Qs_Mesh *mesh);
 /// Returns the debug name.
 const char *qs_mesh_name(const Qs_Mesh *mesh);
 
-/// Returns the vertex buffer handle.
-VkBuffer qs_mesh_vertex_buffer(const Qs_Mesh *mesh);
-
-/// Returns the index buffer handle (VK_NULL_HANDLE if non-indexed).
-VkBuffer qs_mesh_index_buffer(const Qs_Mesh *mesh);
-
 /// Returns the number of vertices.
 uint32_t qs_mesh_vertex_count(const Qs_Mesh *mesh);
 
 /// Returns the number of indices (0 if non-indexed).
 uint32_t qs_mesh_index_count(const Qs_Mesh *mesh);
 
-/// Returns the Vulkan index type.
-VkIndexType qs_mesh_vk_index_type(const Qs_Mesh *mesh);
-
 /// Binds vertex and index buffers to a command buffer.
-void qs_mesh_bind(const Qs_Mesh *mesh, VkCommandBuffer cmd);
+void qs_mesh_bind(const Qs_Mesh *mesh, Qs_GpuCmd *cmd);
 
 /// Binds and issues the draw call.
-void qs_mesh_draw(const Qs_Mesh *mesh, VkCommandBuffer cmd);
+void qs_mesh_draw(const Qs_Mesh *mesh, Qs_GpuCmd *cmd);
 
 #endif

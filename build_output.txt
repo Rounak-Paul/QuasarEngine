@@ -1,0 +1,27 @@
+﻿**********************************************************************
+** Visual Studio 2026 Developer Command Prompt v18.3.2
+** Copyright (c) 2026 Microsoft Corporation
+**********************************************************************
+[vcvarsall.bat] Environment initialized for: 'x64'
+[0/2] Re-checking globbed directories...
+[1/22] Building C object Quasar\CMakeFiles\Quasar.dir\src\renderer\qs_renderer.c.obj
+[2/22] Building C object plugins\BuiltinRendererPBR\CMakeFiles\BuiltinRendererPBR.dir\src\vk_forward.c.obj
+[3/22] Building C object plugins\BuiltinRendererPBR\CMakeFiles\BuiltinRendererPBR.dir\src\plugin_main.c.obj
+[4/22] Building C object Quasar\CMakeFiles\Quasar.dir\src\renderer\qs_forward.c.obj
+[5/22] Building C object plugins\BuiltinRendererPBR\CMakeFiles\BuiltinRendererPBR.dir\src\vk_renderer.c.obj
+[6/22] Building C object Editor\CMakeFiles\QuasarEditor.dir\src\ui\ed_status_bar.c.obj
+[7/22] Building C object Editor\CMakeFiles\QuasarEditor.dir\src\ui\ed_menu_bar.c.obj
+[8/22] Building C object Editor\CMakeFiles\QuasarEditor.dir\src\main.c.obj
+[9/22] Building C object Editor\CMakeFiles\QuasarEditor.dir\src\ui\ed_toolbar.c.obj
+[10/22] Building C object Runtime\CMakeFiles\QuasarRuntime.dir\src\main.c.obj
+[11/22] Building C object Editor\CMakeFiles\QuasarEditor.dir\src\ui\ed_layout.c.obj
+[12/22] Building C object Editor\CMakeFiles\QuasarEditor.dir\src\ui\ed_hierarchy.c.obj
+[13/22] Building C object Editor\CMakeFiles\QuasarEditor.dir\src\editor.c.obj
+[14/22] Building C object Editor\CMakeFiles\QuasarEditor.dir\src\ui\ed_inspector.c.obj
+[15/22] Building C object Editor\CMakeFiles\QuasarEditor.dir\src\ui\ed_project_launcher.c.obj
+[16/22] Building C object Quasar\CMakeFiles\Quasar.dir\src\core\engine.c.obj
+[17/22] Building C object Editor\CMakeFiles\QuasarEditor.dir\src\ui\ed_file_browser.c.obj
+[18/22] Linking CXX shared library D:\Code\QuasarEngine\bin\Quasar.dll
+[19/22] Linking C executable D:\Code\QuasarEngine\bin\QuasarRuntime.exe
+[20/22] Linking C shared library D:\Code\QuasarEngine\bin\plugins\BuiltinRendererPBR.dll
+[21/22] Linking C executable D:\Code\QuasarEngine\bin\QuasarEditor.exe

@@ -8,4 +8,4 @@ target_include_directories(QuasarEditor
         ${CMAKE_SOURCE_DIR}/Quasar/vendors/cjson
 )
 
-target_link_libraries(QuasarEditor PRIVATE Quasar)
+target_link_libraries(QuasarEditor PRIVATE Quasar causality)

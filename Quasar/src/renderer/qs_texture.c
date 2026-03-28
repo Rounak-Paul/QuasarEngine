@@ -1,4 +1,5 @@
 ﻿#include "qs_texture.h"
+#include "qs_gpu.h"
 #include "qs_system.h"
 #include "qs_log.h"
 
@@ -30,13 +31,8 @@ static bool texture_sys_init(Qs_System *sys, Qs_Engine *engine)
         QS_LOG_ERROR("Texture system: no backend registered");
         return false;
     }
-    /* Ca_Instance comes from the causality instance already in the engine.
-       The render backend init runs first and sets up VkDevice; the texture
-       backend acquires it from Ca_Instance internally. */
-    typedef struct Ca_Instance Ca_Instance;
-    Ca_Instance *qs_engine_ca_instance(Qs_Engine *);
-    Ca_Instance *ca = qs_engine_ca_instance(engine);
-    if (!g_texture_backend->init(ca, &state->ctx)) {
+    Qs_GpuContext *gpu = qs_engine_gpu(engine);
+    if (!g_texture_backend->init(gpu, &state->ctx)) {
         QS_LOG_ERROR("Texture backend '%s' init failed", g_texture_backend->name);
         return false;
     }
@@ -89,15 +85,15 @@ const char *qs_texture_name(const Qs_Texture *texture)
     return g_texture_backend->tex_name(texture);
 }
 
-VkImageView qs_texture_image_view(const Qs_Texture *texture)
+Qs_GpuImageView *qs_texture_image_view(const Qs_Texture *texture)
 {
-    if (!texture || !g_texture_backend || !g_texture_backend->image_view) return VK_NULL_HANDLE;
+    if (!texture || !g_texture_backend || !g_texture_backend->image_view) return NULL;
     return g_texture_backend->image_view(texture);
 }
 
-VkSampler qs_texture_sampler(const Qs_Texture *texture)
+Qs_GpuSampler *qs_texture_sampler(const Qs_Texture *texture)
 {
-    if (!texture || !g_texture_backend || !g_texture_backend->sampler) return VK_NULL_HANDLE;
+    if (!texture || !g_texture_backend || !g_texture_backend->sampler) return NULL;
     return g_texture_backend->sampler(texture);
 }
 

@@ -12,14 +12,10 @@ add_library(BuiltinRendererPBR SHARED
 if(MSVC)
     set_target_properties(BuiltinRendererPBR PROPERTIES
         MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
-    # Quasar.dll uses WINDOWS_EXPORT_ALL_SYMBOLS which exports CRT functions
-    # (snprintf etc.).  The static causality/shaderc libs that propagate
-    # transitively from Quasar also contain those symbols.  /FORCE:MULTIPLE
-    # lets the linker pick one silently; /IGNORE:4006 suppresses the warning.
-    target_link_options(BuiltinRendererPBR PRIVATE /FORCE:MULTIPLE /IGNORE:4006)
 endif()
 
-# Quasar is a SHARED library; its PUBLIC deps (Causality, Vulkan headers) propagate.
+# Plugins only link Quasar.  Causality GPU functions are accessed via the
+# engine's qs_gpu_* / qs_viewport_* API rather than calling causality directly.
 target_link_libraries(BuiltinRendererPBR PRIVATE Quasar)
 
 # ── Output directories ────────────────────────────────────────────

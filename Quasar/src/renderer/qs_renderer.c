@@ -1,4 +1,5 @@
 ﻿#include "qs_renderer.h"
+#include "qs_gpu.h"
 #include "qs_system.h"
 #include "qs_log.h"
 
@@ -20,11 +21,6 @@ void qs_renderer_backend_register(const Qs_RendererBackend *backend)
    ENGINE SYSTEM
    ================================================================ */
 
-/* Forward declaration — avoids including quasar.h and creating a
-   heavy dependency inside the renderer subsystem files. */
-typedef struct Ca_Instance Ca_Instance;
-Ca_Instance *qs_engine_ca_instance(Qs_Engine *engine);
-
 typedef struct { void *ctx; } Qs_RenderSystemState;
 
 static bool render_sys_init(Qs_System *sys, Qs_Engine *engine)
@@ -34,8 +30,8 @@ static bool render_sys_init(Qs_System *sys, Qs_Engine *engine)
         QS_LOG_ERROR("Render system: no backend registered");
         return false;
     }
-    Ca_Instance *ca = qs_engine_ca_instance(engine);
-    if (!g_renderer_backend->init(engine, ca, &state->ctx)) {
+    Qs_GpuContext *gpu = qs_engine_gpu(engine);
+    if (!g_renderer_backend->init(engine, gpu, &state->ctx)) {
         QS_LOG_ERROR("Render backend '%s' init failed", g_renderer_backend->name);
         return false;
     }
@@ -90,7 +86,7 @@ void qs_renderer_destroy(Qs_Renderer *renderer)
     g_renderer_backend->renderer_destroy(g_render_ctx, renderer);
 }
 
-void qs_renderer_bind(Qs_Renderer *renderer, Ca_Viewport *viewport)
+void qs_renderer_bind(Qs_Renderer *renderer, Qs_Viewport *viewport)
 {
     if (!renderer || !viewport || !g_renderer_backend || !g_renderer_backend->renderer_bind) return;
     g_renderer_backend->renderer_bind(g_render_ctx, renderer, viewport);
@@ -102,7 +98,7 @@ Qs_Camera *qs_renderer_camera(Qs_Renderer *renderer)
     return g_renderer_backend->renderer_camera(renderer);
 }
 
-void qs_renderer_set_clear_color(Qs_Renderer *renderer, VkClearColorValue color)
+void qs_renderer_set_clear_color(Qs_Renderer *renderer, const float color[4])
 {
     if (!renderer || !g_renderer_backend || !g_renderer_backend->renderer_set_clear_color) return;
     g_renderer_backend->renderer_set_clear_color(renderer, color);
@@ -124,12 +120,6 @@ const char *qs_renderer_name(const Qs_Renderer *renderer)
 {
     if (!renderer || !g_renderer_backend || !g_renderer_backend->renderer_name) return NULL;
     return g_renderer_backend->renderer_name(renderer);
-}
-
-VkDevice qs_renderer_device(const Qs_Renderer *renderer)
-{
-    if (!renderer || !g_renderer_backend || !g_renderer_backend->renderer_device) return VK_NULL_HANDLE;
-    return g_renderer_backend->renderer_device(renderer);
 }
 
 void qs_renderer_extents(const Qs_Renderer *renderer,

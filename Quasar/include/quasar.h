@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 #include "causality.h"
+#include "qs_gpu.h"
 #include "qs_log.h"
 #include "qs_event.h"
 #include "qs_job.h"
@@ -16,7 +17,6 @@
 #include "qs_reflect.h"
 #include "qs_project.h"
 #include "qs_primitives.h"
-#include "qs_forward.h"
 #include "qs_input.h"
 #include "qs_dylib.h"
 #include "qs_plugin.h"
@@ -44,11 +44,11 @@ void qs_engine_destroy(Qs_Engine* engine);
 /// Runs the engine main loop. Blocks until the window is closed.
 int qs_engine_run(Qs_Engine* engine);
 
-/// Returns the engine's window for UI building.
+/// Returns the engine's main window for UI building.
 Ca_Window* qs_engine_window(Qs_Engine* engine);
 
-/// Returns the engine's Causality instance (for multi-window, etc.).
-Ca_Instance* qs_engine_ca_instance(Qs_Engine* engine);
+/// Returns the engine's GPU context for renderer backends and low-level access.
+Qs_GpuContext* qs_engine_gpu(Qs_Engine* engine);
 
 /// Returns the engine's event bus.
 Qs_EventBus* qs_engine_event_bus(Qs_Engine* engine);

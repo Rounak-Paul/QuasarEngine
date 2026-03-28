@@ -4,7 +4,6 @@
 #include "qs_scene.h"
 #include "qs_light.h"
 #include "qs_log.h"
-#include "vk_common.h"
 
 #include <string.h>
 #include <math.h>
@@ -79,13 +78,13 @@ static const char *FORWARD_FRAG =
    ================================================================ */
 
 typedef struct ForwardState {
-    VkDevice              device;
-    VkPipeline            pipeline;
-    VkPipelineLayout      pipeline_layout;
-    VkDescriptorSetLayout desc_layout;   /* borrowed from material system */
-    Qs_Material          *default_material;
-    Qs_Renderer          *renderer;
-    Qs_RenderNode        *node;
+    Qs_GpuContext             *gpu;
+    Qs_GpuPipeline            *pipeline;
+    Qs_GpuPipelineLayout      *pipeline_layout;
+    Qs_GpuDescriptorSetLayout *desc_layout;
+    Qs_Material               *default_material;
+    Qs_Renderer               *renderer;
+    Qs_RenderNode             *node;
 } ForwardState;
 
 static ForwardState g_fwd;
@@ -174,7 +173,7 @@ static void forward_execute(const Qs_RenderContext *ctx, void *user_data)
     Qs_Scene *scene = qs_scene_active();
     if (!scene) return;
 
-    vkCmdBindPipeline(ctx->cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, fwd->pipeline);
+    qs_cmd_bind_pipeline(ctx->cmd, fwd->pipeline);
 
     float vp[16];
     mat4_mul(vp, ctx->proj, ctx->view);
@@ -209,15 +208,15 @@ static void forward_execute(const Qs_RenderContext *ctx, void *user_data)
             pc.base_color[0] = pc.base_color[1] = pc.base_color[2] = pc.base_color[3] = 1.0f;
         }
 
-        vkCmdPushConstants(ctx->cmd, fwd->pipeline_layout,
-                           VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
-                           0, sizeof(PushConstants), &pc);
+        qs_cmd_push_constants(ctx->cmd, fwd->pipeline_layout,
+                              QS_GPU_SHADER_VERTEX | QS_GPU_SHADER_FRAGMENT,
+                              0, sizeof(PushConstants), &pc);
 
-        VkDescriptorSet ds = mat ? qs_material_descriptor_set(mat) : VK_NULL_HANDLE;
+        Qs_GpuDescriptorSet *ds = mat ? qs_material_descriptor_set(mat) : NULL;
         if (!ds) continue;
-        vkCmdBindDescriptorSets(ctx->cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                                fwd->pipeline_layout, 0, 1, &ds, 0, NULL);
+        qs_cmd_bind_descriptor_set(ctx->cmd, fwd->pipeline_layout, 0, ds);
 
+        qs_mesh_bind(mc->mesh, ctx->cmd);
         qs_mesh_draw(mc->mesh, ctx->cmd);
     }
 }
@@ -226,16 +225,14 @@ static void forward_execute(const Qs_RenderContext *ctx, void *user_data)
    PIPELINE CREATION
    ================================================================ */
 
-static bool create_pipeline(VkDevice device, VkFormat color_format,
-                             VkFormat depth_format)
+static bool create_pipeline(Qs_GpuContext *gpu, Qs_GpuImageFormat color_format,
+                             Qs_GpuImageFormat depth_format)
 {
-    VkShaderModule vert_mod = ca_shader_compile(device, FORWARD_VERT,
-                                                VK_SHADER_STAGE_VERTEX_BIT);
-    VkShaderModule frag_mod = ca_shader_compile(device, FORWARD_FRAG,
-                                                VK_SHADER_STAGE_FRAGMENT_BIT);
-    if (!vert_mod || !frag_mod) {
-        if (vert_mod) vkDestroyShaderModule(device, vert_mod, NULL);
-        if (frag_mod) vkDestroyShaderModule(device, frag_mod, NULL);
+    Qs_GpuShader *vert = qs_gpu_compile_shader(gpu, FORWARD_VERT, QS_GPU_SHADER_VERTEX);
+    Qs_GpuShader *frag = qs_gpu_compile_shader(gpu, FORWARD_FRAG, QS_GPU_SHADER_FRAGMENT);
+    if (!vert || !frag) {
+        if (vert) qs_gpu_destroy_shader(gpu, vert);
+        if (frag) qs_gpu_destroy_shader(gpu, frag);
         QS_LOG_ERROR("Forward pipeline: shader compilation failed");
         return false;
     }
@@ -244,137 +241,68 @@ static bool create_pipeline(VkDevice device, VkFormat color_format,
     g_fwd.desc_layout = qs_material_set_layout();
     if (!g_fwd.desc_layout) {
         QS_LOG_ERROR("Forward pipeline: material set layout not available");
-        vkDestroyShaderModule(device, vert_mod, NULL);
-        vkDestroyShaderModule(device, frag_mod, NULL);
+        qs_gpu_destroy_shader(gpu, vert);
+        qs_gpu_destroy_shader(gpu, frag);
         return false;
     }
 
-    VkPushConstantRange pc_range = {
-        .stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
-        .offset     = 0,
-        .size       = sizeof(PushConstants),
+    Qs_GpuPushConstantRange pc_range = {
+        .stages = QS_GPU_SHADER_VERTEX | QS_GPU_SHADER_FRAGMENT,
+        .offset = 0,
+        .size   = sizeof(PushConstants),
     };
-    VkPipelineLayoutCreateInfo layout_ci = {
-        .sType                  = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
-        .setLayoutCount         = 1,
-        .pSetLayouts            = &g_fwd.desc_layout,
-        .pushConstantRangeCount = 1,
-        .pPushConstantRanges    = &pc_range,
+    Qs_GpuDescriptorSetLayout *set_layouts[] = { g_fwd.desc_layout };
+    Qs_GpuPipelineLayoutDesc layout_desc = {
+        .set_layouts         = set_layouts,
+        .set_layout_count    = 1,
+        .push_constants      = &pc_range,
+        .push_constant_count = 1,
     };
-    if (vkCreatePipelineLayout(device, &layout_ci, NULL, &g_fwd.pipeline_layout) != VK_SUCCESS) {
-        vkDestroyShaderModule(device, vert_mod, NULL);
-        vkDestroyShaderModule(device, frag_mod, NULL);
+    g_fwd.pipeline_layout = qs_gpu_create_pipeline_layout(gpu, &layout_desc);
+    if (!g_fwd.pipeline_layout) {
+        qs_gpu_destroy_shader(gpu, vert);
+        qs_gpu_destroy_shader(gpu, frag);
         return false;
     }
 
-    VkPipelineShaderStageCreateInfo stages[2] = {
-        { .sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-          .stage  = VK_SHADER_STAGE_VERTEX_BIT,
-          .module = vert_mod, .pName = "main" },
-        { .sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-          .stage  = VK_SHADER_STAGE_FRAGMENT_BIT,
-          .module = frag_mod, .pName = "main" },
-    };
-
-    VkVertexInputBindingDescription binding = {
-        .binding   = 0,
-        .stride    = sizeof(Qs_Vertex),
-        .inputRate = VK_VERTEX_INPUT_RATE_VERTEX,
-    };
-    VkVertexInputAttributeDescription attrs[] = {
-        { .location = 0, .binding = 0, .format = VK_FORMAT_R32G32B32_SFLOAT,
+    Qs_GpuVertexAttribute attrs[] = {
+        { .location = 0, .format = QS_GPU_VERTEX_FORMAT_FLOAT3,
           .offset = offsetof(Qs_Vertex, position) },
-        { .location = 1, .binding = 0, .format = VK_FORMAT_R32G32B32_SFLOAT,
+        { .location = 1, .format = QS_GPU_VERTEX_FORMAT_FLOAT3,
           .offset = offsetof(Qs_Vertex, normal) },
-        { .location = 2, .binding = 0, .format = VK_FORMAT_R32G32B32A32_SFLOAT,
+        { .location = 2, .format = QS_GPU_VERTEX_FORMAT_FLOAT4,
           .offset = offsetof(Qs_Vertex, tangent) },
-        { .location = 3, .binding = 0, .format = VK_FORMAT_R32G32_SFLOAT,
+        { .location = 3, .format = QS_GPU_VERTEX_FORMAT_FLOAT2,
           .offset = offsetof(Qs_Vertex, uv) },
     };
-    VkPipelineVertexInputStateCreateInfo vert_input = {
-        .sType                           = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
-        .vertexBindingDescriptionCount   = 1,
-        .pVertexBindingDescriptions      = &binding,
-        .vertexAttributeDescriptionCount = 4,
-        .pVertexAttributeDescriptions    = attrs,
+    Qs_GpuVertexBinding vertex_binding = {
+        .binding         = 0,
+        .stride          = sizeof(Qs_Vertex),
+        .attributes      = attrs,
+        .attribute_count = 4,
     };
-    VkPipelineInputAssemblyStateCreateInfo input_assembly = {
-        .sType    = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
-        .topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
+    Qs_GpuGraphicsPipelineDesc pipeline_desc = {
+        .layout               = g_fwd.pipeline_layout,
+        .vertex_shader        = vert,
+        .fragment_shader      = frag,
+        .vertex_bindings      = &vertex_binding,
+        .vertex_binding_count = 1,
+        .topology             = QS_GPU_TOPOLOGY_TRIANGLES,
+        .cull_mode            = QS_GPU_CULL_BACK,
+        .depth_test           = true,
+        .depth_write          = true,
+        .color_format         = color_format,
+        .depth_format         = depth_format,
     };
-    VkPipelineViewportStateCreateInfo viewport_state = {
-        .sType         = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO,
-        .viewportCount = 1,
-        .scissorCount  = 1,
-    };
-    VkDynamicState dyn_states[] = { VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR };
-    VkPipelineDynamicStateCreateInfo dynamic_state = {
-        .sType             = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,
-        .dynamicStateCount = 2,
-        .pDynamicStates    = dyn_states,
-    };
-    VkPipelineRasterizationStateCreateInfo rasterization = {
-        .sType       = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
-        .polygonMode = VK_POLYGON_MODE_FILL,
-        .cullMode    = VK_CULL_MODE_BACK_BIT,
-        .frontFace   = VK_FRONT_FACE_CLOCKWISE,
-        .lineWidth   = 1.0f,
-    };
-    VkPipelineMultisampleStateCreateInfo multisample = {
-        .sType                = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
-        .rasterizationSamples = VK_SAMPLE_COUNT_1_BIT,
-    };
-    VkPipelineDepthStencilStateCreateInfo depth_stencil = {
-        .sType                 = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
-        .depthTestEnable       = VK_TRUE,
-        .depthWriteEnable      = VK_TRUE,
-        .depthCompareOp        = VK_COMPARE_OP_LESS,
-        .depthBoundsTestEnable = VK_FALSE,
-        .stencilTestEnable     = VK_FALSE,
-    };
-    VkPipelineColorBlendAttachmentState blend_att = {
-        .blendEnable    = VK_FALSE,
-        .colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
-                          VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT,
-    };
-    VkPipelineColorBlendStateCreateInfo color_blend = {
-        .sType           = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
-        .attachmentCount = 1,
-        .pAttachments    = &blend_att,
-    };
-    VkPipelineRenderingCreateInfo rendering_ci = {
-        .sType                   = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO,
-        .colorAttachmentCount    = 1,
-        .pColorAttachmentFormats = &color_format,
-        .depthAttachmentFormat   = depth_format,
-    };
-    VkGraphicsPipelineCreateInfo pipeline_ci = {
-        .sType               = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
-        .pNext               = &rendering_ci,
-        .stageCount          = 2,
-        .pStages             = stages,
-        .pVertexInputState   = &vert_input,
-        .pInputAssemblyState = &input_assembly,
-        .pViewportState      = &viewport_state,
-        .pRasterizationState = &rasterization,
-        .pMultisampleState   = &multisample,
-        .pDepthStencilState  = &depth_stencil,
-        .pColorBlendState    = &color_blend,
-        .pDynamicState       = &dynamic_state,
-        .layout              = g_fwd.pipeline_layout,
-        .renderPass          = VK_NULL_HANDLE,
-    };
+    g_fwd.pipeline = qs_gpu_create_graphics_pipeline(gpu, &pipeline_desc);
 
-    VkResult result = vkCreateGraphicsPipelines(device, VK_NULL_HANDLE,
-                                                1, &pipeline_ci, NULL,
-                                                &g_fwd.pipeline);
-    vkDestroyShaderModule(device, vert_mod, NULL);
-    vkDestroyShaderModule(device, frag_mod, NULL);
+    qs_gpu_destroy_shader(gpu, vert);
+    qs_gpu_destroy_shader(gpu, frag);
 
-    if (result != VK_SUCCESS) {
-        QS_LOG_ERROR("Forward pipeline creation failed: %d", result);
-        vkDestroyPipelineLayout(device, g_fwd.pipeline_layout, NULL);
-        g_fwd.pipeline_layout = VK_NULL_HANDLE;
+    if (!g_fwd.pipeline) {
+        QS_LOG_ERROR("Forward pipeline creation failed");
+        qs_gpu_destroy_pipeline_layout(gpu, g_fwd.pipeline_layout);
+        g_fwd.pipeline_layout = NULL;
         return false;
     }
 
@@ -386,19 +314,41 @@ static bool create_pipeline(VkDevice device, VkFormat color_format,
    PUBLIC IMPL (called via backend vtable)
    ================================================================ */
 
-bool vk_forward_init_impl(Qs_Engine *engine, Qs_Renderer *renderer, void *ctx)
+static void fwd_shutdown_internal(void)
 {
-    (void)ctx;
-    if (!renderer) return false;
+    if (!g_fwd.gpu) return;
+
+    if (g_fwd.node && g_fwd.renderer)
+        qs_renderer_remove_node(g_fwd.renderer, g_fwd.node);
+
+    if (g_fwd.default_material)
+        qs_material_destroy(g_fwd.default_material);
+
+    if (g_fwd.pipeline)
+        qs_gpu_destroy_pipeline(g_fwd.gpu, g_fwd.pipeline);
+    if (g_fwd.pipeline_layout)
+        qs_gpu_destroy_pipeline_layout(g_fwd.gpu, g_fwd.pipeline_layout);
+
+    /* desc_layout is borrowed from the material system -- do not destroy */
 
     memset(&g_fwd, 0, sizeof(g_fwd));
-    g_fwd.device   = qs_renderer_device(renderer);
+    QS_LOG_INFO("VkForward: shut down");
+}
+
+void vk_forward_attach(Qs_Engine *engine, Qs_Renderer *renderer)
+{
+    if (!renderer) return;
+
+    memset(&g_fwd, 0, sizeof(g_fwd));
+    g_fwd.gpu      = qs_engine_gpu(engine);
     g_fwd.renderer = renderer;
 
-    VkFormat color_format = VK_FORMAT_B8G8R8A8_UNORM;
-    VkFormat depth_format = VK_FORMAT_D32_SFLOAT;
-
-    if (!create_pipeline(g_fwd.device, color_format, depth_format)) return false;
+    if (!create_pipeline(g_fwd.gpu,
+                         QS_GPU_FORMAT_BGRA8_UNORM,
+                         QS_GPU_FORMAT_D32_SFLOAT)) {
+        memset(&g_fwd, 0, sizeof(g_fwd));
+        return;
+    }
 
     /* Default white material (fallback textures provided by material backend) */
     g_fwd.default_material = qs_material_create(engine, &(Qs_MaterialDesc){
@@ -415,35 +365,15 @@ bool vk_forward_init_impl(Qs_Engine *engine, Qs_Renderer *renderer, void *ctx)
     });
     if (!g_fwd.node) {
         QS_LOG_ERROR("VkForward: failed to add render node");
-        vk_forward_shutdown_impl(ctx);
-        return false;
+        fwd_shutdown_internal();
+        return;
     }
 
-    QS_LOG_INFO("VkForward: initialised");
-    return true;
+    QS_LOG_INFO("VkForward: attached");
 }
 
-void vk_forward_shutdown_impl(void *ctx)
+void vk_forward_detach(Qs_Renderer *renderer)
 {
-    (void)ctx;
-    VkDevice dev = g_fwd.device;
-    if (!dev) return;
-
-    vkDeviceWaitIdle(dev);
-
-    if (g_fwd.node && g_fwd.renderer)
-        qs_renderer_remove_node(g_fwd.renderer, g_fwd.node);
-
-    if (g_fwd.default_material)
-        qs_material_destroy(g_fwd.default_material);
-
-    if (g_fwd.pipeline)
-        vkDestroyPipeline(dev, g_fwd.pipeline, NULL);
-    if (g_fwd.pipeline_layout)
-        vkDestroyPipelineLayout(dev, g_fwd.pipeline_layout, NULL);
-
-    /* desc_layout is borrowed from the material system -- do not destroy */
-
-    memset(&g_fwd, 0, sizeof(g_fwd));
-    QS_LOG_INFO("VkForward: shut down");
+    if (renderer && g_fwd.renderer != renderer) return;
+    fwd_shutdown_internal();
 }

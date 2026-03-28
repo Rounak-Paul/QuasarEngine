@@ -1,13 +1,12 @@
 #ifndef QS_RENDERER_H
 #define QS_RENDERER_H
 
-#include <vulkan/vulkan.h>
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "qs_gpu.h"
+
 typedef struct Qs_Engine        Qs_Engine;
-typedef struct Ca_Viewport      Ca_Viewport;
-typedef struct Ca_Instance      Ca_Instance;
 typedef struct Qs_Renderer      Qs_Renderer;    ///< Opaque — defined by the renderer backend.
 typedef struct Qs_RenderNode    Qs_RenderNode;  ///< Opaque — defined by the renderer backend.
 typedef struct Qs_Light         Qs_Light;
@@ -42,7 +41,7 @@ typedef struct Qs_Camera {
 /// Render context passed to each render pass node callback.
 typedef struct Qs_RenderContext {
     Qs_Renderer    *renderer;
-    VkCommandBuffer cmd;
+    Qs_GpuCmd      *cmd;
     uint32_t        width;
     uint32_t        height;
     float           view[16];       ///< Column-major 4x4 view matrix.
@@ -70,7 +69,7 @@ typedef struct Qs_RenderNodeDesc {
 /// Configuration for creating a renderer instance.
 typedef struct Qs_RendererDesc {
     const char       *name;         ///< Debug label (e.g. "scene", "minimap", "thumbnail").
-    VkClearColorValue clear_color;
+    float             clear_color[4];
     Qs_Camera         camera;       ///< Initial camera state (zero-inited = defaults).
     bool              depth_test;   ///< Create a depth attachment (default: true if zero).
 } Qs_RendererDesc;
@@ -88,7 +87,7 @@ typedef struct Qs_RendererBackend {
 
     /// One-time GPU resource setup (device, physical device, command pools).
     /// Called when the Render system initialises.
-    bool (*init)(Qs_Engine *engine, Ca_Instance *ca, void **out_ctx);
+    bool (*init)(Qs_Engine *engine, Qs_GpuContext *gpu, void **out_ctx);
 
     /// Tear down all GPU resources and release ctx.
     void (*shutdown)(void *ctx);
@@ -108,19 +107,18 @@ typedef struct Qs_RendererBackend {
 
     /// Register viewport callbacks so the renderer redraws every frame.
     void           (*renderer_bind)(void *ctx, Qs_Renderer *renderer,
-                                    Ca_Viewport *viewport);
+                                    Qs_Viewport *viewport);
 
     /* --- Renderer accessors --------------------------------------- */
 
     Qs_Camera     *(*renderer_camera)(Qs_Renderer *renderer);
     void           (*renderer_set_clear_color)(Qs_Renderer *renderer,
-                                               VkClearColorValue color);
+                                               const float color[4]);
     Qs_RenderNode *(*renderer_add_node)(Qs_Renderer *renderer,
                                         const Qs_RenderNodeDesc *desc);
     void           (*renderer_remove_node)(Qs_Renderer *renderer,
                                            Qs_RenderNode *node);
     const char    *(*renderer_name)(const Qs_Renderer *renderer);
-    VkDevice       (*renderer_device)(const Qs_Renderer *renderer);
     void           (*renderer_extents)(const Qs_Renderer *renderer,
                                        uint32_t *out_w, uint32_t *out_h);
 
@@ -130,14 +128,6 @@ typedef struct Qs_RendererBackend {
     void             (*clear_lights)(Qs_Renderer *renderer);
     const Qs_LightGPU *(*get_lights)(const Qs_Renderer *renderer,
                                       uint32_t *out_count);
-
-    /* --- Forward pipeline ---------------------------------------- */
-
-    /// Attach the forward PBR render node to an existing renderer.
-    bool (*forward_init)(Qs_Engine *engine, Qs_Renderer *renderer, void *ctx);
-
-    /// Detach and destroy the forward render node.
-    void (*forward_shutdown)(void *ctx);
 } Qs_RendererBackend;
 
 /// Registers the renderer backend.  Must be called before the Render
@@ -155,14 +145,14 @@ Qs_Renderer *qs_renderer_create(Qs_Engine *engine, const Qs_RendererDesc *desc);
 /// Destroys a renderer and all GPU resources it owns.
 void qs_renderer_destroy(Qs_Renderer *renderer);
 
-/// Binds this renderer to a Ca_Viewport — it will render every frame.
-void qs_renderer_bind(Qs_Renderer *renderer, Ca_Viewport *viewport);
+/// Binds this renderer to a Qs_Viewport — it will render every frame.
+void qs_renderer_bind(Qs_Renderer *renderer, Qs_Viewport *viewport);
 
 /// Returns a mutable pointer to the renderer's camera.
 Qs_Camera *qs_renderer_camera(Qs_Renderer *renderer);
 
 /// Updates the clear colour.
-void qs_renderer_set_clear_color(Qs_Renderer *renderer, VkClearColorValue color);
+void qs_renderer_set_clear_color(Qs_Renderer *renderer, const float color[4]);
 
 /// Adds a render pass node to the pipeline. Returns the node handle.
 Qs_RenderNode *qs_renderer_add_node(Qs_Renderer *renderer,
@@ -173,9 +163,6 @@ void qs_renderer_remove_node(Qs_Renderer *renderer, Qs_RenderNode *node);
 
 /// Returns the renderer's debug name.
 const char *qs_renderer_name(const Qs_Renderer *renderer);
-
-/// Returns the VkDevice used by the render system.
-VkDevice qs_renderer_device(const Qs_Renderer *renderer);
 
 /// Returns the current framebuffer dimensions (0 if unbound).
 void qs_renderer_extents(const Qs_Renderer *renderer,

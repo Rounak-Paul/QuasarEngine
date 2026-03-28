@@ -38,6 +38,12 @@ endif()
 # Engine library (brings in causality and all vendors)
 add_subdirectory(Quasar)
 
+# causality is SHARED; redirect its DLL output to our bin/ alongside other targets
+set_target_properties(causality PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/bin"
+    ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/bin"
+)
+
 # Applications
 add_subdirectory(Editor)
 add_subdirectory(Runtime)

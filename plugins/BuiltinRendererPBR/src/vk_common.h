@@ -1,7 +1,7 @@
 ﻿#ifndef VK_COMMON_H
 #define VK_COMMON_H
 
-#include "causality.h"
+#include "qs_gpu.h"
 #include <vulkan/vulkan.h>
 #include <stdint.h>
 #include <stdbool.h>
@@ -26,7 +26,7 @@ static inline uint32_t vk_find_memory_type(VkPhysicalDevice pd,
     return UINT32_MAX;
 }
 
-static inline bool vk_upload_buffer(Ca_Instance *ca,
+static inline bool vk_upload_buffer(Qs_GpuContext *gpu,
                                      VkDevice device,
                                      VkPhysicalDevice pd,
                                      VkBufferUsageFlags usage,
@@ -105,10 +105,10 @@ static inline bool vk_upload_buffer(Ca_Instance *ca,
     }
     vkBindBufferMemory(device, *out_buf, *out_mem, 0);
 
-    VkCommandBuffer cmd = ca_gpu_begin_transfer(ca);
+    VkCommandBuffer cmd = qs_gpu_begin_transfer(gpu);
     VkBufferCopy copy = { .size = size };
     vkCmdCopyBuffer(cmd, staging, *out_buf, 1, &copy);
-    ca_gpu_end_transfer(ca, cmd);
+    qs_gpu_end_transfer(gpu, cmd);
 
     vkDestroyBuffer(device, staging, NULL);
     vkFreeMemory(device, staging_mem, NULL);

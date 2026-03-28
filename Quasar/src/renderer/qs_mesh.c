@@ -1,4 +1,5 @@
 ﻿#include "qs_mesh.h"
+#include "qs_gpu.h"
 #include "qs_system.h"
 #include "qs_log.h"
 
@@ -14,9 +15,6 @@ void qs_mesh_backend_register(const Qs_MeshBackend *backend)
 
 typedef struct { void *ctx; } Qs_MeshSystemState;
 
-typedef struct Ca_Instance Ca_Instance;
-Ca_Instance *qs_engine_ca_instance(Qs_Engine *engine);
-
 static bool mesh_sys_init(Qs_System *sys, Qs_Engine *engine)
 {
     Qs_MeshSystemState *state = (Qs_MeshSystemState *)qs_system_data(sys);
@@ -24,8 +22,8 @@ static bool mesh_sys_init(Qs_System *sys, Qs_Engine *engine)
         QS_LOG_ERROR("Mesh system: no backend registered");
         return false;
     }
-    Ca_Instance *ca = qs_engine_ca_instance(engine);
-    if (!g_mesh_backend->init(ca, &state->ctx)) {
+    Qs_GpuContext *gpu = qs_engine_gpu(engine);
+    if (!g_mesh_backend->init(gpu, &state->ctx)) {
         QS_LOG_ERROR("Mesh backend '%s' init failed", g_mesh_backend->name);
         return false;
     }
@@ -73,18 +71,6 @@ const char *qs_mesh_name(const Qs_Mesh *mesh)
     return g_mesh_backend->mesh_name(mesh);
 }
 
-VkBuffer qs_mesh_vertex_buffer(const Qs_Mesh *mesh)
-{
-    if (!mesh || !g_mesh_backend || !g_mesh_backend->vertex_buffer) return VK_NULL_HANDLE;
-    return g_mesh_backend->vertex_buffer(mesh);
-}
-
-VkBuffer qs_mesh_index_buffer(const Qs_Mesh *mesh)
-{
-    if (!mesh || !g_mesh_backend || !g_mesh_backend->index_buffer) return VK_NULL_HANDLE;
-    return g_mesh_backend->index_buffer(mesh);
-}
-
 uint32_t qs_mesh_vertex_count(const Qs_Mesh *mesh)
 {
     if (!mesh || !g_mesh_backend || !g_mesh_backend->vertex_count) return 0;
@@ -97,19 +83,13 @@ uint32_t qs_mesh_index_count(const Qs_Mesh *mesh)
     return g_mesh_backend->index_count(mesh);
 }
 
-VkIndexType qs_mesh_vk_index_type(const Qs_Mesh *mesh)
-{
-    if (!mesh || !g_mesh_backend || !g_mesh_backend->vk_index_type) return VK_INDEX_TYPE_UINT32;
-    return g_mesh_backend->vk_index_type(mesh);
-}
-
-void qs_mesh_bind(const Qs_Mesh *mesh, VkCommandBuffer cmd)
+void qs_mesh_bind(const Qs_Mesh *mesh, Qs_GpuCmd *cmd)
 {
     if (!mesh || !cmd || !g_mesh_backend || !g_mesh_backend->bind) return;
     g_mesh_backend->bind(mesh, cmd);
 }
 
-void qs_mesh_draw(const Qs_Mesh *mesh, VkCommandBuffer cmd)
+void qs_mesh_draw(const Qs_Mesh *mesh, Qs_GpuCmd *cmd)
 {
     if (!mesh || !cmd || !g_mesh_backend || !g_mesh_backend->draw) return;
     g_mesh_backend->draw(mesh, cmd);

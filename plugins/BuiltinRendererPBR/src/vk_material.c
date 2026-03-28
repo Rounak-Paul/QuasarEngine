@@ -1,48 +1,44 @@
 ﻿#include "qs_material.h"
 #include "qs_texture.h"
 #include "qs_log.h"
-#include "vk_common.h"
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-#define QS_MAX_MATERIALS       256
-#define QS_PBR_BINDING_COUNT   5
+#define QS_MAX_MATERIALS     256
+#define QS_PBR_BINDING_COUNT 5
 
 struct Qs_Material {
-    char              name[64];
-    bool              in_use;
+    char                name[64];
+    bool                in_use;
 
-    VkDevice          device;
-    Ca_Instance      *ca_instance;
+    Qs_GpuContext      *gpu;
 
-    Qs_Texture       *base_color_texture;
-    Qs_Texture       *metallic_roughness_texture;
-    Qs_Texture       *normal_texture;
-    Qs_Texture       *occlusion_texture;
-    Qs_Texture       *emissive_texture;
+    Qs_Texture         *base_color_texture;
+    Qs_Texture         *metallic_roughness_texture;
+    Qs_Texture         *normal_texture;
+    Qs_Texture         *occlusion_texture;
+    Qs_Texture         *emissive_texture;
 
-    Qs_PBRParams      params;
-    Qs_AlphaMode      alpha_mode;
-    bool              double_sided;
+    Qs_PBRParams        params;
+    Qs_AlphaMode        alpha_mode;
+    bool                double_sided;
 
-    VkDescriptorSet   descriptor_set;
+    Qs_GpuDescriptorSet *descriptor_set;
 };
 
 typedef struct {
-    Ca_Instance          *ca_instance;
-    VkDevice              device;
-    VkPhysicalDevice      physical_device;
-    Qs_Material           materials[QS_MAX_MATERIALS];
-    uint32_t              count;
+    Qs_GpuContext             *gpu;
+    Qs_Material                materials[QS_MAX_MATERIALS];
+    uint32_t                   count;
 
-    VkDescriptorSetLayout set_layout;
-    VkDescriptorPool      desc_pool;
+    Qs_GpuDescriptorSetLayout *set_layout;
+    Qs_GpuDescriptorPool      *desc_pool;
 
-    Qs_Texture           *default_white;
-    Qs_Texture           *default_normal;
-    Qs_Texture           *default_black;
+    Qs_Texture                *default_white;
+    Qs_Texture                *default_normal;
+    Qs_Texture                *default_black;
 } VkMaterialSystemData;
 
 static VkMaterialSystemData *g_material_system;
@@ -51,41 +47,36 @@ static VkMaterialSystemData *g_material_system;
    DESCRIPTOR LAYOUT + POOL
    ================================================================ */
 
-static bool create_descriptor_layout(VkDevice device)
+static bool create_descriptor_layout(void)
 {
-    VkDescriptorSetLayoutBinding bindings[QS_PBR_BINDING_COUNT];
+    Qs_GpuDescriptorBinding bindings[QS_PBR_BINDING_COUNT];
     for (uint32_t i = 0; i < QS_PBR_BINDING_COUNT; i++) {
-        bindings[i] = (VkDescriptorSetLayoutBinding){
-            .binding         = i,
-            .descriptorType  = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-            .descriptorCount = 1,
-            .stageFlags      = VK_SHADER_STAGE_FRAGMENT_BIT,
+        bindings[i] = (Qs_GpuDescriptorBinding){
+            .binding = i,
+            .type    = QS_GPU_DESCRIPTOR_COMBINED_IMAGE_SAMPLER,
+            .count   = 1,
+            .stages  = QS_GPU_SHADER_FRAGMENT,
         };
     }
-    VkDescriptorSetLayoutCreateInfo ci = {
-        .sType        = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
-        .bindingCount = QS_PBR_BINDING_COUNT,
-        .pBindings    = bindings,
-    };
-    return vkCreateDescriptorSetLayout(device, &ci, NULL,
-                                       &g_material_system->set_layout) == VK_SUCCESS;
+    g_material_system->set_layout = qs_gpu_create_descriptor_set_layout(
+        g_material_system->gpu, bindings, QS_PBR_BINDING_COUNT);
+    return g_material_system->set_layout != NULL;
 }
 
-static bool create_descriptor_pool(VkDevice device)
+static bool create_descriptor_pool(void)
 {
-    VkDescriptorPoolSize pool_size = {
-        .type            = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-        .descriptorCount = QS_MAX_MATERIALS * QS_PBR_BINDING_COUNT,
+    Qs_GpuDescriptorPoolSize pool_size = {
+        .type  = QS_GPU_DESCRIPTOR_COMBINED_IMAGE_SAMPLER,
+        .count = QS_MAX_MATERIALS * QS_PBR_BINDING_COUNT,
     };
-    VkDescriptorPoolCreateInfo ci = {
-        .sType         = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
-        .flags         = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT,
-        .maxSets       = QS_MAX_MATERIALS,
-        .poolSizeCount = 1,
-        .pPoolSizes    = &pool_size,
+    Qs_GpuDescriptorPoolDesc desc = {
+        .sizes      = &pool_size,
+        .size_count = 1,
+        .max_sets   = QS_MAX_MATERIALS,
     };
-    return vkCreateDescriptorPool(device, &ci, NULL,
-                                  &g_material_system->desc_pool) == VK_SUCCESS;
+    g_material_system->desc_pool = qs_gpu_create_descriptor_pool(
+        g_material_system->gpu, &desc);
+    return g_material_system->desc_pool != NULL;
 }
 
 /* ================================================================
@@ -119,56 +110,37 @@ static void write_descriptor_set(Qs_Material *m)
             { m->emissive_texture,           g_material_system->default_black  },
         };
 
-    VkDescriptorImageInfo img_infos[QS_PBR_BINDING_COUNT];
-    VkWriteDescriptorSet  writes[QS_PBR_BINDING_COUNT];
-
     for (uint32_t i = 0; i < QS_PBR_BINDING_COUNT; i++) {
         Qs_Texture *tex = slots[i].tex ? slots[i].tex : slots[i].fallback;
-        img_infos[i] = (VkDescriptorImageInfo){
-            .sampler     = qs_texture_sampler(tex),
-            .imageView   = qs_texture_image_view(tex),
-            .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-        };
-        writes[i] = (VkWriteDescriptorSet){
-            .sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-            .dstSet          = m->descriptor_set,
-            .dstBinding      = i,
-            .descriptorCount = 1,
-            .descriptorType  = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-            .pImageInfo      = &img_infos[i],
-        };
+        qs_gpu_write_image_descriptor(m->gpu, m->descriptor_set, i,
+                                       qs_texture_sampler(tex),
+                                       qs_texture_image_view(tex));
     }
-    vkUpdateDescriptorSets(m->device, QS_PBR_BINDING_COUNT, writes, 0, NULL);
 }
 
 /* ================================================================
    BACKEND LIFECYCLE
    ================================================================ */
 
-static bool vk_material_init(Ca_Instance *ca, void **out_ctx)
+static bool vk_material_init(Qs_GpuContext *gpu, void **out_ctx)
 {
     VkMaterialSystemData *data = calloc(1, sizeof(VkMaterialSystemData));
     if (!data) return false;
-
-    data->ca_instance     = ca;
-    data->device          = ca_gpu_device(ca);
-    data->physical_device = ca_gpu_physical_device(ca);
-    if (!data->device || !data->physical_device) { free(data); return false; }
-
+    data->gpu = gpu;
     g_material_system = data;
 
-    if (!create_descriptor_layout(data->device)) {
+    if (!create_descriptor_layout()) {
         QS_LOG_ERROR("VkMaterial: failed to create descriptor set layout");
         g_material_system = NULL; free(data); return false;
     }
-    if (!create_descriptor_pool(data->device)) {
+    if (!create_descriptor_pool()) {
         QS_LOG_ERROR("VkMaterial: failed to create descriptor pool");
-        vkDestroyDescriptorSetLayout(data->device, data->set_layout, NULL);
+        qs_gpu_destroy_descriptor_set_layout(gpu, data->set_layout);
         g_material_system = NULL; free(data); return false;
     }
 
     *out_ctx = data;
-    QS_LOG_INFO("VkMaterial: material system initialised (device %p)", (void *)data->device);
+    QS_LOG_INFO("VkMaterial: material system initialised");
     return true;
 }
 
@@ -187,10 +159,8 @@ static void vk_material_shutdown(void *ctx)
     if (data->default_normal) qs_texture_destroy(data->default_normal);
     if (data->default_black)  qs_texture_destroy(data->default_black);
 
-    if (data->desc_pool)
-        vkDestroyDescriptorPool(data->device, data->desc_pool, NULL);
-    if (data->set_layout)
-        vkDestroyDescriptorSetLayout(data->device, data->set_layout, NULL);
+    if (data->desc_pool)  qs_gpu_destroy_descriptor_pool(data->gpu, data->desc_pool);
+    if (data->set_layout) qs_gpu_destroy_descriptor_set_layout(data->gpu, data->set_layout);
 
     g_material_system = NULL;
     free(data);
@@ -228,14 +198,11 @@ static Qs_Material *vk_material_create(void *ctx, Qs_Engine *engine,
     }
 
     memset(m, 0, sizeof(*m));
-    m->in_use      = true;
-    m->device      = sys->device;
-    m->ca_instance = sys->ca_instance;
+    m->in_use = true;
+    m->gpu    = sys->gpu;
 
-    if (desc->name)
-        snprintf(m->name, sizeof(m->name), "%s", desc->name);
-    else
-        snprintf(m->name, sizeof(m->name), "material_%u", sys->count);
+    if (desc->name) snprintf(m->name, sizeof(m->name), "%s", desc->name);
+    else            snprintf(m->name, sizeof(m->name), "material_%u", sys->count);
 
     m->base_color_texture         = desc->base_color_texture;
     m->metallic_roughness_texture = desc->metallic_roughness_texture;
@@ -265,13 +232,8 @@ static Qs_Material *vk_material_create(void *ctx, Qs_Engine *engine,
     m->params.has_emissive_tex           = desc->emissive_texture           ? 1 : 0;
     m->params.double_sided               = desc->double_sided ? 1 : 0;
 
-    VkDescriptorSetAllocateInfo ds_ai = {
-        .sType              = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
-        .descriptorPool     = sys->desc_pool,
-        .descriptorSetCount = 1,
-        .pSetLayouts        = &sys->set_layout,
-    };
-    if (vkAllocateDescriptorSets(m->device, &ds_ai, &m->descriptor_set) != VK_SUCCESS) {
+    m->descriptor_set = qs_gpu_alloc_descriptor_set(sys->gpu, sys->desc_pool, sys->set_layout);
+    if (!m->descriptor_set) {
         QS_LOG_ERROR("VkMaterial: failed to allocate descriptor set for '%s'", m->name);
         m->in_use = false; return NULL;
     }
@@ -287,9 +249,10 @@ static void vk_material_destroy_one(void *ctx, Qs_Material *m)
 {
     VkMaterialSystemData *sys = ctx;
     if (!m || !m->in_use) return;
-    vkDeviceWaitIdle(m->device);
-    if (m->descriptor_set)
-        vkFreeDescriptorSets(m->device, sys->desc_pool, 1, &m->descriptor_set);
+    if (m->descriptor_set) {
+        qs_gpu_free_descriptor_set(sys->gpu, sys->desc_pool, m->descriptor_set);
+        m->descriptor_set = NULL;
+    }
     QS_LOG_INFO("VkMaterial: '%s' destroyed", m->name);
     m->in_use = false;
     if (sys && sys->count > 0) sys->count--;
@@ -299,16 +262,16 @@ static void vk_material_destroy_one(void *ctx, Qs_Material *m)
    ACCESSORS
    ================================================================ */
 
-static const char      *vk_mat_name(const Qs_Material *m)  { return m ? m->name : NULL; }
-static VkDescriptorSet  vk_mat_ds(const Qs_Material *m)    { return m ? m->descriptor_set : VK_NULL_HANDLE; }
-static const Qs_PBRParams *vk_mat_params(const Qs_Material *m) { return m ? &m->params : NULL; }
-static Qs_AlphaMode     vk_mat_alpha(const Qs_Material *m) { return m ? m->alpha_mode  : QS_ALPHA_MODE_OPAQUE; }
-static bool             vk_mat_ds2(const Qs_Material *m)   { return m ? m->double_sided : false; }
+static const char             *vk_mat_name(const Qs_Material *m) { return m ? m->name          : NULL; }
+static Qs_GpuDescriptorSet    *vk_mat_ds(const Qs_Material *m)   { return m ? m->descriptor_set : NULL; }
+static const Qs_PBRParams     *vk_mat_params(const Qs_Material *m){ return m ? &m->params        : NULL; }
+static Qs_AlphaMode            vk_mat_alpha(const Qs_Material *m) { return m ? m->alpha_mode     : QS_ALPHA_MODE_OPAQUE; }
+static bool                    vk_mat_ds2(const Qs_Material *m)   { return m ? m->double_sided   : false; }
 
-static VkDescriptorSetLayout vk_mat_set_layout(void *ctx)
+static Qs_GpuDescriptorSetLayout *vk_mat_set_layout(void *ctx)
 {
     VkMaterialSystemData *sys = ctx;
-    return sys ? sys->set_layout : VK_NULL_HANDLE;
+    return sys ? sys->set_layout : NULL;
 }
 
 /* ================================================================
@@ -328,3 +291,5 @@ const Qs_MaterialBackend vk_material_backend = {
     .alpha_mode     = vk_mat_alpha,
     .double_sided   = vk_mat_ds2,
 };
+
+#include <stdio.h>
