@@ -69,6 +69,7 @@ typedef struct Qs_RenderNodeDesc {
 /// Configuration for creating a renderer instance.
 typedef struct Qs_RendererDesc {
     const char       *name;         ///< Debug label (e.g. "scene", "minimap", "thumbnail").
+    const char       *backend;      ///< Backend name to use (NULL = default backend).
     float             clear_color[4];
     Qs_Camera         camera;       ///< Initial camera state (zero-inited = defaults).
     bool              depth_test;   ///< Create a depth attachment (default: true if zero).
@@ -97,42 +98,58 @@ typedef struct Qs_RendererBackend {
 
     /* --- Renderer instances --------------------------------------- */
 
-    /// Allocate and initialise a renderer.  Returned pointer is
-    /// backend-owned memory returned as an opaque Qs_Renderer *.
-    Qs_Renderer   *(*renderer_create)(void *ctx, Qs_Engine *engine,
+    /// Allocate and initialise a backend-internal renderer.
+    /// Returns a backend-owned opaque pointer (impl).  The engine wraps
+    /// this in a Qs_Renderer handle and calls renderer_post_create.
+    void          *(*renderer_create)(void *ctx, Qs_Engine *engine,
                                        const Qs_RendererDesc *desc);
 
     /// Destroy a renderer and free all its GPU resources.
-    void           (*renderer_destroy)(void *ctx, Qs_Renderer *renderer);
+    void           (*renderer_destroy)(void *ctx, void *impl);
 
     /// Register viewport callbacks so the renderer redraws every frame.
-    void           (*renderer_bind)(void *ctx, Qs_Renderer *renderer,
+    void           (*renderer_bind)(void *ctx, void *impl,
                                     Qs_Viewport *viewport);
 
-    /* --- Renderer accessors --------------------------------------- */
+    /// Called by the engine immediately after it wraps impl in a
+    /// Qs_Renderer handle.  Backends that need the back-reference
+    /// (e.g. to populate Qs_RenderContext.renderer) implement this;
+    /// others may leave it NULL.
+    void           (*renderer_post_create)(void *impl, Qs_Renderer *handle);
 
-    Qs_Camera     *(*renderer_camera)(Qs_Renderer *renderer);
-    void           (*renderer_set_clear_color)(Qs_Renderer *renderer,
+    /* --- Renderer accessors (impl = backend-internal pointer) ----- */
+
+    Qs_Camera     *(*renderer_camera)(void *impl);
+    void           (*renderer_set_clear_color)(void *impl,
                                                const float color[4]);
-    Qs_RenderNode *(*renderer_add_node)(Qs_Renderer *renderer,
+    Qs_RenderNode *(*renderer_add_node)(void *impl,
                                         const Qs_RenderNodeDesc *desc);
-    void           (*renderer_remove_node)(Qs_Renderer *renderer,
+    void           (*renderer_remove_node)(void *impl,
                                            Qs_RenderNode *node);
-    const char    *(*renderer_name)(const Qs_Renderer *renderer);
-    void           (*renderer_extents)(const Qs_Renderer *renderer,
+    const char    *(*renderer_name)(const void *impl);
+    void           (*renderer_extents)(const void *impl,
                                        uint32_t *out_w, uint32_t *out_h);
 
     /* --- Per-frame light submission ------------------------------ */
 
-    void             (*submit_light)(Qs_Renderer *renderer, Qs_Light *light);
-    void             (*clear_lights)(Qs_Renderer *renderer);
-    const Qs_LightGPU *(*get_lights)(const Qs_Renderer *renderer,
-                                      uint32_t *out_count);
+    void              (*submit_light)(void *impl, Qs_Light *light);
+    void              (*clear_lights)(void *impl);
+    const Qs_LightGPU *(*get_lights)(const void *impl, uint32_t *out_count);
 } Qs_RendererBackend;
 
-/// Registers the renderer backend.  Must be called before the Render
-/// system initialises (i.e. in the plugin's on_load callback).
+/// Registers a renderer backend.  Multiple backends may be registered
+/// simultaneously; each is identified by its unique name field.
+/// Must be called before the first qs_renderer_create with this backend
+/// (or before the Render system initialises if no backends are yet registered).
 void qs_renderer_backend_register(const Qs_RendererBackend *backend);
+
+/// Unregisters the backend with the given name.  Shuts it down if the
+/// Render system is currently running.
+void qs_renderer_backend_unregister(const char *name);
+
+/// Sets the default backend used when Qs_RendererDesc.backend is NULL.
+/// If never called, the first registered backend is the default.
+void qs_renderer_backend_set_default(const char *name);
 
 /* ================================================================
    PUBLIC RENDERER API

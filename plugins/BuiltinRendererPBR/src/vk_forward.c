@@ -1,4 +1,5 @@
 ﻿#include "qs_renderer.h"
+#include "vk_renderer_internal.h"
 #include "qs_material.h"
 #include "qs_mesh.h"
 #include "qs_scene.h"
@@ -83,7 +84,7 @@ typedef struct ForwardState {
     Qs_GpuPipelineLayout      *pipeline_layout;
     Qs_GpuDescriptorSetLayout *desc_layout;
     Qs_Material               *default_material;
-    Qs_Renderer               *renderer;
+    VkRenderer                *renderer;
     Qs_RenderNode             *node;
 } ForwardState;
 
@@ -319,7 +320,7 @@ static void fwd_shutdown_internal(void)
     if (!g_fwd.gpu) return;
 
     if (g_fwd.node && g_fwd.renderer)
-        qs_renderer_remove_node(g_fwd.renderer, g_fwd.node);
+        vk_renderer_remove_node_impl(g_fwd.renderer, g_fwd.node);
 
     if (g_fwd.default_material)
         qs_material_destroy(g_fwd.default_material);
@@ -335,7 +336,7 @@ static void fwd_shutdown_internal(void)
     QS_LOG_INFO("VkForward: shut down");
 }
 
-void vk_forward_attach(Qs_Engine *engine, Qs_Renderer *renderer)
+void vk_forward_attach(Qs_Engine *engine, VkRenderer *renderer)
 {
     if (!renderer) return;
 
@@ -358,7 +359,7 @@ void vk_forward_attach(Qs_Engine *engine, Qs_Renderer *renderer)
         .roughness_factor  = 1.0f,
     });
 
-    g_fwd.node = qs_renderer_add_node(renderer, &(Qs_RenderNodeDesc){
+    g_fwd.node = vk_renderer_add_node_impl(renderer, &(Qs_RenderNodeDesc){
         .name     = "forward",
         .priority = 100,
         .execute  = forward_execute,
@@ -372,7 +373,7 @@ void vk_forward_attach(Qs_Engine *engine, Qs_Renderer *renderer)
     QS_LOG_INFO("VkForward: attached");
 }
 
-void vk_forward_detach(Qs_Renderer *renderer)
+void vk_forward_detach(VkRenderer *renderer)
 {
     if (renderer && g_fwd.renderer != renderer) return;
     fwd_shutdown_internal();

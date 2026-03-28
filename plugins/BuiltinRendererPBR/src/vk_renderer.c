@@ -1,10 +1,11 @@
 ﻿#include "qs_renderer.h"
 #include "qs_light.h"
 #include "qs_log.h"
+#include "vk_renderer_internal.h"
 
 /* Forward pass is an internal plugin detail — attached at renderer creation */
-void vk_forward_attach(Qs_Engine *engine, Qs_Renderer *renderer);
-void vk_forward_detach(Qs_Renderer *renderer);
+void vk_forward_attach(Qs_Engine *engine, VkRenderer *renderer);
+void vk_forward_detach(VkRenderer *renderer);
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -27,7 +28,13 @@ struct Qs_RenderNode {
     bool              active;
 };
 
-struct Qs_Renderer {
+/* Plugin-internal renderer struct.  The engine wraps this in an
+   engine-owned Qs_Renderer handle; the back-reference is set via
+   vk_renderer_post_create so render callbacks can populate
+   Qs_RenderContext.renderer correctly. */
+struct VkRenderer {
+    Qs_Renderer      *handle;    /* engine-owned wrapper (set post-create) */
+
     char              name[64];
     bool              in_use;
 
@@ -54,7 +61,7 @@ struct Qs_Renderer {
 
 typedef struct {
     Qs_GpuContext    *gpu;
-    Qs_Renderer       renderers[QS_MAX_RENDERERS];
+    VkRenderer        renderers[QS_MAX_RENDERERS];
     uint32_t          count;
     float             dt;
 } VkRenderSystemData;
@@ -116,13 +123,13 @@ static void mat4_ortho(float out[16], float half_h, float aspect,
    DEPTH BUFFER
    ================================================================ */
 
-static void destroy_depth(Qs_Renderer *r)
+static void destroy_depth(VkRenderer *r)
 {
     if (r->depth_view) { qs_gpu_destroy_image_view(r->gpu, r->depth_view); r->depth_view = NULL; }
     if (r->depth)      { qs_gpu_destroy_image(r->gpu, r->depth);           r->depth      = NULL; }
 }
 
-static bool create_depth(Qs_Renderer *r, uint32_t w, uint32_t h)
+static bool create_depth(VkRenderer *r, uint32_t w, uint32_t h)
 {
     r->depth = qs_gpu_create_image(r->gpu, &(Qs_GpuImageDesc){
         .width      = w,
@@ -141,7 +148,7 @@ static bool create_depth(Qs_Renderer *r, uint32_t w, uint32_t h)
     return true;
 }
 
-static void recreate_depth(Qs_Renderer *r, uint32_t w, uint32_t h)
+static void recreate_depth(VkRenderer *r, uint32_t w, uint32_t h)
 {
     destroy_depth(r);
     if (w == 0 || h == 0) return;
@@ -181,7 +188,7 @@ static int node_compare(const void *a, const void *b)
 static void on_render(const Qs_GpuFrame *frame, Qs_Viewport *vp, void *user_data)
 {
     (void)vp;
-    Qs_Renderer *r = user_data;
+    VkRenderer *r = user_data;
     uint32_t w = frame->width, h = frame->height;
     if (w == 0 || h == 0) return;
 
@@ -202,7 +209,7 @@ static void on_render(const Qs_GpuFrame *frame, Qs_Viewport *vp, void *user_data
     qs_cmd_set_viewport(frame->cmd, w, h);
 
     Qs_RenderContext ctx = {
-        .renderer = r,
+        .renderer = r->handle,
         .cmd      = frame->cmd,
         .width    = w,
         .height   = h,
@@ -221,7 +228,7 @@ static void on_render(const Qs_GpuFrame *frame, Qs_Viewport *vp, void *user_data
 static void on_resize(Qs_Viewport *vp, uint32_t w, uint32_t h, void *user_data)
 {
     (void)vp;
-    Qs_Renderer *r = user_data;
+    VkRenderer *r = user_data;
     if (r->depth_enabled && w > 0 && h > 0)
         recreate_depth(r, w, h);
     else { r->fb_width = w; r->fb_height = h; }
@@ -280,14 +287,14 @@ static void renderer_defaults(Qs_Camera *cam)
         cam->position[2] = 5.0f;
 }
 
-static Qs_Renderer *vk_renderer_create(void *ctx, Qs_Engine *engine,
-                                        const Qs_RendererDesc *desc)
+static void *vk_renderer_create(void *ctx, Qs_Engine *engine,
+                                 const Qs_RendererDesc *desc)
 {
     (void)engine;
     VkRenderSystemData *sys = ctx;
     if (!sys || !desc) return NULL;
 
-    Qs_Renderer *r = NULL;
+    VkRenderer *r = NULL;
     for (uint32_t i = 0; i < QS_MAX_RENDERERS; i++) {
         if (!sys->renderers[i].in_use) { r = &sys->renderers[i]; break; }
     }
@@ -319,9 +326,10 @@ static Qs_Renderer *vk_renderer_create(void *ctx, Qs_Engine *engine,
     return r;
 }
 
-static void vk_renderer_destroy(void *ctx, Qs_Renderer *renderer)
+static void vk_renderer_destroy(void *ctx, void *impl)
 {
     VkRenderSystemData *sys = ctx;
+    VkRenderer *renderer = impl;
     if (!renderer || !renderer->in_use) return;
     vk_forward_detach(renderer);
     destroy_depth(renderer);
@@ -330,21 +338,32 @@ static void vk_renderer_destroy(void *ctx, Qs_Renderer *renderer)
     if (sys && sys->count > 0) sys->count--;
 }
 
-static void vk_renderer_bind(void *ctx, Qs_Renderer *renderer, Qs_Viewport *viewport)
+static void vk_renderer_bind(void *ctx, void *impl, Qs_Viewport *viewport)
 {
     (void)ctx;
+    VkRenderer *renderer = impl;
     if (!renderer || !viewport) return;
     qs_viewport_set_callbacks(viewport, on_render, renderer, on_resize, renderer);
+}
+
+/* post_create: called by the engine dispatch layer once it has wrapped
+   impl in a Qs_Renderer handle.  Stores the back-reference so render
+   callbacks can populate Qs_RenderContext.renderer. */
+static void vk_renderer_post_create(void *impl, Qs_Renderer *handle)
+{
+    VkRenderer *r = impl;
+    if (r) r->handle = handle;
 }
 
 /* ================================================================
    ACCESSORS
    ================================================================ */
 
-static Qs_Camera *vk_renderer_camera(Qs_Renderer *r) { return r ? &r->camera : NULL; }
+static Qs_Camera *vk_renderer_camera(void *impl) { VkRenderer *r = impl; return r ? &r->camera : NULL; }
 
-static void vk_renderer_set_clear_color(Qs_Renderer *r, const float color[4])
+static void vk_renderer_set_clear_color(void *impl, const float color[4])
 {
+    VkRenderer *r = impl;
     if (!r) return;
     r->clear_color[0] = color[0];
     r->clear_color[1] = color[1];
@@ -352,7 +371,7 @@ static void vk_renderer_set_clear_color(Qs_Renderer *r, const float color[4])
     r->clear_color[3] = color[3];
 }
 
-static Qs_RenderNode *vk_renderer_add_node(Qs_Renderer *r, const Qs_RenderNodeDesc *desc)
+Qs_RenderNode *vk_renderer_add_node_impl(VkRenderer *r, const Qs_RenderNodeDesc *desc)
 {
     if (!r || !desc || !desc->execute) return NULL;
     if (r->node_count >= QS_MAX_RENDER_NODES) {
@@ -370,7 +389,13 @@ static Qs_RenderNode *vk_renderer_add_node(Qs_Renderer *r, const Qs_RenderNodeDe
     return node;
 }
 
-static void vk_renderer_remove_node(Qs_Renderer *r, Qs_RenderNode *node)
+/* vtable-facing wrapper */
+static Qs_RenderNode *vk_renderer_add_node(void *impl, const Qs_RenderNodeDesc *desc)
+{
+    return vk_renderer_add_node_impl(impl, desc);
+}
+
+void vk_renderer_remove_node_impl(VkRenderer *r, Qs_RenderNode *node)
 {
     if (!r || !node) return;
     for (uint32_t i = 0; i < r->node_count; i++) {
@@ -383,11 +408,18 @@ static void vk_renderer_remove_node(Qs_Renderer *r, Qs_RenderNode *node)
     }
 }
 
-static const char *vk_renderer_name(const Qs_Renderer *r) { return r ? r->name : NULL; }
+/* vtable-facing wrapper */
+static void vk_renderer_remove_node(void *impl, Qs_RenderNode *node)
+{
+    vk_renderer_remove_node_impl(impl, node);
+}
 
-static void vk_renderer_extents(const Qs_Renderer *r,
+static const char *vk_renderer_name(const void *impl) { const VkRenderer *r = impl; return r ? r->name : NULL; }
+
+static void vk_renderer_extents(const void *impl,
                                   uint32_t *out_w, uint32_t *out_h)
 {
+    const VkRenderer *r = impl;
     if (out_w) *out_w = r ? r->fb_width  : 0;
     if (out_h) *out_h = r ? r->fb_height : 0;
 }
@@ -396,20 +428,23 @@ static void vk_renderer_extents(const Qs_Renderer *r,
    LIGHT SUBMISSION
    ================================================================ */
 
-static void vk_submit_light(Qs_Renderer *r, Qs_Light *light)
+static void vk_submit_light(void *impl, Qs_Light *light)
 {
+    VkRenderer *r = impl;
     if (!r || !vk_light_is_active(light)) return;
     if (r->light_count < QS_MAX_LIGHTS_PER_RENDERER)
         vk_light_pack_gpu(light, &r->lights[r->light_count++]);
 }
 
-static void vk_clear_lights(Qs_Renderer *r)
+static void vk_clear_lights(void *impl)
 {
+    VkRenderer *r = impl;
     if (r) r->light_count = 0;
 }
 
-static const Qs_LightGPU *vk_get_lights(const Qs_Renderer *r, uint32_t *out_count)
+static const Qs_LightGPU *vk_get_lights(const void *impl, uint32_t *out_count)
 {
+    const VkRenderer *r = impl;
     if (!r || r->light_count == 0) {
         if (out_count) *out_count = 0;
         return NULL;
@@ -430,6 +465,7 @@ const Qs_RendererBackend vk_renderer_backend = {
     .renderer_create          = vk_renderer_create,
     .renderer_destroy         = vk_renderer_destroy,
     .renderer_bind            = vk_renderer_bind,
+    .renderer_post_create     = vk_renderer_post_create,
     .renderer_camera          = vk_renderer_camera,
     .renderer_set_clear_color = vk_renderer_set_clear_color,
     .renderer_add_node        = vk_renderer_add_node,

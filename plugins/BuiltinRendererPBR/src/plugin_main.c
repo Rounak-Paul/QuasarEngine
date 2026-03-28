@@ -25,7 +25,7 @@ static void on_load(Qs_Engine *engine)
 static void on_unload(Qs_Engine *engine)
 {
     (void)engine;
-    qs_renderer_backend_register(NULL);
+    qs_renderer_backend_unregister("Vulkan/PBR");
     qs_texture_backend_register(NULL);
     qs_mesh_backend_register(NULL);
     qs_material_backend_register(NULL);
