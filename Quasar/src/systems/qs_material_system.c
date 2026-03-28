@@ -244,7 +244,7 @@ Qs_Material *qs_material_create(Qs_Engine *engine, const Qs_MaterialDesc *desc)
     m->params.base_color_factor[1] = desc->base_color_factor[1] != 0.0f ? desc->base_color_factor[1] : 1.0f;
     m->params.base_color_factor[2] = desc->base_color_factor[2] != 0.0f ? desc->base_color_factor[2] : 1.0f;
     m->params.base_color_factor[3] = desc->base_color_factor[3] != 0.0f ? desc->base_color_factor[3] : 1.0f;
-    m->params.metallic_factor      = desc->metallic_factor    != 0.0f ? desc->metallic_factor    : 1.0f;
+    m->params.metallic_factor      = desc->metallic_factor;
     m->params.roughness_factor     = desc->roughness_factor   != 0.0f ? desc->roughness_factor   : 1.0f;
     m->params.normal_scale         = desc->normal_scale       != 0.0f ? desc->normal_scale       : 1.0f;
     m->params.occlusion_strength   = desc->occlusion_strength != 0.0f ? desc->occlusion_strength : 1.0f;

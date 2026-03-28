@@ -1,4 +1,5 @@
 ﻿#include "qs_renderer.h"
+#include "qs_scene.h"
 #include "qs_light.h"
 #include "qs_gpu.h"
 #include "qs_mesh.h"
@@ -798,6 +799,31 @@ void qs_renderer_submit_light(Qs_Renderer *r, Qs_Light *light)
     if (!qs_light_is_active(light)) return;
     if (r->light_count < QS_LIGHTS_MAX)
         qs_light_pack_gpu(light, &r->lights[r->light_count++]);
+}
+
+void qs_renderer_submit_light_comp(Qs_Renderer *r, const Qs_LightComp *lc)
+{
+    if (!r || !lc || !lc->enabled) return;
+    if (r->light_count >= QS_LIGHTS_MAX) return;
+    Qs_LightGPU *out = &r->lights[r->light_count++];
+    out->position[0]     = 0.0f; out->position[1] = 0.0f; out->position[2] = 0.0f;
+    out->direction[0]    = lc->direction[0];
+    out->direction[1]    = lc->direction[1];
+    out->direction[2]    = lc->direction[2];
+    out->color[0]        = lc->color[0];
+    out->color[1]        = lc->color[1];
+    out->color[2]        = lc->color[2];
+    out->intensity       = lc->intensity;
+    out->range           = lc->range;
+    out->type            = (uint32_t)lc->type;
+    out->cast_shadows    = lc->cast_shadows ? 1u : 0u;
+    /* Convert cone degrees to cosines for the GPU shader */
+    float pi_over_180 = 3.14159265f / 180.0f;
+    float inner = lc->inner_cone_deg * pi_over_180;
+    float outer = lc->outer_cone_deg * pi_over_180;
+    out->inner_cone_cos  = cosf(inner);
+    out->outer_cone_cos  = cosf(outer > inner ? outer : inner);
+    out->_pad            = 0;
 }
 
 void qs_renderer_clear_lights(Qs_Renderer *r)

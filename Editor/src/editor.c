@@ -612,8 +612,8 @@ static void on_frame(Qs_Engine *engine, void *userdata)
              e = qs_scene_next(scene, qs_light_comp_type(), e))
         {
             Qs_LightComp *lc = qs_entity_get(scene, e, qs_light_comp_type());
-            if (!lc || !lc->light) continue;
-            qs_renderer_submit_light(ed->scene_renderer, lc->light);
+            if (!lc || !lc->enabled) continue;
+            qs_renderer_submit_light_comp(ed->scene_renderer, lc);
         }
     }
 
@@ -793,24 +793,14 @@ static bool editor_load_scene(Editor *ed, const char *path)
 
     /* Add a default directional sun light if the scene has no lights */
     if (qs_scene_first(scene, qs_light_comp_type()) == QS_ENTITY_INVALID) {
-        Qs_LightDesc sun_desc;
-        sun_desc.name           = "Sun";
-        sun_desc.type           = QS_LIGHT_DIRECTIONAL;
-        sun_desc.position[0]    = 0.0f;  sun_desc.position[1] = 0.0f;  sun_desc.position[2] = 0.0f;
-        sun_desc.direction[0]   = -0.577f;
-        sun_desc.direction[1]   = -0.577f;
-        sun_desc.direction[2]   = -0.577f;
-        sun_desc.color[0]       = 1.0f;
-        sun_desc.color[1]       = 0.95f;
-        sun_desc.color[2]       = 0.9f;
-        sun_desc.intensity      = 3.0f;
-        sun_desc.range          = 0.0f;
-        sun_desc.inner_cone_deg = 0.0f;
-        sun_desc.outer_cone_deg = 0.0f;
-        sun_desc.cast_shadows   = true;
         Qs_Entity sun = qs_entity_create(scene, "Sun");
         Qs_LightComp *lc = qs_entity_add(scene, sun, qs_light_comp_type());
-        if (lc) lc->light = qs_light_create(ed->engine, &sun_desc);
+        if (lc) {
+            lc->color[0]     = 1.0f;
+            lc->color[1]     = 0.95f;
+            lc->color[2]     = 0.9f;
+            lc->intensity    = 3.0f;
+        }
     }
 
     cJSON_Delete(root);

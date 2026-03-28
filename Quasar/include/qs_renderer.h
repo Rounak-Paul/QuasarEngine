@@ -13,6 +13,7 @@ typedef struct Qs_Engine            Qs_Engine;
 typedef struct Qs_Renderer          Qs_Renderer;
 typedef struct Qs_RenderNode        Qs_RenderNode;
 typedef struct Qs_RenderAttachment  Qs_RenderAttachment;
+typedef struct Qs_LightComp         Qs_LightComp;   ///< Defined in qs_scene.h.
 
 /* ================================================================
    CAMERA
@@ -271,7 +272,9 @@ void                  qs_renderer_clear_renderables (Qs_Renderer *renderer);
 const Qs_Renderable  *qs_renderer_renderables       (const Qs_Renderer *renderer,
                                                       uint32_t *out_count);
 
-void               qs_renderer_submit_light(Qs_Renderer *renderer, Qs_Light *light);
+void               qs_renderer_submit_light    (Qs_Renderer *renderer, Qs_Light *light);
+void               qs_renderer_submit_light_comp(Qs_Renderer *renderer,
+                                                 const Qs_LightComp *comp);
 void               qs_renderer_clear_lights(Qs_Renderer *renderer);
 const Qs_LightGPU *qs_renderer_lights      (const Qs_Renderer *renderer,
                                              uint32_t *out_count);

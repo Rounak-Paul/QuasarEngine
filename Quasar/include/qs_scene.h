@@ -5,13 +5,14 @@
 #include <stdint.h>
 #include <stddef.h>
 
+#include "qs_light.h"
+
 typedef struct Qs_Engine         Qs_Engine;
 typedef struct Qs_Scene          Qs_Scene;
 typedef struct Qs_ComponentType  Qs_ComponentType;
 typedef struct Qs_TypeInfo       Qs_TypeInfo;
 typedef struct Qs_Mesh           Qs_Mesh;
 typedef struct Qs_Material       Qs_Material;
-typedef struct Qs_Light          Qs_Light;
 struct cJSON;
 
 /* ================================================================
@@ -85,9 +86,19 @@ typedef struct Qs_MeshComp {
     char         material_name[64];///< Resource name for serialization.
 } Qs_MeshComp;
 
-/// Light reference.
+/// Light component — all parameters stored inline for reflection, serialization,
+/// and inspector editing.  No opaque pointer; data is packed directly to GPU at
+/// submission time via qs_renderer_submit_light_comp().
 typedef struct Qs_LightComp {
-    Qs_Light *light;
+    Qs_LightType type;            ///< Default: QS_LIGHT_DIRECTIONAL.
+    float        direction[3];    ///< Normalised direction (directional / spot).
+    float        color[3];        ///< Linear RGB. Default: {1, 1, 1}.
+    float        intensity;       ///< Luminous intensity. Default: 1.0.
+    float        range;           ///< Max influence radius (0 = infinite).
+    float        inner_cone_deg;  ///< Inner cone angle for spot lights.
+    float        outer_cone_deg;  ///< Outer cone angle for spot lights.
+    bool         cast_shadows;
+    bool         enabled;
 } Qs_LightComp;
 
 /// Persistent entity ID (auto-assigned on creation, survives serialization).

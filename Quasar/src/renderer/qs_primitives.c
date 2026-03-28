@@ -189,12 +189,14 @@ Qs_Mesh *qs_primitive_sphere(Qs_Engine *engine, float radius,
         for (uint32_t sl = 0; sl < slices; sl++) {
             uint32_t a = st * (slices + 1) + sl;
             uint32_t b = a + slices + 1;
+            /* Reversed winding vs natural UV order so outer faces are
+               CCW in clip space — consistent with cube/plane primitives. */
+            indices[ii++] = a + 1;
+            indices[ii++] = b;
             indices[ii++] = a;
-            indices[ii++] = b;
-            indices[ii++] = a + 1;
-            indices[ii++] = a + 1;
-            indices[ii++] = b;
             indices[ii++] = b + 1;
+            indices[ii++] = b;
+            indices[ii++] = a + 1;
         }
     }
 

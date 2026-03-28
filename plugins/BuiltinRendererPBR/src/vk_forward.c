@@ -44,6 +44,17 @@ typedef struct {
     float _pad;
 } ShadowUBO;
 
+/* Material params pushed at offset 64 (fragment stage), total push constant = 112 bytes */
+typedef struct {
+    float base_color_factor[4];  /* offset  0 rel (abs  64), 16 bytes */
+    float metallic_factor;       /* offset 16 rel (abs  80) */
+    float roughness_factor;      /* offset 20 rel (abs  84) */
+    float normal_scale;          /* offset 24 rel (abs  88) */
+    float occlusion_strength;    /* offset 28 rel (abs  92) */
+    float emissive_factor[3];    /* offset 32 rel (abs  96), 12 bytes */
+    float alpha_cutoff;          /* offset 44 rel (abs 108) */
+} FwdMatPC;                      /* total: 48 bytes */
+
 /* ================================================================
    GLSL SHADERS
    ================================================================ */
@@ -124,6 +135,15 @@ static const char *FORWARD_FRAG =
     "layout(set = 1, binding = 2) uniform sampler2D u_normal_map;\n"
     "layout(set = 1, binding = 3) uniform sampler2D u_occlusion;\n"
     "layout(set = 1, binding = 4) uniform sampler2D u_emissive;\n"
+    "layout(push_constant) uniform MatPC {\n"
+    "    layout(offset=64)  vec4  base_color_factor;\n"
+    "    layout(offset=80)  float metallic_factor;\n"
+    "    layout(offset=84)  float roughness_factor;\n"
+    "    layout(offset=88)  float normal_scale;\n"
+    "    layout(offset=92)  float occlusion_strength;\n"
+    "    layout(offset=96)  vec3  emissive_factor;\n"
+    "    layout(offset=108) float alpha_cutoff;\n"
+    "} mat_pc;\n"
     "layout(location = 0) out vec4 out_color;\n"
     "const float PI = 3.14159265359;\n"
     "float D_GGX(float NdotH, float r) { float a2=(r*r)*(r*r); float d=NdotH*NdotH*(a2-1.0)+1.0; return a2/(PI*d*d); }\n"
@@ -132,10 +152,11 @@ static const char *FORWARD_FRAG =
     "    return (NdotV/(NdotV*(1.0-k)+k))*(NdotL/(NdotL*(1.0-k)+k)); }\n"
     "vec3 F_Schlick(float c, vec3 F0) { return F0+(1.0-F0)*pow(clamp(1.0-c,0.0,1.0),5.0); }\n"
     "float shadow_pcf(sampler2D sm, vec4 lsp) {\n"
-    "    vec3 p=lsp.xyz/lsp.w; p=p*0.5+0.5;\n"
-    "    if(p.z>1.0||any(lessThan(p.xy,vec2(0)))||any(greaterThan(p.xy,vec2(1)))) return 1.0;\n"
-    "    float s=0.0; vec2 t=1.0/vec2(textureSize(sm,0)); float d=p.z-0.002;\n"
-    "    for(int x=-1;x<=1;x++) for(int y=-1;y<=1;y++) s+=(texture(sm,p.xy+vec2(x,y)*t).r<d)?0.0:1.0;\n"
+    "    vec3 p=lsp.xyz/lsp.w;\n"                                                          /* ortho: w=1, so p = clip coords = NDC            */
+    "    vec2 uv=p.xy*0.5+0.5;\n"                                                          /* remap XY [-1,1] -> UV [0,1]                      */
+    "    if(p.z<0.0||p.z>1.0||any(lessThan(uv,vec2(0)))||any(greaterThan(uv,vec2(1)))) return 1.0;\n"
+    "    float s=0.0; vec2 t=1.0/vec2(textureSize(sm,0)); float d=p.z-0.005;\n"            /* compare NDC z directly: depth buf stores [0,1]  */
+    "    for(int x=-1;x<=1;x++) for(int y=-1;y<=1;y++) s+=(texture(sm,uv+vec2(x,y)*t).r<d)?0.0:1.0;\n"
     "    return s/9.0; }\n"
     "float compute_shadow(vec3 wpos) {\n"
     "    float depth=-(frame.view*vec4(wpos,1.0)).z;\n"
@@ -143,11 +164,11 @@ static const char *FORWARD_FRAG =
     "    else if(depth<shadow_data.cascade_splits[1]) return shadow_pcf(shadow_map_1,shadow_data.cascade_vp[1]*vec4(wpos,1.0));\n"
     "    else return shadow_pcf(shadow_map_2,shadow_data.cascade_vp[2]*vec4(wpos,1.0)); }\n"
     "void main() {\n"
-    "    vec4 base=texture(u_base_color,v_uv);\n"
+    "    vec4 base=texture(u_base_color,v_uv)*mat_pc.base_color_factor;\n"
     "    vec2 mr=texture(u_metallic_roughness,v_uv).bg;\n"
-    "    float metallic=mr.x; float roughness=max(mr.y,0.04);\n"
-    "    float ao=texture(u_occlusion,v_uv).r;\n"
-    "    vec3 emissive=texture(u_emissive,v_uv).rgb;\n"
+    "    float metallic=mr.x*mat_pc.metallic_factor; float roughness=max(mr.y*mat_pc.roughness_factor,0.04);\n"
+    "    float ao=mix(1.0,texture(u_occlusion,v_uv).r,mat_pc.occlusion_strength);\n"
+    "    vec3 emissive=texture(u_emissive,v_uv).rgb*mat_pc.emissive_factor;\n"
     "    vec3 nmap=texture(u_normal_map,v_uv).rgb*2.0-1.0;\n"
     "    mat3 TBN=mat3(normalize(v_tangent),normalize(v_bitangent),normalize(v_normal));\n"
     "    vec3 N=normalize(TBN*nmap);\n"
@@ -375,9 +396,9 @@ static bool create_forward_pipeline(Qs_GpuContext *gpu, VkPassResources *ps)
     Qs_GpuDescriptorSetLayout *mat_layout=qs_material_set_layout();
     if(!mat_layout){qs_gpu_destroy_shader(gpu,vs);qs_gpu_destroy_shader(gpu,fs);
         QS_LOG_ERROR("VkForward: material set layout unavailable");return false;}
-    Qs_GpuPushConstantRange pc={QS_GPU_SHADER_VERTEX,0,64};
+    Qs_GpuPushConstantRange pcs[2]={{QS_GPU_SHADER_VERTEX,0,64},{QS_GPU_SHADER_FRAGMENT,64,48}};
     Qs_GpuDescriptorSetLayout *sets[]={ps->frame_set_layout,mat_layout};
-    ps->forward_layout=qs_gpu_create_pipeline_layout(gpu,&(Qs_GpuPipelineLayoutDesc){sets,2,&pc,1});
+    ps->forward_layout=qs_gpu_create_pipeline_layout(gpu,&(Qs_GpuPipelineLayoutDesc){sets,2,pcs,2});
     Qs_GpuVertexAttribute attrs[4]={
         {0,QS_GPU_VERTEX_FORMAT_FLOAT3,offsetof(Qs_Vertex,position)},
         {1,QS_GPU_VERTEX_FORMAT_FLOAT3,offsetof(Qs_Vertex,normal)},
@@ -590,6 +611,19 @@ static void forward_pass_execute(const Qs_RenderContext *ctx, void *user_data)
         if (!ren->material_set || !ren->vertex_buffer) continue;
         qs_cmd_push_constants(ctx->cmd, ps->forward_layout,
                               QS_GPU_SHADER_VERTEX, 0, 64, ren->transform);
+        {
+            FwdMatPC mpc;
+            const Qs_PBRParams *p = &ren->material_params;
+            memcpy(mpc.base_color_factor, p->base_color_factor, sizeof(mpc.base_color_factor));
+            mpc.metallic_factor    = p->metallic_factor;
+            mpc.roughness_factor   = p->roughness_factor;
+            mpc.normal_scale       = p->normal_scale;
+            mpc.occlusion_strength = p->occlusion_strength;
+            memcpy(mpc.emissive_factor, p->emissive_factor, sizeof(mpc.emissive_factor));
+            mpc.alpha_cutoff       = p->alpha_cutoff;
+            qs_cmd_push_constants(ctx->cmd, ps->forward_layout,
+                                  QS_GPU_SHADER_FRAGMENT, 64, sizeof(FwdMatPC), &mpc);
+        }
         qs_cmd_bind_descriptor_set(ctx->cmd, ps->forward_layout, 1, ren->material_set);
         qs_cmd_bind_vertex_buffer(ctx->cmd, 0, ren->vertex_buffer, 0);
         if (ren->index_buffer)

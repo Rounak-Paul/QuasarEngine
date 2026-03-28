@@ -156,7 +156,17 @@
                     "rotation": [0.0, 0.0, 0.0, 1.0],
                     "scale":    [1.0, 1.0, 1.0]
                 },
-                "LightComp": {}
+                "LightComp": {
+                    "type": 0,
+                    "direction": [-0.577, -0.577, -0.577],
+                    "color": [1.0, 0.95, 0.9],
+                    "intensity": 3.0,
+                    "range": 0.0,
+                    "inner_cone_deg": 0.0,
+                    "outer_cone_deg": 30.0,
+                    "cast_shadows": true,
+                    "enabled": true
+                }
             }
         }
     ]

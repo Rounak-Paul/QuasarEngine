@@ -249,6 +249,25 @@ static void mesh_comp_init(void *comp, Qs_Scene *scene, Qs_Entity entity)
     mc->visible = true;
 }
 
+static void light_comp_init(void *comp, Qs_Scene *scene, Qs_Entity entity)
+{
+    (void)scene; (void)entity;
+    Qs_LightComp *lc = (Qs_LightComp *)comp;
+    lc->type            = QS_LIGHT_DIRECTIONAL;
+    lc->direction[0]    = -0.577f;
+    lc->direction[1]    = -0.577f;
+    lc->direction[2]    = -0.577f;
+    lc->color[0]        = 1.0f;
+    lc->color[1]        = 1.0f;
+    lc->color[2]        = 1.0f;
+    lc->intensity       = 1.0f;
+    lc->range           = 0.0f;
+    lc->inner_cone_deg  = 0.0f;
+    lc->outer_cone_deg  = 30.0f;
+    lc->cast_shadows    = true;
+    lc->enabled         = true;
+}
+
 static void id_comp_init(void *comp, Qs_Scene *scene, Qs_Entity entity)
 {
     (void)entity;
@@ -291,6 +310,25 @@ static const Qs_TypeInfo s_mesh_comp_type_info = {
     .data_size   = sizeof(Qs_MeshComp),
     .fields      = s_mesh_comp_fields,
     .field_count = QS_COUNTOF(s_mesh_comp_fields),
+};
+
+static const Qs_FieldInfo s_light_comp_fields[] = {
+    QS_FIELD(Qs_LightComp, type,           QS_FIELD_UINT32),
+    QS_FIELD(Qs_LightComp, direction,      QS_FIELD_FLOAT3),
+    QS_FIELD(Qs_LightComp, color,          QS_FIELD_FLOAT3),
+    QS_FIELD(Qs_LightComp, intensity,      QS_FIELD_FLOAT),
+    QS_FIELD(Qs_LightComp, range,          QS_FIELD_FLOAT),
+    QS_FIELD(Qs_LightComp, inner_cone_deg, QS_FIELD_FLOAT),
+    QS_FIELD(Qs_LightComp, outer_cone_deg, QS_FIELD_FLOAT),
+    QS_FIELD(Qs_LightComp, cast_shadows,   QS_FIELD_BOOL),
+    QS_FIELD(Qs_LightComp, enabled,        QS_FIELD_BOOL),
+};
+
+static const Qs_TypeInfo s_light_comp_type_info = {
+    .name        = "LightComp",
+    .data_size   = sizeof(Qs_LightComp),
+    .fields      = s_light_comp_fields,
+    .field_count = QS_COUNTOF(s_light_comp_fields),
 };
 
 static const Qs_FieldInfo s_id_comp_fields[] = {
@@ -336,6 +374,7 @@ static void register_builtin_types(Qs_Engine *engine)
     /* Register reflection type infos */
     qs_type_register(&s_transform_type_info);
     qs_type_register(&s_mesh_comp_type_info);
+    qs_type_register(&s_light_comp_type_info);
     qs_type_register(&s_id_comp_type_info);
     qs_type_register(&s_tag_comp_type_info);
 
@@ -370,6 +409,8 @@ static void register_builtin_types(Qs_Engine *engine)
     s_light_comp_type = qs_component_register(engine, &(Qs_ComponentTypeDesc){
         .name      = "LightComp",
         .data_size = sizeof(Qs_LightComp),
+        .type_info = &s_light_comp_type_info,
+        .init      = light_comp_init,
     });
 }
 
