@@ -26,6 +26,8 @@ typedef struct {
 
 static HierarchyClickCtx s_click_ctx[MAX_ENTITY_NODES];
 static uint32_t           s_click_idx;
+static Editor            *s_editor;
+static Ca_Div            *s_root;
 
 static void on_entity_select(Ca_TreeNode *tn, void *user_data)
 {
@@ -35,17 +37,14 @@ static void on_entity_select(Ca_TreeNode *tn, void *user_data)
         editor_set_selected_entity(ctx->editor, ctx->entity);
 }
 
-void ed_hierarchy(void *editor)
+static void build_hierarchy(Editor *ed, Qs_Scene *scene)
 {
-    Editor   *ed    = (Editor *)editor;
-    Qs_Scene *scene = qs_scene_active();
-    if (!scene) return;
-
     s_click_idx = 0;
 
     /* ---- Tree ---- */
     ca_tree_begin(&(Ca_DivDesc){
         .direction = CA_VERTICAL,
+        .id        = "hierarchy-tree",
         .style     = "hierarchy-tree",
     });
     {
@@ -53,6 +52,7 @@ void ed_hierarchy(void *editor)
         ca_tree_node_begin(&(Ca_TreeNodeDesc){
             .text       = qs_scene_name(scene),
             .expanded   = true,
+            .id         = "hierarchy-scene-root",
             .style      = "hierarchy-scene",
             .icon       = ICON_SCENE,
             .icon_color = CA_THEME_ACCENT,
@@ -98,8 +98,12 @@ void ed_hierarchy(void *editor)
                     ? "hierarchy-entity hierarchy-selected"
                     : "hierarchy-entity";
 
+                char node_id[64];
+                snprintf(node_id, sizeof(node_id), "hier-entity-%u", (unsigned)e);
+
                 ca_tree_node_begin(&(Ca_TreeNodeDesc){
                     .text        = name,
+                    .id          = node_id,
                     .style       = style,
                     .icon        = dot_icon,
                     .icon_color  = dot_color,
@@ -117,11 +121,29 @@ void ed_hierarchy(void *editor)
     /* ---- Add Entity button ---- */
     ca_btn(&(Ca_BtnDesc){
         .text      = "+  Add Entity",
+        .id        = "hierarchy-add-entity",
         .style     = "hierarchy-add-btn",
     });
 }
 
+void ed_hierarchy(void *editor)
+{
+    s_editor = (Editor *)editor;
+    s_root = ca_div_begin(&(Ca_DivDesc){
+        .direction = CA_VERTICAL,
+        .id        = "hierarchy-root",
+    });
+    ca_div_end();
+}
+
 void ed_hierarchy_update(void *editor)
 {
-    (void)editor;
+    Editor *ed = (Editor *)editor;
+    if (!ed || !s_root) return;
+    Qs_Scene *scene = qs_scene_active();
+    if (!scene) return;
+
+    ca_reconcile_begin(s_root);
+    build_hierarchy(ed, scene);
+    ca_div_end();
 }

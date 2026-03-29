@@ -46,7 +46,6 @@ static Ca_TextInput *s_entity_name_input;
 static Ca_Label     *s_id_value;
 static Ca_TextInput *s_tag_input;
 static Ca_Div       *s_content_div;      /* dynamic section container */
-static Qs_Entity     s_prev_entity;
 
 /* Heap-allocated bindings — freed + rebuilt on each entity change */
 static InputBinding *s_bindings;
@@ -191,7 +190,6 @@ static void on_tag_input(Ca_TextInput *input, void *user_data)
 void ed_inspector(void *editor)
 {
     s_editor = (Editor *)editor;
-    s_prev_entity = QS_ENTITY_INVALID;
 
     /* Scrollable container */
     ca_div_begin(&(Ca_DivDesc){
@@ -261,19 +259,26 @@ void ed_inspector(void *editor)
    BUILD FIELD — create the right widget for a field type
    ================================================================ */
 
-static void build_field(Qs_ComponentType *ct, const Qs_FieldInfo *fi,
-                        const void *comp)
+static void build_field(const char *comp_name, Qs_ComponentType *ct,
+                        const Qs_FieldInfo *fi, const void *comp)
 {
     const void *field_ptr = (const char *)comp + fi->offset;
     char buf[64];
 
+    char row_id[96];
+    snprintf(row_id, sizeof(row_id), "ins-field-%s-%s", comp_name, fi->name);
+
     ca_div_begin(&(Ca_DivDesc){
         .direction = CA_VERTICAL,
+        .id        = row_id,
         .style     = "inspector-field-row",
     });
 
+    char name_id[96];
+    snprintf(name_id, sizeof(name_id), "ins-field-name-%s-%s", comp_name, fi->name);
     ca_text(&(Ca_TextDesc){
         .text  = fi->name,
+        .id    = name_id,
         .style = "inspector-field-name",
     });
 
@@ -295,9 +300,12 @@ static void build_field(Qs_ComponentType *ct, const Qs_FieldInfo *fi,
         else if (fi->type == QS_FIELD_UINT32)
             snprintf(buf, sizeof(buf), "%u", *(const uint32_t *)field_ptr);
 
+        char input_id[96];
+        snprintf(input_id, sizeof(input_id), "ins-field-input-%s-%s", comp_name, fi->name);
         ca_input(&(Ca_InputDesc){
             .text        = (fi->type == QS_FIELD_STRING)
                             ? (const char *)field_ptr : buf,
+            .id          = input_id,
             .style       = "inspector-scalar-input",
             .on_change   = on_field_input,
             .change_data = b,
@@ -311,8 +319,11 @@ static void build_field(Qs_ComponentType *ct, const Qs_FieldInfo *fi,
                      fi->type == QS_FIELD_FLOAT3 ? 3 : 4;
         const float *v = (const float *)field_ptr;
 
+        char vec_row_id[96];
+        snprintf(vec_row_id, sizeof(vec_row_id), "ins-field-vec-%s-%s", comp_name, fi->name);
         ca_div_begin(&(Ca_DivDesc){
             .direction = CA_HORIZONTAL,
+            .id        = vec_row_id,
             .style     = "inspector-vec-row",
         });
         for (uint32_t i = 0; i < n; i++) {
@@ -324,16 +335,25 @@ static void build_field(Qs_ComponentType *ct, const Qs_FieldInfo *fi,
             };
             snprintf(buf, sizeof(buf), "%.3f", v[i]);
 
+            char axis_group_id[96];
+            snprintf(axis_group_id, sizeof(axis_group_id), "ins-field-axis-%s-%s-%u", comp_name, fi->name, i);
             ca_div_begin(&(Ca_DivDesc){
                 .direction = CA_HORIZONTAL,
+                .id        = axis_group_id,
                 .style     = "inspector-axis-group",
             });
+            char axis_label_id[96];
+            snprintf(axis_label_id, sizeof(axis_label_id), "ins-field-axis-label-%s-%s-%u", comp_name, fi->name, i);
             ca_text(&(Ca_TextDesc){
                 .text  = s_axis_text[i],
+                .id    = axis_label_id,
                 .style = s_axis_style[i],
             });
+            char axis_input_id[96];
+            snprintf(axis_input_id, sizeof(axis_input_id), "ins-field-axis-input-%s-%s-%u", comp_name, fi->name, i);
             ca_input(&(Ca_InputDesc){
                 .text        = buf,
+                .id          = axis_input_id,
                 .style       = "inspector-vec-input",
                 .on_change   = on_field_input,
                 .change_data = b,
@@ -349,9 +369,12 @@ static void build_field(Qs_ComponentType *ct, const Qs_FieldInfo *fi,
             .comp_type = ct, .field_offset = fi->offset,
             .field_size = fi->size, .field_type = fi->type,
         };
+        char check_id[96];
+        snprintf(check_id, sizeof(check_id), "ins-field-check-%s-%s", comp_name, fi->name);
         ca_checkbox(&(Ca_CheckboxDesc){
             .text        = "",
             .checked     = *(const bool *)field_ptr,
+            .id          = check_id,
             .on_change   = on_bool_input,
             .change_data = b,
         });
@@ -363,8 +386,11 @@ static void build_field(Qs_ComponentType *ct, const Qs_FieldInfo *fi,
             snprintf(buf, sizeof(buf), "(none)");
         else
             snprintf(buf, sizeof(buf), "Entity %u", ref);
+        char value_id[96];
+        snprintf(value_id, sizeof(value_id), "ins-field-value-%s-%s", comp_name, fi->name);
         ca_text(&(Ca_TextDesc){
             .text  = buf,
+            .id    = value_id,
             .style = "inspector-field-value",
         });
         break;
@@ -398,12 +424,17 @@ static void build_sections(Qs_Scene *scene, Qs_Entity entity)
         snprintf(section_buf, sizeof(section_buf), "%s  %s",
                  component_icon(comp_name), comp_name);
 
+        char section_id[96];
+        snprintf(section_id, sizeof(section_id), "ins-section-%s", comp_name);
+
         ca_div_begin(&(Ca_DivDesc){
             .direction = CA_HORIZONTAL,
+            .id        = section_id,
             .style     = "inspector-section-header",
         });
         ca_text(&(Ca_TextDesc){
             .text  = section_buf,
+            .id    = section_id,
             .style = "inspector-section-label",
             .color = component_icon_color(comp_name),
         });
@@ -415,7 +446,7 @@ static void build_sections(Qs_Scene *scene, Qs_Entity entity)
 
         if (info && data) {
             for (uint32_t f = 0; f < info->field_count; f++)
-                build_field(ct, &info->fields[f], data);
+                build_field(comp_name, ct, &info->fields[f], data);
         }
     }
 }
@@ -434,23 +465,15 @@ void ed_inspector_update(void *editor)
     if (entity == QS_ENTITY_INVALID || !scene ||
         !qs_entity_valid(scene, entity))
     {
-        if (s_prev_entity != QS_ENTITY_INVALID) {
-            ca_div_set_hidden(s_header_div, true);
-            ca_label_set_hidden(s_no_selection, false);
-            ca_div_clear(s_content_div);
-            ca_div_end();
-            free_bindings();
-            s_prev_entity = QS_ENTITY_INVALID;
-        }
+        ca_div_set_hidden(s_header_div, true);
+        ca_label_set_hidden(s_no_selection, false);
+        ca_reconcile_begin(s_content_div);
+        ca_div_end();
+        free_bindings();
         return;
     }
 
-    /* Only rebuild when entity selection changes */
-    if (entity == s_prev_entity)
-        return;
-
-    /* Tear down old content and enter for rebuild */
-    ca_div_clear(s_content_div);
+    ca_reconcile_begin(s_content_div);
     free_bindings();
 
     ca_label_set_hidden(s_no_selection, true);
@@ -477,6 +500,4 @@ void ed_inspector_update(void *editor)
     /* ---- Build component sections dynamically ---- */
     build_sections(scene, entity);
     ca_div_end();
-
-    s_prev_entity = entity;
 }

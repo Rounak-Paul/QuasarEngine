@@ -5,6 +5,7 @@
 #include "ui/ed_layout.h"
 #include "ui/ed_status_bar.h"
 #include "ui/ed_inspector.h"
+#include "ui/ed_hierarchy.h"
 #include "ui/ed_plugin_manager.h"
 
 #include "ui/ed_file_browser.h"
@@ -836,6 +837,7 @@ static void on_frame(Qs_Engine *engine, void *userdata)
     }
 
     ed_menu_bar_update(ed->menu_bar_div, qs_engine_window(ed->engine), ed);
+    ed_hierarchy_update(ed);
     ed_console_update(ed);
     ed_inspector_update(ed);
     ed_file_browser_update();

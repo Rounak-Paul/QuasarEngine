@@ -188,10 +188,11 @@ void ed_menu_bar_update(Ca_Div *host, Ca_Window *window, void *editor)
         { .label = "Plugins", .items = plugins_items,  .item_count = plugins_item_count },
     };
 
-    ca_div_clear(host);
+    ca_reconcile_begin(host);
     ca_menu_bar(&(Ca_MenuBarDesc){
         .menus      = menus,
         .menu_count = 2,
+        .id         = "editor-menu-bar",
         .style      = "menu-bar",
     });
     ca_div_end();

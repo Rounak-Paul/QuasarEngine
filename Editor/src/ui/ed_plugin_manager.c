@@ -95,7 +95,7 @@ static void plugin_manager_win_frame(void *data)
     s_toggle_ctx_count = 0;
     s_reload_ctx_count = 0;
 
-    ca_div_clear(s_content_div);
+    ca_reconcile_begin(s_content_div);
 
     if (!pm) {
         ca_text(&(Ca_TextDesc){
@@ -120,6 +120,9 @@ static void plugin_manager_win_frame(void *data)
         const Qs_PluginState *state = qs_plugin_state_at(pm, i);
         if (!state) continue;
 
+        const char *plugin_id = qs_plugin_state_id(state);
+        if (!plugin_id) plugin_id = "plugin";
+
         const Qs_PluginDesc *desc = qs_plugin_state_desc(state);
         bool enabled = qs_plugin_state_enabled(state);
         bool loaded  = qs_plugin_state_loaded(state);
@@ -141,14 +144,20 @@ static void plugin_manager_win_frame(void *data)
         }
 
         /* Row container */
+        char row_id[96];
+        snprintf(row_id, sizeof(row_id), "plugin-row-%s", plugin_id);
         ca_div_begin(&(Ca_DivDesc){
             .direction = CA_VERTICAL,
+            .id        = row_id,
             .style     = "plugin-row",
         });
         {
             /* Top row: name + toggle + reload */
+            char header_id[96];
+            snprintf(header_id, sizeof(header_id), "plugin-row-header-%s", plugin_id);
             ca_div_begin(&(Ca_DivDesc){
                 .direction = CA_HORIZONTAL,
+                .id        = header_id,
                 .style     = "plugin-row-header",
             });
             {
@@ -157,8 +166,11 @@ static void plugin_manager_win_frame(void *data)
                 char label[128];
                 snprintf(label, sizeof(label), "%s  %s",
                          ICON_PLUGIN, name ? name : "(unknown)");
+                char name_id[96];
+                snprintf(name_id, sizeof(name_id), "plugin-name-%s", plugin_id);
                 ca_text(&(Ca_TextDesc){
                     .text  = label,
+                    .id    = name_id,
                     .style = "plugin-name",
                 });
 
@@ -166,8 +178,11 @@ static void plugin_manager_win_frame(void *data)
                 if (desc && desc->version) {
                     char ver[64];
                     snprintf(ver, sizeof(ver), "v%s", desc->version);
+                    char ver_id[96];
+                    snprintf(ver_id, sizeof(ver_id), "plugin-version-%s", plugin_id);
                     ca_text(&(Ca_TextDesc){
                         .text  = ver,
+                        .id    = ver_id,
                         .style = "plugin-version",
                     });
                 }
@@ -177,8 +192,11 @@ static void plugin_manager_win_frame(void *data)
                 ca_div_end();
 
                 /* Status label */
+                char status_id[96];
+                snprintf(status_id, sizeof(status_id), "plugin-status-%s", plugin_id);
                 ca_text(&(Ca_TextDesc){
                     .text  = loaded ? "loaded" : (enabled ? "loading..." : "disabled"),
+                    .id    = status_id,
                     .style = loaded ? "plugin-status-loaded"
                                     : (enabled ? "plugin-status-loading"
                                                : "plugin-status-disabled"),
@@ -186,8 +204,11 @@ static void plugin_manager_win_frame(void *data)
 
                 /* Reload button — only for loaded plugins */
                 if (loaded && rctx) {
+                    char reload_id[96];
+                    snprintf(reload_id, sizeof(reload_id), "plugin-reload-%s", plugin_id);
                     ca_btn(&(Ca_BtnDesc){
                         .text       = ICON_RELOAD,
+                        .id         = reload_id,
                         .style      = "plugin-reload-btn",
                         .on_click   = on_reload,
                         .click_data = rctx,
@@ -196,8 +217,11 @@ static void plugin_manager_win_frame(void *data)
 
                 /* Enable toggle */
                 if (tctx) {
+                    char toggle_id[96];
+                    snprintf(toggle_id, sizeof(toggle_id), "plugin-toggle-%s", plugin_id);
                     ca_toggle(&(Ca_ToggleDesc){
                         .on          = enabled,
+                        .id          = toggle_id,
                         .on_change   = on_enable_toggle,
                         .change_data = tctx,
                     });
@@ -207,8 +231,11 @@ static void plugin_manager_win_frame(void *data)
 
             /* Description */
             if (desc && desc->description) {
+                char desc_id[96];
+                snprintf(desc_id, sizeof(desc_id), "plugin-desc-%s", plugin_id);
                 ca_text(&(Ca_TextDesc){
                     .text  = desc->description,
+                    .id    = desc_id,
                     .style = "plugin-description",
                 });
             }
@@ -218,8 +245,11 @@ static void plugin_manager_win_frame(void *data)
                 char author_buf[128];
                 snprintf(author_buf, sizeof(author_buf),
                          "Author: %s", desc->author);
+                char author_id[96];
+                snprintf(author_id, sizeof(author_id), "plugin-author-%s", plugin_id);
                 ca_text(&(Ca_TextDesc){
                     .text  = author_buf,
+                    .id    = author_id,
                     .style = "plugin-author",
                 });
             }
