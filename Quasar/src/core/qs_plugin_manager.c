@@ -474,3 +474,22 @@ const char *qs_plugin_state_id(const Qs_PluginState *state)
 {
     return state ? state->id : NULL;
 }
+
+bool qs_plugin_reload(Qs_PluginManager *pm, const char *id)
+{
+    if (!pm || !id) return false;
+    for (uint32_t i = 0; i < pm->count; i++) {
+        if (strcmp(pm->entries[i].id, id) == 0) {
+            Qs_PluginState *s = &pm->entries[i];
+            plugin_unload(pm, s);
+            bool ok = plugin_load(pm, s);
+            if (ok) {
+                QS_LOG_INFO("Plugin '%s' reloaded", id);
+            } else {
+                QS_LOG_ERROR("Plugin '%s': reload failed", id);
+            }
+            return ok;
+        }
+    }
+    return false;
+}

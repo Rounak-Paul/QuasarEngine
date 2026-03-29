@@ -62,8 +62,8 @@ target_include_directories(Quasar
 target_link_libraries(Quasar
     PUBLIC
         Vulkan::Vulkan
-    PRIVATE
         causality
+    PRIVATE
         OpenAL::OpenAL
         meshoptimizer
         cjson

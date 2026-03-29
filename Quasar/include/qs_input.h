@@ -140,4 +140,8 @@ void qs_input_mouse_delta(float *out_dx, float *out_dy);
 /// Fills *out_dx/*out_dy with accumulated scroll since the previous frame (auto-cleared).
 void qs_input_mouse_scroll(float *out_dx, float *out_dy);
 
+/// Must be called at the end of each frame, after all input has been consumed.
+/// Clears per-frame mouse delta and scroll accumulators.
+void qs_input_end_frame(void);
+
 #endif

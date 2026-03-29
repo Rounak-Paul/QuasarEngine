@@ -28,6 +28,14 @@
 
 #include <string.h>
 #include <math.h>
+
+/* ---- Post-process settings (mutable, read by composite pass each frame) ---- */
+static VkPostProcessSettings g_pp_settings = {
+    .bloom_strength    = 0.04f,
+    .vignette_strength = 0.35f,
+};
+
+VkPostProcessSettings *vk_post_process_settings(void) { return &g_pp_settings; }
 #include <stdlib.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -666,7 +674,10 @@ static void bloom_pass_execute(const Qs_RenderContext *ctx, void *user_data)
     qs_cmd_set_viewport(ctx->cmd,bw,bh);
     qs_cmd_bind_pipeline(ctx->cmd,ps->bloom_down_pipeline);
     qs_cmd_bind_descriptor_set(ctx->cmd,ps->bloom_layout,0,r->bloom_desc_sets[0]);
-    BloomPC bpc={1.0f/(float)ctx->width,1.0f/(float)ctx->height,{0,0}};
+    /* inv_src_size maps destination pixel position to source UV:
+       use 1/bw, 1/bh so gl_FragCoord.xy * inv_src_size covers [0,1]
+       across the full-res HDR source. */
+    BloomPC bpc={1.0f/(float)bw,1.0f/(float)bh,{0,0}};
     qs_cmd_push_constants(ctx->cmd,ps->bloom_layout,QS_GPU_SHADER_FRAGMENT,0,16,&bpc);
     qs_cmd_draw(ctx->cmd,3,0);
     qs_cmd_end_rendering(ctx->cmd);
@@ -712,7 +723,8 @@ static void composite_pass_execute(const Qs_RenderContext *ctx, void *user_data)
     qs_cmd_bind_pipeline(ctx->cmd, ps->composite_pipeline);
     qs_cmd_bind_descriptor_set(ctx->cmd, ps->composite_layout, 0, r->composite_desc_set);
     typedef struct { float inv_w, inv_h, bloom_str, vignette_str; } CompositePC;
-    CompositePC cpc={1.0f/(float)ctx->swapchain_width,1.0f/(float)ctx->swapchain_height,0.04f,0.35f};
+    CompositePC cpc={1.0f/(float)ctx->swapchain_width,1.0f/(float)ctx->swapchain_height,
+                     g_pp_settings.bloom_strength, g_pp_settings.vignette_strength};
     qs_cmd_push_constants(ctx->cmd,ps->composite_layout,QS_GPU_SHADER_FRAGMENT,0,16,&cpc);
     qs_cmd_draw(ctx->cmd,3,0);
     qs_cmd_end_rendering(ctx->cmd);

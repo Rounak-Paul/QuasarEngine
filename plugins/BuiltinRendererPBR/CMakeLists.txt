@@ -10,8 +10,9 @@ if(MSVC)
         MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
 endif()
 
-# Plugins only link Quasar.  Causality GPU functions are accessed via the
-# engine's qs_gpu_* / qs_viewport_* API rather than calling causality directly.
+# Plugins link against Quasar which re-exports causality.
+# This gives access to both the engine API and the Causality UI API
+# for implementing on_editor_ui and on_editor_menu callbacks.
 target_link_libraries(BuiltinRendererPBR PRIVATE Quasar)
 
 # ── Output directories ────────────────────────────────────────────

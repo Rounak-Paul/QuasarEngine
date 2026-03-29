@@ -75,6 +75,8 @@ static void engine_frame(void *userdata)
     engine_update(engine);
     if (engine->on_frame)
         engine->on_frame(engine, engine->frame_userdata);
+    /* Clear per-frame input accumulators after all consumers have run. */
+    qs_input_end_frame();
 }
 
 Qs_Engine* qs_engine_create(const Qs_EngineDesc* desc) {
@@ -107,6 +109,10 @@ Qs_Engine* qs_engine_create(const Qs_EngineDesc* desc) {
         free(engine);
         return NULL;
     }
+
+    /* Game engines need continuous frame rendering so that held-key movement
+       and per-frame logic advance every tick rather than only on input events. */
+    ca_instance_set_continuous(engine->ca_instance, true);
 
     /* ---- Create window ---- */
     engine->window = ca_window_create(engine->ca_instance, &(Ca_WindowDesc){

@@ -7,6 +7,10 @@
 typedef struct Qs_Engine        Qs_Engine;
 typedef struct Qs_PluginManager Qs_PluginManager;
 typedef struct Qs_PluginState   Qs_PluginState;
+typedef struct Ca_MenuItemDesc  Ca_MenuItemDesc;
+
+/// Maximum number of menu items a plugin may contribute to its menu entry.
+#define ED_PLUGIN_MENU_MAX_ITEMS 16
 
 /* ================================================================
    PLUGIN ABI
@@ -14,7 +18,7 @@ typedef struct Qs_PluginState   Qs_PluginState;
 
 /// Current API version. Plugins must set api_version to this value.
 /// A plugin with a mismatched version is rejected at load time.
-#define QS_PLUGIN_API_VERSION  1
+#define QS_PLUGIN_API_VERSION  2
 
 /// Symbol name every plugin shared library must export.
 #define QS_PLUGIN_ENTRY_SYMBOL "qs_plugin_entry"
@@ -60,13 +64,11 @@ typedef struct Qs_PluginDesc {
     /// May be NULL.
     void (*on_unload)(Qs_Engine *engine);
 
-    /// Called each editor frame to draw per-plugin inspector UI.
-    /// Only called when an editor window is present.  May be NULL.
-    void (*on_inspector_gui)(Qs_Engine *engine);
-
-    /// Called each editor frame to draw items inside the Plugins menu.
-    /// May be NULL.
-    void (*on_menu_gui)(Qs_Engine *engine);
+    /// Called each editor frame to fill items into the plugin's entry in the
+    /// Plugins menu.  Write at most *count Ca_MenuItemDesc records into items
+    /// and set *count to the actual number written.  items points to a
+    /// temporary buffer of at most ED_PLUGIN_MENU_MAX_ITEMS entries.  May be NULL.
+    void (*on_editor_menu)(Qs_Engine *engine, Ca_MenuItemDesc *items, int *count);
 } Qs_PluginDesc;
 
 /// Entry point function type.  Every plugin library must export a function
@@ -124,5 +126,10 @@ const char *qs_plugin_state_path(const Qs_PluginState *state);
 /// Returns the plugin id (available even before the library is loaded,
 /// from the persisted state).
 const char *qs_plugin_state_id(const Qs_PluginState *state);
+
+/// Unloads a currently loaded plugin and immediately reloads it from disk.
+/// Useful for hot-reload during development.  Returns false if the plugin id
+/// is unknown or if the reload fails (the plugin is left unloaded in that case).
+bool qs_plugin_reload(Qs_PluginManager *pm, const char *id);
 
 #endif

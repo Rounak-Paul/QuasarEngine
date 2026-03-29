@@ -125,4 +125,16 @@ void vk_forward_on_resize(VkRenderer *r, uint32_t w, uint32_t h);
    Called from vk_render_shutdown after all renderer instances are gone. */
 void vk_pass_resources_shutdown(Qs_GpuContext *gpu, VkPassResources *ps);
 
+/* ----------------------------------------------------------------
+   Post-process settings
+   Exposed to the editor via the plugin's on_editor_ui callback.
+   ---------------------------------------------------------------- */
+typedef struct VkPostProcessSettings {
+    float bloom_strength;    /* blend factor for bloom over HDR (default 0.04) */
+    float vignette_strength; /* vignette power exponent        (default 0.35)  */
+} VkPostProcessSettings;
+
+/* Returns a pointer to the single mutable post-process settings instance. */
+VkPostProcessSettings *vk_post_process_settings(void);
+
 #endif /* VK_RENDERER_INTERNAL_H */

@@ -5,6 +5,7 @@
 #include "ui/ed_layout.h"
 #include "ui/ed_status_bar.h"
 #include "ui/ed_inspector.h"
+#include "ui/ed_plugin_manager.h"
 
 #include "ui/ed_file_browser.h"
 
@@ -20,6 +21,8 @@ struct Editor {
     Ca_Viewport   *scene_viewport;
     Qs_Entity      selected_entity;
     EditorCamera   cam;
+    /* Dynamic menu bar host div — rebuilt every frame */
+    Ca_Div        *menu_bar_div;
 };
 
 /* ---- Editor CSS theme (Quasar Dark) ---- */
@@ -505,6 +508,181 @@ static const char *g_editor_css =
     ".hierarchy-selected {"
     "  background: #242430;"
     "}"
+
+    /* ---- Menu bar host ---- */
+    ".menu-bar-host {"
+    "  width: 100%;"
+    "  height: 24px;"
+    "  flex-shrink: 0;"
+    "}"
+
+
+    /* ---- Plugin Manager modal ---- */
+    ".plugin-manager-modal {"
+    "  width: 520px;"
+    "  height: 440px;"
+    "  background: #16161a;"
+    "  corner-radius: 8px;"
+    "  padding: 0px;"
+    "  gap: 0px;"
+    "}"
+
+    ".plugin-manager-titlebar {"
+    "  background: #1c1c22;"
+    "  width: 100%;"
+    "  height: 32px;"
+    "  padding: 0px 12px;"
+    "  align-items: center;"
+    "  corner-radius-top-left: 8px;"
+    "  corner-radius-top-right: 8px;"
+    "}"
+
+    ".plugin-manager-title {"
+    "  color: #c8d0ff;"
+    "  font-size: 13px;"
+    "  font-weight: bold;"
+    "  flex-grow: 1;"
+    "}"
+
+    ".plugin-manager-close-btn {"
+    "  background: transparent;"
+    "  color: #8890b0;"
+    "  font-size: 14px;"
+    "  width: 24px;"
+    "  height: 24px;"
+    "  align-items: center;"
+    "  text-align: center;"
+    "}"
+
+    ".plugin-manager-content {"
+    "  width: 100%;"
+    "  flex-grow: 1;"
+    "  overflow-y: scroll;"
+    "  padding: 8px;"
+    "  gap: 0px;"
+    "}"
+
+    ".plugin-manager-empty {"
+    "  color: #4a4e6a;"
+    "  font-size: 12px;"
+    "  text-align: center;"
+    "  padding: 16px;"
+    "}"
+
+    /* ---- Plugin list row ---- */
+    ".plugin-row {"
+    "  width: 100%;"
+    "  background: #111114;"
+    "  corner-radius: 6px;"
+    "  padding: 8px;"
+    "  margin-bottom: 4px;"
+    "}"
+
+    ".plugin-row-header {"
+    "  width: 100%;"
+    "  align-items: center;"
+    "  gap: 6px;"
+    "}"
+
+    ".plugin-name {"
+    "  color: #c8d0ff;"
+    "  font-size: 12px;"
+    "  font-weight: bold;"
+    "}"
+
+    ".plugin-version {"
+    "  color: #4a4e6a;"
+    "  font-size: 11px;"
+    "}"
+
+    ".plugin-spacer {"
+    "  flex-grow: 1;"
+    "}"
+
+    ".plugin-status-loaded {"
+    "  color: #6bffb8;"
+    "  font-size: 11px;"
+    "}"
+
+    ".plugin-status-loading {"
+    "  color: #ffd166;"
+    "  font-size: 11px;"
+    "}"
+
+    ".plugin-status-disabled {"
+    "  color: #4a4e6a;"
+    "  font-size: 11px;"
+    "}"
+
+    ".plugin-reload-btn {"
+    "  background: transparent;"
+    "  color: #6e8aff;"
+    "  font-size: 12px;"
+    "  width: 22px;"
+    "  height: 22px;"
+    "  align-items: center;"
+    "  text-align: center;"
+    "}"
+
+    ".plugin-description {"
+    "  color: #8890b0;"
+    "  font-size: 11px;"
+    "  margin-top: 4px;"
+    "}"
+
+    ".plugin-author {"
+    "  color: #4a4e6a;"
+    "  font-size: 11px;"
+    "  margin-top: 2px;"
+    "}"
+
+    /* ---- Renderer Settings modal ---- */
+    ".renderer-settings-modal {"
+    "  width: 340px;"
+    "  height: auto;"
+    "  background: #16161a;"
+    "  corner-radius: 8px;"
+    "  padding: 0px;"
+    "  gap: 0px;"
+    "}"
+
+    ".renderer-settings-panel {"
+    "  width: 100%;"
+    "  padding: 0px;"
+    "}"
+
+    ".renderer-setting-row {"
+    "  width: 100%;"
+    "  padding: 8px 12px 4px 12px;"
+    "  gap: 4px;"
+    "}"
+
+    ".renderer-setting-label {"
+    "  color: #8890b0;"
+    "  font-size: 12px;"
+    "}"
+
+    /* ---- Renderer Stats modal ---- */
+    ".renderer-stats-modal {"
+    "  width: 260px;"
+    "  height: auto;"
+    "  background: #16161a;"
+    "  corner-radius: 8px;"
+    "  padding: 0px;"
+    "  gap: 0px;"
+    "}"
+
+    ".renderer-stats-panel {"
+    "  width: 100%;"
+    "  padding: 0px;"
+    "}"
+
+    ".renderer-stat-row {"
+    "  color: #c8d0ff;"
+    "  font-size: 12px;"
+    "  padding: 4px 12px;"
+    "  font-family: monospace;"
+    "}"
 ;
 
 static void editor_build_ui(Editor *ed)
@@ -516,7 +694,7 @@ static void editor_build_ui(Editor *ed)
         .style     = "editor-root",
     });
 
-    ed_menu_bar(window, ed);
+    ed->menu_bar_div = ed_menu_bar(window, ed);
     ed_toolbar(window, ed);
     ed_layout(window, ed);
     ed_status_bar(window, ed);
@@ -617,6 +795,7 @@ static void on_frame(Qs_Engine *engine, void *userdata)
         }
     }
 
+    ed_menu_bar_update(ed->menu_bar_div, qs_engine_window(ed->engine), ed);
     ed_console_update(ed);
     ed_inspector_update(ed);
     ed_file_browser_update();
@@ -873,6 +1052,7 @@ Editor *editor_create(const EditorDesc *desc)
 
     editor_build_ui(ed);
 
+    ed_plugin_manager_init(ed);
     ed_file_browser_init(ca_window_instance(qs_engine_window(ed->engine)));
 
     qs_engine_set_event_handler(ed->engine, CA_EVENT_KEY,          on_key_event,    ed);
