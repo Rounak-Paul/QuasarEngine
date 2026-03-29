@@ -146,32 +146,32 @@ void ed_menu_bar_update(Ca_Div *host, Ca_Window *window, void *editor)
     };
 
     /* ---- Assemble top-level Plugins menu ---- */
-    /* Fixed items (manage) + plugin sub-menu items inline */
-    /* We build a flat Plugins menu: manage item + one separator-style
-       item per plugin that has a menu, then plugin items beneath it.
-       Causality doesn't have sub-menus yet, so we prefix plugin name. */
+    /* manage + separator + one entry per plugin (plugin items are sub-menus) */
 
-    #define PLUGINS_FLAT_MAX (1 + MAX_PLUGIN_MENUS * (ED_PLUGIN_MENU_MAX_ITEMS + 1))
+    #define PLUGINS_FLAT_MAX (2 + MAX_PLUGIN_MENUS)
     Ca_MenuItemDesc plugins_items[PLUGINS_FLAT_MAX];
     int             plugins_item_count = 0;
 
     plugins_items[plugins_item_count++] = manage_item;
 
+    /* Separator after "Manage Plugins..." (only when plugins are present) */
+    if (plugin_menu_count > 0) {
+        Ca_MenuItemDesc sep = { .separator = true };
+        plugins_items[plugins_item_count++] = sep;
+    }
+
     for (int p = 0; p < plugin_menu_count; p++) {
         PluginMenuSlot *slot = &s_plugin_slots[p];
-        /* Separator label (disabled-looking prefix) */
-        Ca_MenuItemDesc sep = {
-            .label       = slot->label,
-            .action      = NULL,
-            .action_data = NULL,
+        /* Top-level item = plugin name; sub_items = its menu items */
+        Ca_MenuItemDesc plugin_item = {
+            .label          = slot->label,
+            .action         = NULL,
+            .action_data    = NULL,
+            .separator      = false,
+            .sub_items      = slot->items,
+            .sub_item_count = slot->item_count,
         };
-        plugins_items[plugins_item_count++] = sep;
-        for (int k = 0; k < slot->item_count &&
-                         plugins_item_count < PLUGINS_FLAT_MAX; k++) {
-            /* Prefix items with 4 spaces to visually indent */
-            Ca_MenuItemDesc item = slot->items[k];
-            plugins_items[plugins_item_count++] = item;
-        }
+        plugins_items[plugins_item_count++] = plugin_item;
     }
     #undef PLUGINS_FLAT_MAX
 

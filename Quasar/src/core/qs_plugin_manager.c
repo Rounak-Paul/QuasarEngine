@@ -2,6 +2,7 @@
 #include "qs_dylib.h"
 #include "qs_log.h"
 #include "causality.h"
+#include "quasar.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -481,10 +482,17 @@ bool qs_plugin_reload(Qs_PluginManager *pm, const char *id)
     for (uint32_t i = 0; i < pm->count; i++) {
         if (strcmp(pm->entries[i].id, id) == 0) {
             Qs_PluginState *s = &pm->entries[i];
+            /* Notify listeners before unloading so they can release references */
+            qs_event_fire(qs_engine_event_bus(pm->engine),
+                          QS_EVENT_PLUGIN_RELOAD_BEGIN,
+                          (void *)id, (uint32_t)(strlen(id) + 1));
             plugin_unload(pm, s);
             bool ok = plugin_load(pm, s);
             if (ok) {
                 QS_LOG_INFO("Plugin '%s' reloaded", id);
+                qs_event_fire(qs_engine_event_bus(pm->engine),
+                              QS_EVENT_PLUGIN_RELOAD_END,
+                              (void *)id, (uint32_t)(strlen(id) + 1));
             } else {
                 QS_LOG_ERROR("Plugin '%s': reload failed", id);
             }

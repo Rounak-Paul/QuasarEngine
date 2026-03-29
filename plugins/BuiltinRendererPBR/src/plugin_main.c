@@ -8,24 +8,22 @@
 extern const Qs_RendererBackend vk_renderer_backend;
 
 /* ---- Plugin globals ---- */
-static Qs_Engine  *s_engine         = NULL;
-static Ca_Window  *s_settings_win   = NULL;
-static Ca_Window  *s_stats_win      = NULL;
-static Ca_Div     *s_stats_content  = NULL;  /* content div rebuilt each frame */
+static Qs_Engine  *s_engine          = NULL;
+static Ca_Window  *s_renderer_win    = NULL;
+static Ca_Div     *s_renderer_stats  = NULL;  /* dynamic stats div rebuilt each frame */
 
-/* ---- Stats window on_frame: rebuild dynamic content ---- */
+/* ---- Combined window on_frame: rebuild live stats section ---- */
 
-static void stats_win_frame(void *data)
+static void renderer_win_frame(void *data)
 {
     (void)data;
-    if (!s_stats_content) return;
+    if (!s_renderer_stats) return;
 
     float dt  = s_engine ? qs_engine_dt(s_engine) : 0.0f;
     float fps = (dt > 0.0f) ? (1.0f / dt) : 0.0f;
     float ms  = dt * 1000.0f;
-    VkPostProcessSettings *pp = vk_post_process_settings();
 
-    ca_div_clear(s_stats_content);
+    ca_div_clear(s_renderer_stats);
 
     char fps_buf[64];
     snprintf(fps_buf, sizeof(fps_buf), "FPS:         %.1f", fps);
@@ -35,6 +33,7 @@ static void stats_win_frame(void *data)
     snprintf(ms_buf, sizeof(ms_buf), "Frame Time:  %.2f ms", ms);
     ca_text(&(Ca_TextDesc){ .text = ms_buf, .style = "renderer-stat-row" });
 
+    VkPostProcessSettings *pp = vk_post_process_settings();
     if (pp) {
         char bloom_buf[64];
         snprintf(bloom_buf, sizeof(bloom_buf), "Bloom:       %.3f", pp->bloom_strength);
@@ -45,10 +44,10 @@ static void stats_win_frame(void *data)
         ca_text(&(Ca_TextDesc){ .text = vig_buf, .style = "renderer-stat-row" });
     }
 
-    ca_div_end(); /* s_stats_content */
+    ca_div_end(); /* s_renderer_stats */
 }
 
-/* ---- Slider callbacks (settings window) ---- */
+/* ---- Slider callbacks ---- */
 
 static void on_bloom_change(Ca_Slider *s, void *user_data)
 {
@@ -62,51 +61,47 @@ static void on_vignette_change(Ca_Slider *s, void *user_data)
     vk_post_process_settings()->vignette_strength = ca_slider_get(s);
 }
 
-/* ---- Close callbacks ---- */
+/* ---- Close callback ---- */
 
-static void on_close_settings(Ca_Button *btn, void *user_data)
+static void on_close_renderer(Ca_Button *btn, void *user_data)
 {
     (void)btn; (void)user_data;
-    if (s_settings_win) ca_window_close(s_settings_win);
+    if (s_renderer_win) ca_window_close(s_renderer_win);
 }
 
-static void on_close_stats(Ca_Button *btn, void *user_data)
-{
-    (void)btn; (void)user_data;
-    if (s_stats_win) ca_window_close(s_stats_win);
-}
+/* ---- Window builder ---- */
 
-/* ---- Window builders ---- */
-
-static void open_settings_window(void)
+static void open_renderer_window(void *user_data)
 {
-    if (s_settings_win && ca_window_is_open(s_settings_win)) return;
+    (void)user_data;
+    if (s_renderer_win && ca_window_is_open(s_renderer_win)) return;
     if (!s_engine) return;
 
     Ca_Instance *inst = ca_window_instance(qs_engine_window(s_engine));
     if (!inst) return;
 
     VkPostProcessSettings *pp = vk_post_process_settings();
+    s_renderer_stats = NULL;
 
-    s_settings_win = ca_window_create(inst, &(Ca_WindowDesc){
-        .title  = "Renderer Settings",
-        .width  = 340,
-        .height = 200,
+    s_renderer_win = ca_window_create(inst, &(Ca_WindowDesc){
+        .title  = "Renderer",
+        .width  = 360,
+        .height = 400,
     });
-    if (!s_settings_win) return;
+    if (!s_renderer_win) return;
 
-    ca_ui_begin(s_settings_win, &(Ca_DivDesc){
+    ca_ui_begin(s_renderer_win, &(Ca_DivDesc){
         .direction = CA_VERTICAL,
         .style     = "renderer-settings-panel",
     });
     {
-        /* Title bar */
+        /* ---- Title bar ---- */
         ca_div_begin(&(Ca_DivDesc){
             .direction = CA_HORIZONTAL,
             .style     = "plugin-manager-titlebar",
         });
         ca_text(&(Ca_TextDesc){
-            .text  = "Renderer Settings",
+            .text  = "Renderer",
             .style = "plugin-manager-title",
         });
         ca_div_begin(&(Ca_DivDesc){ .style = "plugin-spacer" });
@@ -114,14 +109,19 @@ static void open_settings_window(void)
         ca_btn(&(Ca_BtnDesc){
             .text       = "Close",
             .style      = "plugin-manager-close-btn",
-            .on_click   = on_close_settings,
+            .on_click   = on_close_renderer,
             .click_data = NULL,
         });
         ca_div_end();
 
         ca_hr(&(Ca_HrDesc){ .color = 0 });
 
-        /* Bloom strength */
+        /* ---- Settings section ---- */
+        ca_text(&(Ca_TextDesc){
+            .text  = "Settings",
+            .style = "renderer-section-label",
+        });
+
         ca_div_begin(&(Ca_DivDesc){
             .direction = CA_VERTICAL,
             .style     = "renderer-setting-row",
@@ -138,7 +138,6 @@ static void open_settings_window(void)
         });
         ca_div_end();
 
-        /* Vignette strength */
         ca_div_begin(&(Ca_DivDesc){
             .direction = CA_VERTICAL,
             .style     = "renderer-setting-row",
@@ -154,57 +153,17 @@ static void open_settings_window(void)
             .on_change = on_vignette_change,
         });
         ca_div_end();
-    }
-    ca_ui_end();
-}
-
-static void open_stats_window(void)
-{
-    if (s_stats_win && ca_window_is_open(s_stats_win)) return;
-    if (!s_engine) return;
-
-    Ca_Instance *inst = ca_window_instance(qs_engine_window(s_engine));
-    if (!inst) return;
-
-    s_stats_win     = NULL;
-    s_stats_content = NULL;
-
-    s_stats_win = ca_window_create(inst, &(Ca_WindowDesc){
-        .title  = "Render Stats",
-        .width  = 280,
-        .height = 160,
-    });
-    if (!s_stats_win) return;
-
-    /* Build static shell with an empty content div rebuilt each frame */
-    ca_ui_begin(s_stats_win, &(Ca_DivDesc){
-        .direction = CA_VERTICAL,
-        .style     = "renderer-stats-panel",
-    });
-    {
-        /* Title bar */
-        ca_div_begin(&(Ca_DivDesc){
-            .direction = CA_HORIZONTAL,
-            .style     = "plugin-manager-titlebar",
-        });
-        ca_text(&(Ca_TextDesc){
-            .text  = "Render Stats",
-            .style = "plugin-manager-title",
-        });
-        ca_div_begin(&(Ca_DivDesc){ .style = "plugin-spacer" });
-        ca_div_end();
-        ca_btn(&(Ca_BtnDesc){
-            .text       = "Close",
-            .style      = "plugin-manager-close-btn",
-            .on_click   = on_close_stats,
-            .click_data = NULL,
-        });
-        ca_div_end();
 
         ca_hr(&(Ca_HrDesc){ .color = 0 });
 
-        /* Dynamic content rebuilt by stats_win_frame each tick */
-        s_stats_content = ca_div_begin(&(Ca_DivDesc){
+        /* ---- Stats section ---- */
+        ca_text(&(Ca_TextDesc){
+            .text  = "Stats",
+            .style = "renderer-section-label",
+        });
+
+        /* Dynamic div rebuilt by renderer_win_frame each tick */
+        s_renderer_stats = ca_div_begin(&(Ca_DivDesc){
             .direction = CA_VERTICAL,
             .style     = "renderer-stats-content",
         });
@@ -212,21 +171,7 @@ static void open_stats_window(void)
     }
     ca_ui_end();
 
-    ca_window_set_on_frame(s_stats_win, stats_win_frame, NULL);
-}
-
-/* ---- Menu action callbacks ---- */
-
-static void action_open_settings(void *user_data)
-{
-    (void)user_data;
-    open_settings_window();
-}
-
-static void action_open_stats(void *user_data)
-{
-    (void)user_data;
-    open_stats_window();
+    ca_window_set_on_frame(s_renderer_win, renderer_win_frame, NULL);
 }
 
 /* ---- Plugin lifecycle ---- */
@@ -240,14 +185,11 @@ static void on_load(Qs_Engine *engine)
 static void on_unload(Qs_Engine *engine)
 {
     (void)engine;
-    if (s_settings_win && ca_window_is_open(s_settings_win))
-        ca_window_close(s_settings_win);
-    if (s_stats_win && ca_window_is_open(s_stats_win))
-        ca_window_close(s_stats_win);
-    s_settings_win  = NULL;
-    s_stats_win     = NULL;
-    s_stats_content = NULL;
-    s_engine        = NULL;
+    if (s_renderer_win && ca_window_is_open(s_renderer_win))
+        ca_window_close(s_renderer_win);
+    s_renderer_win   = NULL;
+    s_renderer_stats = NULL;
+    s_engine         = NULL;
     qs_renderer_backend_unregister("VulkanRenderer");
 }
 
@@ -256,10 +198,8 @@ static void on_unload(Qs_Engine *engine)
 static void on_editor_menu(Qs_Engine *engine, Ca_MenuItemDesc *items, int *count)
 {
     (void)engine;
-    int n = 0;
-    items[n++] = (Ca_MenuItemDesc){ "Renderer Settings...", action_open_settings, NULL };
-    items[n++] = (Ca_MenuItemDesc){ "Render Stats...",      action_open_stats,    NULL };
-    *count = n;
+    items[0] = (Ca_MenuItemDesc){ "Renderer Panel...", open_renderer_window, NULL };
+    *count = 1;
 }
 
 QS_PLUGIN_EXPORT const Qs_PluginDesc *qs_plugin_entry(void)
@@ -277,4 +217,5 @@ QS_PLUGIN_EXPORT const Qs_PluginDesc *qs_plugin_entry(void)
     };
     return &desc;
 }
+
 

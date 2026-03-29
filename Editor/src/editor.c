@@ -9,6 +9,7 @@
 
 #include "ui/ed_file_browser.h"
 
+#include "quasar.h"
 #include "cJSON.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -662,6 +663,12 @@ static const char *g_editor_css =
     "  font-size: 12px;"
     "}"
 
+    ".renderer-section-label {"
+    "  color: #a0a8c8;"
+    "  font-size: 11px;"
+    "  padding: 8px 12px 2px 12px;"
+    "}"
+
     /* ---- Renderer Stats modal ---- */
     ".renderer-stats-modal {"
     "  width: 260px;"
@@ -707,6 +714,39 @@ static void on_mouse_button(const Ca_Event *event, void *userdata)
     (void)userdata;
     qs_input_mouse_button_event((Qs_MouseButton)event->mouse_button.button,
                                 event->mouse_button.action);
+}
+
+/* Fires synchronously before the plugin library is unloaded.
+   Destroy any scene renderer that references the plugin's backend so
+   the backend and its Vulkan context can be cleanly shut down. */
+static bool on_plugin_reload_begin(const Qs_Event *e, void *userdata)
+{
+    (void)e;
+    Editor *ed = (Editor *)userdata;
+    if (ed->scene_renderer) {
+        qs_renderer_destroy(ed->scene_renderer);
+        ed->scene_renderer = NULL;
+    }
+    return false;
+}
+
+/* Fires synchronously after the plugin has been successfully reloaded.
+   Recreate the scene renderer pointing at the freshly registered backend. */
+static bool on_plugin_reload_end(const Qs_Event *e, void *userdata)
+{
+    (void)e;
+    Editor *ed = (Editor *)userdata;
+    if (!ed->scene_renderer) {
+        ed->scene_renderer = qs_renderer_create(ed->engine, &(Qs_RendererDesc){
+            .name        = "scene",
+            .clear_color = { 0.0f, 0.0f, 0.0f, 1.0f },
+            .depth_test  = true,
+        });
+        if (ed->scene_renderer) {
+            /* Camera position/facing will be reapplied by ed_camera_update next frame */
+        }
+    }
+    return false;
 }
 
 static void on_mouse_move(const Ca_Event *event, void *userdata)
@@ -1061,6 +1101,12 @@ Editor *editor_create(const EditorDesc *desc)
     qs_engine_set_event_handler(ed->engine, CA_EVENT_MOUSE_SCROLL, on_mouse_scroll, ed);
     qs_engine_set_on_frame(ed->engine, on_frame, ed);
     qs_log_set_listener(on_log, ed);
+
+    /* Subscribe to plugin reload events to refresh the scene renderer */
+    Qs_EventBus *bus = qs_engine_event_bus(ed->engine);
+    qs_event_subscribe(bus, QS_EVENT_PLUGIN_RELOAD_BEGIN, on_plugin_reload_begin, ed);
+    qs_event_subscribe(bus, QS_EVENT_PLUGIN_RELOAD_END,   on_plugin_reload_end,   ed);
+
     ed_camera_init(&ed->cam);
 
     return ed;
