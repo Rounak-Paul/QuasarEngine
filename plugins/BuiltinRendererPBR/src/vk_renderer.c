@@ -18,6 +18,7 @@
 #include "qs_log.h"
 #include "vk_renderer_internal.h"
 
+#include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
 
