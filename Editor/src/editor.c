@@ -69,12 +69,12 @@ static const char *g_editor_css =
     ".menu-bar {"
     "  background: #16161a;"
     "  width: 100%;"
-    "  height: 24px;"
+    "  height: 18px;"
     "}"
 
     ".menu-bar-item {"
-    "  padding-left: 10px;"
-    "  padding-right: 10px;"
+    "  padding-left: 4px;"
+    "  padding-right: 4px;"
     "  align-items: center;"
     "  color: #8890b0;"
     "  font-size: 12px;"
@@ -84,10 +84,27 @@ static const char *g_editor_css =
     ".toolbar {"
     "  background: #16161a;"
     "  width: 100%;"
-    "  height: 28px;"
+    "  height: 20px;"
     "  align-items: center;"
-    "  padding-left: 6px;"
-    "  padding-right: 6px;"
+    "  padding-left: 4px;"
+    "  padding-right: 4px;"
+    "  gap: 2px;"
+    "}"
+
+    ".toolbar-icon-btn {"
+    "  width: 20px;"
+    "  height: 20px;"
+    "  align-items: center;"
+    "  text-align: center;"
+    "  font-size: 14px;"
+    "  color: #8890b0;"
+    "  corner-radius: 3px;"
+    "  background: transparent;"
+    "}"
+
+    ".toolbar-icon-btn.active {"
+    "  color: #6e8aff;"
+    "  background: #242430;"
     "}"
 
     /* ---- Panels ---- */
@@ -123,19 +140,19 @@ static const char *g_editor_css =
     /* ---- Panel tab bars ---- */
     ".panel-tab-bar {"
     "  background: #1c1c22;"
-    "  height: 26px;"
+    "  height: 22px;"
     "  width: 100%;"
-    "  align-items: center;"
-    "  padding-left: 6px;"
+    "  padding-left: 4px;"
     "  gap: 2px;"
+    "  font-size: 12px;"
     "}"
 
     ".panel-tab {"
     "  color: #4a4e6a;"
     "  font-size: 12px;"
-    "  height: 20px;"
-    "  padding-left: 10px;"
-    "  padding-right: 10px;"
+    "  height: 22px;"
+    "  padding-left: 8px;"
+    "  padding-right: 8px;"
     "}"
 
     ".active {"
@@ -514,7 +531,7 @@ static const char *g_editor_css =
     /* ---- Menu bar host ---- */
     ".menu-bar-host {"
     "  width: 100%;"
-    "  height: 24px;"
+    "  height: 18px;"
     "  flex-shrink: 0;"
     "}"
 
@@ -1095,6 +1112,7 @@ Editor *editor_create(const EditorDesc *desc)
     editor_build_ui(ed);
 
     ed_plugin_manager_init(ed);
+    ed_toolbar_init(ed);
     ed_file_browser_init(ca_window_instance(qs_engine_window(ed->engine)));
 
     qs_engine_set_event_handler(ed->engine, CA_EVENT_KEY,          on_key_event,    ed);
@@ -1147,7 +1165,8 @@ Qs_Entity editor_selected_entity(const Editor *ed)
 
 void editor_set_selected_entity(Editor *ed, Qs_Entity entity)
 {
-    if (ed) ed->selected_entity = entity;
+    if (!ed) return;
+    ed->selected_entity = entity;
 }
 
 void editor_destroy(Editor *ed)

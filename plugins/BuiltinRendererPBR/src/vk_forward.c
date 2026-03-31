@@ -417,9 +417,13 @@ static bool create_forward_pipeline(Qs_GpuContext *gpu, VkPassResources *ps)
     ps->forward_pipeline=qs_gpu_create_graphics_pipeline(gpu,&(Qs_GpuGraphicsPipelineDesc){
         ps->forward_layout,vs,fs,&vb,1,
         QS_GPU_TOPOLOGY_TRIANGLES,QS_GPU_CULL_BACK,true,true,
-        QS_GPU_FORMAT_RGBA16_SFLOAT,QS_GPU_FORMAT_DEPTH_AUTO});
+        QS_GPU_FORMAT_RGBA16_SFLOAT,QS_GPU_FORMAT_DEPTH_AUTO,.wireframe=false});
+    ps->forward_wireframe_pipeline=qs_gpu_create_graphics_pipeline(gpu,&(Qs_GpuGraphicsPipelineDesc){
+        ps->forward_layout,vs,fs,&vb,1,
+        QS_GPU_TOPOLOGY_TRIANGLES,QS_GPU_CULL_NONE,true,true,
+        QS_GPU_FORMAT_RGBA16_SFLOAT,QS_GPU_FORMAT_DEPTH_AUTO,.wireframe=true});
     qs_gpu_destroy_shader(gpu,vs);qs_gpu_destroy_shader(gpu,fs);
-    return ps->forward_pipeline!=NULL;
+    return ps->forward_pipeline!=NULL && ps->forward_wireframe_pipeline!=NULL;
 }
 
 static bool create_bloom_pipelines(Qs_GpuContext *gpu, VkPassResources *ps)
@@ -481,6 +485,7 @@ void vk_pass_resources_shutdown(Qs_GpuContext *gpu, VkPassResources *ps)
     qs_gpu_destroy_pipeline(gpu, ps->shadow_pipeline);
     qs_gpu_destroy_pipeline_layout(gpu, ps->shadow_layout);
     qs_gpu_destroy_pipeline(gpu, ps->forward_pipeline);
+    qs_gpu_destroy_pipeline(gpu, ps->forward_wireframe_pipeline);
     qs_gpu_destroy_pipeline_layout(gpu, ps->forward_layout);
     qs_gpu_destroy_descriptor_set_layout(gpu, ps->frame_set_layout);
     qs_gpu_destroy_pipeline(gpu, ps->bloom_down_pipeline);
@@ -611,7 +616,9 @@ static void forward_pass_execute(const Qs_RenderContext *ctx, void *user_data)
         .clear_color={clear[0],clear[1],clear[2],clear[3]},
         .clear_depth=1.0f,.width=ctx->width,.height=ctx->height});
     qs_cmd_set_viewport(ctx->cmd, ctx->width, ctx->height);
-    qs_cmd_bind_pipeline(ctx->cmd, ps->forward_pipeline);
+    Qs_GpuPipeline *fwd_pipeline = qs_renderer_wireframe(ctx->renderer)
+        ? ps->forward_wireframe_pipeline : ps->forward_pipeline;
+    qs_cmd_bind_pipeline(ctx->cmd, fwd_pipeline);
     qs_cmd_bind_descriptor_set(ctx->cmd, ps->forward_layout, 0, r->frame_desc_set);
 
     for (uint32_t ri=0; ri<ctx->renderable_count; ri++) {

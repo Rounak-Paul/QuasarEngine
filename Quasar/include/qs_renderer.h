@@ -232,6 +232,10 @@ const char *qs_renderer_name            (const Qs_Renderer *renderer);
 void        qs_renderer_extents         (const Qs_Renderer *renderer,
                                           uint32_t *out_w, uint32_t *out_h);
 
+/// Toggle wireframe rendering.  When enabled, all geometry is drawn as lines.
+void        qs_renderer_set_wireframe   (Qs_Renderer *renderer, bool wireframe);
+bool        qs_renderer_wireframe       (const Qs_Renderer *renderer);
+
 Qs_RenderNode *qs_renderer_add_node   (Qs_Renderer *renderer,
                                         const Qs_RenderNodeDesc *desc);
 void           qs_renderer_remove_node(Qs_Renderer *renderer, Qs_RenderNode *node);

@@ -12,6 +12,19 @@ typedef struct Ca_MenuItemDesc  Ca_MenuItemDesc;
 /// Maximum number of menu items a plugin may contribute to its menu entry.
 #define ED_PLUGIN_MENU_MAX_ITEMS 16
 
+/// Maximum number of toolbar items a plugin may contribute.
+#define QS_PLUGIN_TOOLBAR_MAX_ITEMS 8
+
+/// A single icon button contributed by a plugin to the editor toolbar.
+typedef struct Qs_ToolbarItem {
+    const char *icon;     ///< UTF-8 icon glyph (Codicon / NF icon)
+    const char *id;       ///< Unique stable string id for active-state tracking
+    const char *tooltip;  ///< Optional tooltip text (may be NULL)
+    bool        active;   ///< Initial active state
+    /// Called when the button is clicked.  Toggle state is passed in/out via *active.
+    void (*on_click)(Qs_Engine *engine, bool *active);
+} Qs_ToolbarItem;
+
 /* ================================================================
    PLUGIN ABI
    ================================================================ */
@@ -69,6 +82,12 @@ typedef struct Qs_PluginDesc {
     /// and set *count to the actual number written.  items points to a
     /// temporary buffer of at most ED_PLUGIN_MENU_MAX_ITEMS entries.  May be NULL.
     void (*on_editor_menu)(Qs_Engine *engine, Ca_MenuItemDesc *items, int *count);
+
+    /// Called each editor frame to fill icon buttons into the editor toolbar.
+    /// Write at most *count Qs_ToolbarItem records into items and set *count to
+    /// the actual number written.  items points to a temporary buffer of at most
+    /// QS_PLUGIN_TOOLBAR_MAX_ITEMS entries.  May be NULL.
+    void (*on_editor_toolbar)(Qs_Engine *engine, Qs_ToolbarItem *items, int *count);
 } Qs_PluginDesc;
 
 /// Entry point function type.  Every plugin library must export a function

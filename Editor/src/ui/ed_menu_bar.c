@@ -194,6 +194,7 @@ void ed_menu_bar_update(Ca_Div *host, Ca_Window *window, void *editor)
         .menu_count = 2,
         .id         = "editor-menu-bar",
         .style      = "menu-bar",
+        .item_style = "menu-bar-item",
     });
     ca_div_end();
 }

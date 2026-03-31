@@ -77,6 +77,7 @@ typedef struct VkPassResources {
 
     /* Forward lit pass */
     Qs_GpuPipeline            *forward_pipeline;
+    Qs_GpuPipeline            *forward_wireframe_pipeline;
     Qs_GpuPipelineLayout      *forward_layout;
     Qs_GpuDescriptorSetLayout *frame_set_layout;
 

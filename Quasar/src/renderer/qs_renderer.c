@@ -85,6 +85,9 @@ struct Qs_Renderer {
 
     /* Engine-managed default material (used when a renderable has none) */
     Qs_Material  *default_material;
+
+    /* Render settings */
+    bool          wireframe;
 };
 
 /* ================================================================
@@ -639,6 +642,16 @@ const float *qs_renderer_clear_color(const Qs_Renderer *r)
 const char *qs_renderer_name(const Qs_Renderer *r)
 {
     return r ? r->name : NULL;
+}
+
+void qs_renderer_set_wireframe(Qs_Renderer *r, bool wireframe)
+{
+    if (r) r->wireframe = wireframe;
+}
+
+bool qs_renderer_wireframe(const Qs_Renderer *r)
+{
+    return r && r->wireframe;
 }
 
 void qs_renderer_extents(const Qs_Renderer *r, uint32_t *out_w, uint32_t *out_h)

@@ -214,6 +214,7 @@ typedef struct Qs_GpuGraphicsPipelineDesc {
     bool                       depth_write;
     Qs_GpuImageFormat          color_format;
     Qs_GpuImageFormat          depth_format;   ///< QS_GPU_FORMAT_DEPTH_AUTO = no depth attachment
+    bool                       wireframe;      ///< Draw triangles as lines (VK_POLYGON_MODE_LINE)
 } Qs_GpuGraphicsPipelineDesc;
 
 typedef struct Qs_GpuImageBarrier {

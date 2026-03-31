@@ -1092,7 +1092,7 @@ Qs_GpuPipeline *qs_gpu_create_graphics_pipeline(Qs_GpuContext *gpu,
     };
     VkPipelineRasterizationStateCreateInfo rasterization = {
         .sType       = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
-        .polygonMode = VK_POLYGON_MODE_FILL,
+        .polygonMode = desc->wireframe ? VK_POLYGON_MODE_LINE : VK_POLYGON_MODE_FILL,
         .cullMode    = cull_modes[desc->cull_mode],
         .frontFace   = VK_FRONT_FACE_COUNTER_CLOCKWISE,
         .lineWidth   = 1.0f,

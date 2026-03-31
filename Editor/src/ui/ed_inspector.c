@@ -46,6 +46,7 @@ static Ca_TextInput *s_entity_name_input;
 static Ca_Label     *s_id_value;
 static Ca_TextInput *s_tag_input;
 static Ca_Div       *s_content_div;      /* dynamic section container */
+static Qs_Entity     s_displayed_entity = QS_ENTITY_INVALID;
 
 /* Heap-allocated bindings — freed + rebuilt on each entity change */
 static InputBinding *s_bindings;
@@ -455,32 +456,8 @@ static void build_sections(Qs_Scene *scene, Qs_Entity entity)
    UPDATE (called every frame)
    ================================================================ */
 
-void ed_inspector_update(void *editor)
+static void update_header(Qs_Scene *scene, Qs_Entity entity)
 {
-    Editor *ed = (Editor *)editor;
-    Qs_Entity entity = editor_selected_entity(ed);
-    Qs_Scene *scene  = qs_scene_active();
-
-    /* No selection — show placeholder */
-    if (entity == QS_ENTITY_INVALID || !scene ||
-        !qs_entity_valid(scene, entity))
-    {
-        ca_div_set_hidden(s_header_div, true);
-        ca_label_set_hidden(s_no_selection, false);
-        ca_reconcile_begin(s_content_div);
-        ca_div_end();
-        free_bindings();
-        return;
-    }
-
-    ca_reconcile_begin(s_content_div);
-    free_bindings();
-
-    ca_label_set_hidden(s_no_selection, true);
-
-    /* ---- Entity header ---- */
-    ca_div_set_hidden(s_header_div, false);
-
     const char *name = qs_entity_name(scene, entity);
     ca_input_set_text(s_entity_name_input, name ? name : "");
 
@@ -496,8 +473,38 @@ void ed_inspector_update(void *editor)
                                 scene, entity, qs_tag_comp_type());
     if (tag_comp)
         ca_input_set_text(s_tag_input, tag_comp->tag);
+}
 
-    /* ---- Build component sections dynamically ---- */
+void ed_inspector_update(void *editor)
+{
+    Editor *ed = (Editor *)editor;
+    Qs_Entity entity = editor_selected_entity(ed);
+    Qs_Scene *scene  = qs_scene_active();
+
+    bool valid = (entity != QS_ENTITY_INVALID && scene &&
+                  qs_entity_valid(scene, entity));
+
+    if (!valid) {
+        if (s_displayed_entity != QS_ENTITY_INVALID) {
+            s_displayed_entity = QS_ENTITY_INVALID;
+            ca_div_set_hidden(s_header_div, true);
+            ca_label_set_hidden(s_no_selection, false);
+            ca_reconcile_begin(s_content_div);
+            ca_div_end();
+            free_bindings();
+        }
+        return;
+    }
+
+    if (entity == s_displayed_entity) return;
+
+    s_displayed_entity = entity;
+    ca_div_set_hidden(s_header_div, false);
+    ca_label_set_hidden(s_no_selection, true);
+    update_header(scene, entity);
+
+    ca_reconcile_begin(s_content_div);
+    free_bindings();
     build_sections(scene, entity);
     ca_div_end();
 }
