@@ -23,8 +23,6 @@ struct Editor {
     Ca_Viewport   *scene_viewport;
     Qs_Entity      selected_entity;
     EditorCamera   cam;
-    /* Dynamic menu bar host div — rebuilt every frame */
-    Ca_Div        *menu_bar_div;
 };
 
 /* ---- Editor CSS theme (Quasar Dark) ---- */
@@ -63,21 +61,6 @@ static const char *g_editor_css =
     "  background: #111114;"
     "  gap: 0px;"
     "  overflow: hidden;"
-    "}"
-
-    /* ---- Menu bar ---- */
-    ".menu-bar {"
-    "  background: #16161a;"
-    "  width: 100%;"
-    "  height: 18px;"
-    "}"
-
-    ".menu-bar-item {"
-    "  padding-left: 4px;"
-    "  padding-right: 4px;"
-    "  align-items: center;"
-    "  color: #8890b0;"
-    "  font-size: 12px;"
     "}"
 
     /* ---- Toolbar ---- */
@@ -528,13 +511,6 @@ static const char *g_editor_css =
     "  background: #242430;"
     "}"
 
-    /* ---- Menu bar host ---- */
-    ".menu-bar-host {"
-    "  width: 100%;"
-    "  height: 18px;"
-    "  flex-shrink: 0;"
-    "}"
-
 
     /* ---- Plugin Manager modal ---- */
     ".plugin-manager-modal {"
@@ -719,7 +695,6 @@ static void editor_build_ui(Editor *ed)
         .style     = "editor-root",
     });
 
-    ed->menu_bar_div = ed_menu_bar(window, ed);
     ed_toolbar(window, ed);
     ed_layout(window, ed);
     ed_status_bar(window, ed);
@@ -853,7 +828,7 @@ static void on_frame(Qs_Engine *engine, void *userdata)
         }
     }
 
-    ed_menu_bar_update(ed->menu_bar_div, qs_engine_window(ed->engine), ed);
+    ed_menu_bar_sync(qs_engine_window(ed->engine), ed);
     ed_hierarchy_update(ed);
     ed_console_update(ed);
     ed_inspector_update(ed);
@@ -1110,6 +1085,8 @@ Editor *editor_create(const EditorDesc *desc)
     }
 
     editor_build_ui(ed);
+
+    ca_window_set_title(qs_engine_window(ed->engine), "Quasar Editor");
 
     ed_plugin_manager_init(ed);
     ed_toolbar_init(ed);

@@ -10,14 +10,14 @@
    EDITOR MENU BAR — static File menu + dynamic Plugins menu
    ================================================================
 
-   ed_menu_bar() builds the host div ONCE during editor_build_ui.
-   ed_menu_bar_update() clears + rebuilds the menu bar every frame
-   so the Plugins menu reflects the current set of loaded plugins.
-   Each loaded plugin may contribute up to ED_PLUGIN_MENU_MAX_ITEMS
-   items via its on_editor_menu callback.
+   ed_menu_bar_sync() is called every frame.  It tracks a simple
+   fingerprint of the currently loaded plugins and only calls
+   ca_window_set_title_bar_menus() when the fingerprint changes —
+   leaving the causality menu bar widget undisturbed (so any open
+   dropdown stays open) between changes.
    ================================================================ */
 
-/* Max plugin menus we'll include as top-level Plugins sub-menus */
+/* Max plugin sub-menus we'll include in the Plugins top-level menu */
 #define MAX_PLUGIN_MENUS  16
 
 static void action_open_file(void *user_data)
@@ -57,22 +57,19 @@ static void action_manage_plugins(void *user_data)
     ed_plugin_manager_open();
 }
 
-/* ---- Per-plugin item storage for the current frame ---- */
+/* ---- Per-plugin item storage for the current sync ---- */
 
 typedef struct {
-    /* plugin name (for the sub-menu label) */
     char             label[128];
-    /* items filled by on_editor_menu */
     Ca_MenuItemDesc  items[ED_PLUGIN_MENU_MAX_ITEMS];
     int              item_count;
 } PluginMenuSlot;
 
 static PluginMenuSlot s_plugin_slots[MAX_PLUGIN_MENUS];
 
-/* Fingerprint of the last-built plugin menu state.
-   Rebuild only when this changes — so the active dropdown
-   is never destroyed mid-interaction. */
-static int s_menu_fingerprint = -1;  /* -1 forces first-frame build */
+/* Fingerprint of the last-pushed plugin state.
+   -1 forces the first-frame push. */
+static int s_menu_fingerprint = -1;
 
 static int plugin_fingerprint(Qs_PluginManager *pm)
 {
@@ -89,27 +86,15 @@ static int plugin_fingerprint(Qs_PluginManager *pm)
 
 /* ------------------------------------------------------------------ */
 
-Ca_Div *ed_menu_bar(Ca_Window *window, void *editor)
+void ed_menu_bar_sync(Ca_Window *window, void *editor)
 {
-    (void)window; (void)editor;
-    Ca_Div *host = ca_div_begin(&(Ca_DivDesc){
-        .style = "menu-bar-host",
-    });
-    ca_div_end();
-    return host;
-}
-
-void ed_menu_bar_update(Ca_Div *host, Ca_Window *window, void *editor)
-{
-    (void)window;
-    if (!host) return;
+    if (!window) return;
 
     Editor           *ed = (Editor *)editor;
     Qs_Engine        *engine = editor_engine(ed);
     Qs_PluginManager *pm     = engine ? qs_engine_plugin_manager(engine) : NULL;
 
-    /* Skip the rebuild if plugin state hasn't changed.
-       This preserves active_menu across frames so dropdowns stay open. */
+    /* Skip rebuild if plugin state hasn't changed */
     int fp = plugin_fingerprint(pm);
     if (fp == s_menu_fingerprint) return;
     s_menu_fingerprint = fp;
@@ -131,8 +116,7 @@ void ed_menu_bar_update(Ca_Div *host, Ca_Window *window, void *editor)
             snprintf(slot->label, sizeof(slot->label), "%s",
                      name ? name : "(plugin)");
             slot->item_count = 0;
-            desc->on_editor_menu(engine,
-                                  slot->items, &slot->item_count);
+            desc->on_editor_menu(engine, slot->items, &slot->item_count);
             if (slot->item_count > 0)
                 plugin_menu_count++;
         }
@@ -145,16 +129,13 @@ void ed_menu_bar_update(Ca_Div *host, Ca_Window *window, void *editor)
         .action_data = NULL,
     };
 
-    /* ---- Assemble top-level Plugins menu ---- */
-    /* manage + separator + one entry per plugin (plugin items are sub-menus) */
-
+    /* ---- Assemble top-level Plugins menu items ---- */
     #define PLUGINS_FLAT_MAX (2 + MAX_PLUGIN_MENUS)
     Ca_MenuItemDesc plugins_items[PLUGINS_FLAT_MAX];
     int             plugins_item_count = 0;
 
     plugins_items[plugins_item_count++] = manage_item;
 
-    /* Separator after "Manage Plugins..." (only when plugins are present) */
     if (plugin_menu_count > 0) {
         Ca_MenuItemDesc sep = { .separator = true };
         plugins_items[plugins_item_count++] = sep;
@@ -162,7 +143,6 @@ void ed_menu_bar_update(Ca_Div *host, Ca_Window *window, void *editor)
 
     for (int p = 0; p < plugin_menu_count; p++) {
         PluginMenuSlot *slot = &s_plugin_slots[p];
-        /* Top-level item = plugin name; sub_items = its menu items */
         Ca_MenuItemDesc plugin_item = {
             .label          = slot->label,
             .action         = NULL,
@@ -182,20 +162,13 @@ void ed_menu_bar_update(Ca_Div *host, Ca_Window *window, void *editor)
         { .label = "Exit",           .action = action_exit,        .action_data = editor },
     };
 
-    /* ---- Assemble all menus ---- */
+    /* ---- Push all menus to the title bar ---- */
     Ca_MenuDesc menus[2] = {
         { .label = "File",    .items = file_items,     .item_count = 3 },
         { .label = "Plugins", .items = plugins_items,  .item_count = plugins_item_count },
     };
 
-    ca_reconcile_begin(host);
-    ca_menu_bar(&(Ca_MenuBarDesc){
-        .menus      = menus,
-        .menu_count = 2,
-        .id         = "editor-menu-bar",
-        .style      = "menu-bar",
-        .item_style = "menu-bar-item",
-    });
-    ca_div_end();
+    ca_window_set_title_bar_menus(window, menus, 2);
 }
+
 
