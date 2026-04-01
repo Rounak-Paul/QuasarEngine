@@ -1022,8 +1022,8 @@ bool ed_project_launcher_run(char *out_path, size_t out_path_size)
     /* Create launcher window */
     s_launcher.window = ca_window_create(s_launcher.instance, &(Ca_WindowDesc){
         .title  = "Quasar Engine",
-        .width  = 700,
-        .height = 450,
+        .width  = 600,
+        .height = 400,
     });
     if (!s_launcher.window) {
         if (s_launcher.stylesheet) ca_css_destroy(s_launcher.stylesheet);
