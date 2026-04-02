@@ -1,5 +1,5 @@
 ﻿/*
- * vk_forward.c  --  Forward+ renderer passes for the PBR backend.
+ * pbr_forward.c  --  Forward+ renderer passes for the PBR backend.
  *
  * Pass layout (priority order):
  *   Pass 0 (priority   0):  CSM shadow depth  (QS_CSM_CASCADES cascades)
@@ -24,18 +24,18 @@
 #include "qs_material.h"
 #include "qs_light.h"
 #include "qs_log.h"
-#include "vk_renderer_internal.h"
+#include "pbr_internal.h"
 
 #include <string.h>
 #include <math.h>
 
 /* ---- Post-process settings (mutable, read by composite pass each frame) ---- */
-static VkPostProcessSettings g_pp_settings = {
+static PbrPostProcessSettings g_pp_settings = {
     .bloom_strength    = 0.04f,
     .vignette_strength = 0.35f,
 };
 
-VkPostProcessSettings *vk_post_process_settings(void) { return &g_pp_settings; }
+PbrPostProcessSettings *pbr_post_process_settings(void) { return &g_pp_settings; }
 #include <stdlib.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -339,7 +339,7 @@ static void compute_csm(const Qs_Camera *cam,
    SHARED PASS RESOURCE CREATION / DESTRUCTION
    ================================================================ */
 
-static bool create_samplers(Qs_GpuContext *gpu, VkPassResources *ps)
+static bool create_samplers(Qs_GpuContext *gpu, PbrPassResources *ps)
 {
     ps->linear_sampler = qs_gpu_create_sampler(gpu, &(Qs_GpuSamplerDesc){
         .min_filter=QS_GPU_FILTER_LINEAR,.mag_filter=QS_GPU_FILTER_LINEAR,
@@ -353,7 +353,7 @@ static bool create_samplers(Qs_GpuContext *gpu, VkPassResources *ps)
     return ps->linear_sampler && ps->point_sampler && ps->shadow_sampler;
 }
 
-static bool create_frame_set_layout(Qs_GpuContext *gpu, VkPassResources *ps)
+static bool create_frame_set_layout(Qs_GpuContext *gpu, PbrPassResources *ps)
 {
     Qs_GpuDescriptorBinding b[6] = {
         {0,QS_GPU_DESCRIPTOR_UNIFORM_BUFFER,        1,QS_GPU_SHADER_VERTEX|QS_GPU_SHADER_FRAGMENT},
@@ -378,7 +378,7 @@ static bool create_single_sampler_layout(Qs_GpuContext *gpu,
     return *out != NULL;
 }
 
-static bool create_shadow_pipeline(Qs_GpuContext *gpu, VkPassResources *ps)
+static bool create_shadow_pipeline(Qs_GpuContext *gpu, PbrPassResources *ps)
 {
     Qs_GpuShader *vs=qs_gpu_compile_shader(gpu,SHADOW_VERT,QS_GPU_SHADER_VERTEX);
     Qs_GpuShader *fs=qs_gpu_compile_shader(gpu,SHADOW_FRAG,QS_GPU_SHADER_FRAGMENT);
@@ -396,7 +396,7 @@ static bool create_shadow_pipeline(Qs_GpuContext *gpu, VkPassResources *ps)
     return ps->shadow_pipeline!=NULL;
 }
 
-static bool create_forward_pipeline(Qs_GpuContext *gpu, VkPassResources *ps)
+static bool create_forward_pipeline(Qs_GpuContext *gpu, PbrPassResources *ps)
 {
     Qs_GpuShader *vs=qs_gpu_compile_shader(gpu,FORWARD_VERT,QS_GPU_SHADER_VERTEX);
     Qs_GpuShader *fs=qs_gpu_compile_shader(gpu,FORWARD_FRAG,QS_GPU_SHADER_FRAGMENT);
@@ -426,7 +426,7 @@ static bool create_forward_pipeline(Qs_GpuContext *gpu, VkPassResources *ps)
     return ps->forward_pipeline!=NULL && ps->forward_wireframe_pipeline!=NULL;
 }
 
-static bool create_bloom_pipelines(Qs_GpuContext *gpu, VkPassResources *ps)
+static bool create_bloom_pipelines(Qs_GpuContext *gpu, PbrPassResources *ps)
 {
     if(!create_single_sampler_layout(gpu,&ps->bloom_set_layout,1)) return false;
     Qs_GpuPushConstantRange pc={QS_GPU_SHADER_FRAGMENT,0,16};
@@ -446,7 +446,7 @@ static bool create_bloom_pipelines(Qs_GpuContext *gpu, VkPassResources *ps)
     return ps->bloom_down_pipeline&&ps->bloom_up_pipeline;
 }
 
-static bool create_composite_pipeline(Qs_GpuContext *gpu, VkPassResources *ps,
+static bool create_composite_pipeline(Qs_GpuContext *gpu, PbrPassResources *ps,
                                         Qs_GpuImageFormat swapchain_fmt)
 {
     if(!create_single_sampler_layout(gpu,&ps->composite_set_layout,2)) return false;
@@ -464,7 +464,7 @@ static bool create_composite_pipeline(Qs_GpuContext *gpu, VkPassResources *ps,
     return ps->composite_pipeline!=NULL;
 }
 
-static bool vk_pass_resources_init(Qs_GpuContext *gpu, VkPassResources *ps)
+static bool pbr_pass_resources_init(Qs_GpuContext *gpu, PbrPassResources *ps)
 {
     if (ps->ok) return true;
     if (!create_samplers(gpu,ps))                               { QS_LOG_ERROR("PBR Renderer: samplers failed");          return false; }
@@ -479,7 +479,7 @@ static bool vk_pass_resources_init(Qs_GpuContext *gpu, VkPassResources *ps)
     return true;
 }
 
-void vk_pass_resources_shutdown(Qs_GpuContext *gpu, VkPassResources *ps)
+void pbr_pass_resources_shutdown(Qs_GpuContext *gpu, PbrPassResources *ps)
 {
     if (!ps->ok) return;
     qs_gpu_destroy_pipeline(gpu, ps->shadow_pipeline);
@@ -505,7 +505,7 @@ void vk_pass_resources_shutdown(Qs_GpuContext *gpu, VkPassResources *ps)
    DESCRIPTOR POOL + SET ALLOCATION
    ================================================================ */
 
-static bool fwd_alloc_descriptors(VkRenderer *r, Qs_GpuContext *gpu, VkPassResources *ps)
+static bool fwd_alloc_descriptors(PbrRenderer *r, Qs_GpuContext *gpu, PbrPassResources *ps)
 {
     Qs_GpuDescriptorPoolSize sizes[] = {
         {QS_GPU_DESCRIPTOR_UNIFORM_BUFFER,         12},
@@ -530,8 +530,8 @@ static bool fwd_alloc_descriptors(VkRenderer *r, Qs_GpuContext *gpu, VkPassResou
 /* Pass 0: CSM shadow maps */
 static void shadow_pass_execute(const Qs_RenderContext *ctx, void *user_data)
 {
-    VkRenderer      *r  = user_data;
-    VkPassResources *ps = vk_renderer_pass_resources();
+    PbrRenderer      *r  = user_data;
+    PbrPassResources *ps = pbr_renderer_pass_resources();
     if (!ps || !ps->ok || !r->ok) return;
     if (ctx->renderable_count == 0) return;
 
@@ -593,8 +593,8 @@ static void shadow_pass_execute(const Qs_RenderContext *ctx, void *user_data)
 /* Pass 1: Forward lit (HDR target) */
 static void forward_pass_execute(const Qs_RenderContext *ctx, void *user_data)
 {
-    VkRenderer      *r  = user_data;
-    VkPassResources *ps = vk_renderer_pass_resources();
+    PbrRenderer      *r  = user_data;
+    PbrPassResources *ps = pbr_renderer_pass_resources();
     if (!ps || !ps->ok || !r->ok) return;
 
     Qs_GpuImageView *hdr_view  = qs_attachment_view(r->hdr_att);
@@ -659,8 +659,8 @@ static void forward_pass_execute(const Qs_RenderContext *ctx, void *user_data)
 /* Pass 2: Bloom */
 static void bloom_pass_execute(const Qs_RenderContext *ctx, void *user_data)
 {
-    VkRenderer      *r  = user_data;
-    VkPassResources *ps = vk_renderer_pass_resources();
+    PbrRenderer      *r  = user_data;
+    PbrPassResources *ps = pbr_renderer_pass_resources();
     if (!ps || !ps->ok || !r->ok) return;
 
     uint32_t bw = (ctx->width+1)/2, bh = (ctx->height+1)/2;
@@ -717,8 +717,8 @@ static void bloom_pass_execute(const Qs_RenderContext *ctx, void *user_data)
 /* Pass 3: Composite (ACES tonemap + vignette -> swapchain) */
 static void composite_pass_execute(const Qs_RenderContext *ctx, void *user_data)
 {
-    VkRenderer      *r  = user_data;
-    VkPassResources *ps = vk_renderer_pass_resources();
+    PbrRenderer      *r  = user_data;
+    PbrPassResources *ps = pbr_renderer_pass_resources();
     if (!ps || !ps->ok || !r->ok) return;
     if (!ctx->swapchain_view || ctx->swapchain_width==0 || ctx->swapchain_height==0) return;
 
@@ -741,15 +741,15 @@ static void composite_pass_execute(const Qs_RenderContext *ctx, void *user_data)
    PUBLIC ATTACH / DETACH / RESIZE
    ================================================================ */
 
-void vk_forward_attach(Qs_Engine *engine, VkRenderer *r, Qs_Renderer *handle)
+void pbr_forward_attach(Qs_Engine *engine, PbrRenderer *r, Qs_Renderer *handle)
 {
     if (!r || !handle) return;
     r->engine          = engine;
     r->engine_renderer = handle;
 
     Qs_GpuContext   *gpu = r->gpu;
-    VkPassResources *ps  = vk_renderer_pass_resources();
-    if (!vk_pass_resources_init(gpu, ps)) {
+    PbrPassResources *ps  = pbr_renderer_pass_resources();
+    if (!pbr_pass_resources_init(gpu, ps)) {
         QS_LOG_ERROR("PBR Renderer: pass resources init failed"); return;
     }
 
@@ -805,7 +805,7 @@ void vk_forward_attach(Qs_Engine *engine, VkRenderer *r, Qs_Renderer *handle)
             qs_gpu_write_image_descriptor(gpu, r->frame_desc_set, 3+(uint32_t)i,
                                            ps->shadow_sampler, r->shadow_sample_views[i]);
     }
-    /* composite + bloom descriptors are written in vk_forward_on_resize */
+    /* composite + bloom descriptors are written in pbr_forward_on_resize */
 
     /* --- Add render nodes via engine API --- */
     r->shadow_node = qs_renderer_add_node(handle, &(Qs_RenderNodeDesc){
@@ -817,11 +817,11 @@ void vk_forward_attach(Qs_Engine *engine, VkRenderer *r, Qs_Renderer *handle)
     r->composite_node = qs_renderer_add_node(handle, &(Qs_RenderNodeDesc){
         .name="composite",.priority=300,.execute=composite_pass_execute,.user_data=r});
 
-    /* r->ok stays false until vk_forward_on_resize is called */
+    /* r->ok stays false until pbr_forward_on_resize is called */
     QS_LOG_INFO("PBR Renderer: Forward+ renderer attached to '%s'", r->name);
 }
 
-void vk_forward_detach(VkRenderer *r)
+void pbr_forward_detach(PbrRenderer *r)
 {
     if (!r) return;
     Qs_GpuContext *gpu    = r->gpu;
@@ -857,13 +857,13 @@ void vk_forward_detach(VkRenderer *r)
 
     QS_LOG_INFO("PBR Renderer: detached from '%s'", r->name);
 
-    /* Shared pass resources are cleaned up in vk_render_shutdown. */
+    /* Shared pass resources are cleaned up in pbr_render_shutdown. */
 }
 
-void vk_forward_on_resize(VkRenderer *r, uint32_t w, uint32_t h)
+void pbr_forward_on_resize(PbrRenderer *r, uint32_t w, uint32_t h)
 {
     (void)w; (void)h;
-    VkPassResources *ps = vk_renderer_pass_resources();
+    PbrPassResources *ps = pbr_renderer_pass_resources();
     if (!r || !ps || !ps->ok) return;
 
     Qs_GpuContext *gpu = r->gpu;

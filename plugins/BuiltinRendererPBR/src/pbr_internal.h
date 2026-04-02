@@ -1,7 +1,7 @@
-﻿#ifndef VK_RENDERER_INTERNAL_H
-#define VK_RENDERER_INTERNAL_H
+﻿#ifndef PBR_INTERNAL_H
+#define PBR_INTERNAL_H
 
-/* Plugin-internal header shared between vk_renderer.c and vk_forward.c.
+/* Plugin-internal header shared between pbr_renderer.c and pbr_forward.c.
    Not part of the public engine API. */
 
 #include "qs_renderer.h"
@@ -15,7 +15,7 @@
 #define QS_SHADOW_MAP_SIZE 1024
 
 /* ----------------------------------------------------------------
-   VkRenderer — plugin-internal per-renderer state.
+   PbrRenderer — plugin-internal per-renderer state.
    The engine now owns: camera, clear_color, name, nodes, renderables,
    lights, depth buffer, frame UBO, lights UBO, default material, and
    all viewport attachments declared via qs_renderer_add_attachment.
@@ -23,7 +23,7 @@
    The plugin owns: pipelines, descriptor sets, shadow UBO (CSM data),
    CSM matrices, and shadow sample views.
    ---------------------------------------------------------------- */
-struct VkRenderer {
+struct PbrRenderer {
     char          name[64];
 
     Qs_Renderer  *engine_renderer; /* engine-owned handle set at renderer_create */
@@ -62,7 +62,7 @@ struct VkRenderer {
     bool ok; /* false until first renderer_on_resize completes */
 };
 
-typedef struct VkRenderer VkRenderer;
+typedef struct PbrRenderer PbrRenderer;
 
 /* ----------------------------------------------------------------
    Shared pipeline resources
@@ -70,7 +70,7 @@ typedef struct VkRenderer VkRenderer;
    pipeline layouts, descriptor set layouts, and samplers are
    stateless once created and safe to reuse.
    ---------------------------------------------------------------- */
-typedef struct VkPassResources {
+typedef struct PbrPassResources {
     /* Shadow depth-only pass (CSM) */
     Qs_GpuPipeline            *shadow_pipeline;
     Qs_GpuPipelineLayout      *shadow_layout;
@@ -98,44 +98,44 @@ typedef struct VkPassResources {
     Qs_GpuSampler             *shadow_sampler; /* compare/PCF */
 
     bool ok;
-} VkPassResources;
+} PbrPassResources;
 
 /* ----------------------------------------------------------------
-   vk_renderer.c helpers called from vk_forward.c
+   pbr_renderer.c helpers called from pbr_forward.c
    ---------------------------------------------------------------- */
 
 /* Returns the shared pass resources owned by the global render system. */
-VkPassResources *vk_renderer_pass_resources(void);
+PbrPassResources *pbr_renderer_pass_resources(void);
 
 /* ----------------------------------------------------------------
-   vk_forward.c entry points called from vk_renderer.c
+   pbr_forward.c entry points called from pbr_renderer.c
    ---------------------------------------------------------------- */
 
 /* Initialises the forward pass and adds render nodes.  Called from
    renderer_create. */
-void vk_forward_attach(Qs_Engine *engine, VkRenderer *r, Qs_Renderer *handle);
+void pbr_forward_attach(Qs_Engine *engine, PbrRenderer *r, Qs_Renderer *handle);
 
 /* Tears down the forward pass.  Called from renderer_destroy. */
-void vk_forward_detach(VkRenderer *r);
+void pbr_forward_detach(PbrRenderer *r);
 
 /* Called from renderer_on_resize after the engine has resized all
    viewport-scaled attachments.  Re-writes descriptor sets. */
-void vk_forward_on_resize(VkRenderer *r, uint32_t w, uint32_t h);
+void pbr_forward_on_resize(PbrRenderer *r, uint32_t w, uint32_t h);
 
 /* Destroys all shared pass resources (pipelines, layouts, samplers).
-   Called from vk_render_shutdown after all renderer instances are gone. */
-void vk_pass_resources_shutdown(Qs_GpuContext *gpu, VkPassResources *ps);
+   Called from pbr_render_shutdown after all renderer instances are gone. */
+void pbr_pass_resources_shutdown(Qs_GpuContext *gpu, PbrPassResources *ps);
 
 /* ----------------------------------------------------------------
    Post-process settings
    Exposed to the editor via the plugin's on_editor_ui callback.
    ---------------------------------------------------------------- */
-typedef struct VkPostProcessSettings {
+typedef struct PbrPostProcessSettings {
     float bloom_strength;    /* blend factor for bloom over HDR (default 0.04) */
     float vignette_strength; /* vignette power exponent        (default 0.35)  */
-} VkPostProcessSettings;
+} PbrPostProcessSettings;
 
 /* Returns a pointer to the single mutable post-process settings instance. */
-VkPostProcessSettings *vk_post_process_settings(void);
+PbrPostProcessSettings *pbr_post_process_settings(void);
 
-#endif /* VK_RENDERER_INTERNAL_H */
+#endif /* PBR_INTERNAL_H */

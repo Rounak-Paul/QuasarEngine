@@ -1,11 +1,11 @@
 ﻿#include "quasar.h"
 #include "qs_plugin.h"
-#include "vk_renderer_internal.h"
+#include "pbr_internal.h"
 
 #include <stdio.h>
 
-/* Backends defined in their respective vk_*.c files */
-extern const Qs_RendererBackend vk_renderer_backend;
+/* Backends defined in their respective pbr_*.c files */
+extern const Qs_RendererBackend pbr_renderer_backend;
 
 /* ---- Plugin globals ---- */
 static Qs_Engine  *s_engine          = NULL;
@@ -31,7 +31,7 @@ static void renderer_win_frame(void *data)
     snprintf(buf, sizeof(buf), "Frame Time:  %.2f ms", ms);
     ca_set_text(s_lbl_frametime, buf);
 
-    VkPostProcessSettings *pp = vk_post_process_settings();
+    PbrPostProcessSettings *pp = pbr_post_process_settings();
     if (pp) {
         snprintf(buf, sizeof(buf), "Bloom:       %.3f", pp->bloom_strength);
         ca_set_text(s_lbl_bloom, buf);
@@ -46,13 +46,13 @@ static void renderer_win_frame(void *data)
 static void on_bloom_change(Ca_Slider *s, void *user_data)
 {
     (void)user_data;
-    vk_post_process_settings()->bloom_strength = ca_slider_get(s);
+    pbr_post_process_settings()->bloom_strength = ca_slider_get(s);
 }
 
 static void on_vignette_change(Ca_Slider *s, void *user_data)
 {
     (void)user_data;
-    vk_post_process_settings()->vignette_strength = ca_slider_get(s);
+    pbr_post_process_settings()->vignette_strength = ca_slider_get(s);
 }
 
 /* ---- Window builder ---- */
@@ -66,7 +66,7 @@ static void open_renderer_window(void *user_data)
     Ca_Instance *inst = ca_window_instance(qs_engine_window(s_engine));
     if (!inst) return;
 
-    VkPostProcessSettings *pp = vk_post_process_settings();
+    PbrPostProcessSettings *pp = pbr_post_process_settings();
 
     s_renderer_win = ca_window_create(inst, &(Ca_WindowDesc){
         .title  = "Renderer",
@@ -148,7 +148,7 @@ static void open_renderer_window(void *user_data)
 static void on_load(Qs_Engine *engine)
 {
     s_engine = engine;
-    qs_renderer_backend_register(&vk_renderer_backend);
+    qs_renderer_backend_register(&pbr_renderer_backend);
 }
 
 static void on_unload(Qs_Engine *engine)
@@ -181,7 +181,7 @@ QS_PLUGIN_EXPORT const Qs_PluginDesc *qs_plugin_entry(void)
         .name           = "BuiltinRendererPBR",
         .version        = "1.0.0",
         .author         = "QuasarEngine",
-        .description    = "Vulkan PBR renderer backend (Forward+, CSM shadows, bloom, ACES tonemap)",
+        .description    = "PBR renderer backend (Forward+, CSM shadows, bloom, ACES tonemap)",
         .api_version    = QS_PLUGIN_API_VERSION,
         .on_load        = on_load,
         .on_unload      = on_unload,

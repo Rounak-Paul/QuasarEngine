@@ -1,5 +1,5 @@
 ﻿/*
- * vk_renderer.c — Vulkan/PBR renderer backend system lifecycle.
+ * pbr_renderer.c — PBR renderer backend system lifecycle.
  *
  * The engine now owns:
  *   - Per-frame viewport callbacks (on_render / on_resize)
@@ -10,13 +10,13 @@
  * The backend is responsible for:
  *   - Initialising the Vulkan render system (GPU context cache)
  *   - Creating / destroying per-renderer GPU resources (pipelines,
- *     descriptor sets, shadow UBO) via vk_forward_attach / detach
- *   - Re-writing descriptor sets after resize via vk_forward_on_resize
+ *     descriptor sets, shadow UBO) via pbr_forward_attach / detach
+ *   - Re-writing descriptor sets after resize via pbr_forward_on_resize
  */
 
 #include "qs_renderer.h"
 #include "qs_log.h"
-#include "vk_renderer_internal.h"
+#include "pbr_internal.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -28,7 +28,7 @@
 
 typedef struct {
     Qs_GpuContext   *gpu;
-    VkPassResources  passes;  /* shared pipelines / samplers / layouts */
+    PbrPassResources  passes;  /* shared pipelines / samplers / layouts */
 } VkRenderSystemData;
 
 static VkRenderSystemData *g_render_system;
@@ -37,7 +37,7 @@ static VkRenderSystemData *g_render_system;
    BACKEND LIFECYCLE
    ================================================================ */
 
-static bool vk_render_init(Qs_Engine *engine, Qs_GpuContext *gpu, void **out_ctx)
+static bool pbr_render_init(Qs_Engine *engine, Qs_GpuContext *gpu, void **out_ctx)
 {
     (void)engine;
     VkRenderSystemData *data = calloc(1, sizeof(VkRenderSystemData));
@@ -49,11 +49,11 @@ static bool vk_render_init(Qs_Engine *engine, Qs_GpuContext *gpu, void **out_ctx
     return true;
 }
 
-static void vk_render_shutdown(void *ctx)
+static void pbr_render_shutdown(void *ctx)
 {
     VkRenderSystemData *data = ctx;
     /* All renderer instances are destroyed before shutdown is called */
-    vk_pass_resources_shutdown(data->gpu, &data->passes);
+    pbr_pass_resources_shutdown(data->gpu, &data->passes);
     g_render_system = NULL;
     free(data);
     QS_LOG_INFO("PBR Renderer: render system shut down");
@@ -63,13 +63,13 @@ static void vk_render_shutdown(void *ctx)
    RENDERER LIFECYCLE
    ================================================================ */
 
-static void *vk_renderer_create(void *ctx, Qs_Engine *engine,
+static void *pbr_renderer_create(void *ctx, Qs_Engine *engine,
                                  const Qs_RendererDesc *desc, Qs_Renderer *handle)
 {
     VkRenderSystemData *sys = ctx;
     if (!sys || !desc || !handle) return NULL;
 
-    VkRenderer *r = calloc(1, sizeof(VkRenderer));
+    PbrRenderer *r = calloc(1, sizeof(PbrRenderer));
     if (!r) return NULL;
 
     r->engine          = engine;
@@ -84,33 +84,33 @@ static void *vk_renderer_create(void *ctx, Qs_Engine *engine,
     QS_LOG_INFO("PBR Renderer: '%s' created", r->name);
 
     /* Attach the forward pass — declares attachments and adds render nodes. */
-    vk_forward_attach(engine, r, handle);
+    pbr_forward_attach(engine, r, handle);
     return r;
 }
 
-static void vk_renderer_destroy(void *ctx, void *impl)
+static void pbr_renderer_destroy(void *ctx, void *impl)
 {
     (void)ctx;
-    VkRenderer *r = impl;
+    PbrRenderer *r = impl;
     if (!r) return;
 
-    vk_forward_detach(r);
+    pbr_forward_detach(r);
 
     QS_LOG_INFO("PBR Renderer: '%s' destroyed", r->name);
     free(r);
 }
 
-static void vk_renderer_on_resize(void *ctx, void *impl, uint32_t w, uint32_t h)
+static void pbr_renderer_on_resize(void *ctx, void *impl, uint32_t w, uint32_t h)
 {
     (void)ctx;
-    vk_forward_on_resize((VkRenderer *)impl, w, h);
+    pbr_forward_on_resize((PbrRenderer *)impl, w, h);
 }
 
 /* ================================================================
    PASS RESOURCES ACCESSOR
    ================================================================ */
 
-VkPassResources *vk_renderer_pass_resources(void)
+PbrPassResources *pbr_renderer_pass_resources(void)
 {
     return g_render_system ? &g_render_system->passes : NULL;
 }
@@ -119,12 +119,12 @@ VkPassResources *vk_renderer_pass_resources(void)
    BACKEND STRUCT
    ================================================================ */
 
-const Qs_RendererBackend vk_renderer_backend = {
+const Qs_RendererBackend pbr_renderer_backend = {
     .name               = "PBRRenderer",
-    .init               = vk_render_init,
-    .shutdown           = vk_render_shutdown,
+    .init               = pbr_render_init,
+    .shutdown           = pbr_render_shutdown,
     .update             = NULL,
-    .renderer_create    = vk_renderer_create,
-    .renderer_destroy   = vk_renderer_destroy,
-    .renderer_on_resize = vk_renderer_on_resize,
+    .renderer_create    = pbr_renderer_create,
+    .renderer_destroy   = pbr_renderer_destroy,
+    .renderer_on_resize = pbr_renderer_on_resize,
 };

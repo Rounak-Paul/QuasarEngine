@@ -1,7 +1,7 @@
 add_library(BuiltinRendererPBR SHARED
     src/plugin_main.c
-    src/vk_renderer.c
-    src/vk_forward.c
+    src/pbr_renderer.c
+    src/pbr_forward.c
 )
 
 # Match the engine's MSVC runtime library.
