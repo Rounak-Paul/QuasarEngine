@@ -45,6 +45,9 @@
 struct Qs_PluginState {
     char              path[QS_MAX_PATH];    /* file-system path to the .dll/.so */
     char              id[256];              /* from desc->id or persisted state  */
+    char              name[128];            /* human-readable name              */
+    char              version[32];          /* version string                   */
+    char              author[128];          /* author name                      */
     bool              enabled;
     bool              loaded;
     Qs_Dylib         *lib;
@@ -130,29 +133,24 @@ static void load_state(Qs_PluginManager *pm)
         const char *id      = jid->valuestring;
         bool        enabled = cJSON_IsBool(jenabled) ? cJSON_IsTrue(jenabled) : true;
 
-        /* Update existing entry or pre-create a disabled record */
-        bool found = false;
+        /* Apply saved state to an already-discovered entry */
         for (uint32_t i = 0; i < pm->count; i++) {
             if (strcmp(pm->entries[i].id, id) == 0) {
                 pm->entries[i].enabled = enabled;
-                found = true;
+
+                /* Restore cached name/version/author if not yet loaded */
+                cJSON *jname    = cJSON_GetObjectItem(entry, "name");
+                cJSON *jversion = cJSON_GetObjectItem(entry, "version");
+                cJSON *jauthor  = cJSON_GetObjectItem(entry, "author");
+                Qs_PluginState *s = &pm->entries[i];
+                if (cJSON_IsString(jname)    && !s->name[0])
+                    snprintf(s->name,    sizeof(s->name),    "%s", jname->valuestring);
+                if (cJSON_IsString(jversion) && !s->version[0])
+                    snprintf(s->version, sizeof(s->version), "%s", jversion->valuestring);
+                if (cJSON_IsString(jauthor)  && !s->author[0])
+                    snprintf(s->author,  sizeof(s->author),  "%s", jauthor->valuestring);
                 break;
             }
-        }
-        if (!found) {
-            /* Create a placeholder entry for a plugin that isn't on disk yet */
-            if (pm->count == pm->capacity) {
-                uint32_t nc  = pm->capacity * 2;
-                Qs_PluginState *na = realloc(pm->entries,
-                                             nc * sizeof(Qs_PluginState));
-                if (!na) continue;
-                pm->entries  = na;
-                pm->capacity = nc;
-            }
-            Qs_PluginState *s = &pm->entries[pm->count++];
-            memset(s, 0, sizeof(*s));
-            snprintf(s->id, sizeof(s->id), "%s", id);
-            s->enabled = enabled;
         }
     }
 
@@ -168,13 +166,13 @@ static void save_state(Qs_PluginManager *pm)
 
     for (uint32_t i = 0; i < pm->count; i++) {
         Qs_PluginState *s = &pm->entries[i];
-        /* Skip entries with no id, and skip path-less placeholder entries
-           created by load_state — they are superseded by the real DLL entry
-           once it is discovered on disk (which sets both id and path). */
-        if (s->id[0] == '\0' || s->path[0] == '\0') continue;
+        if (s->id[0] == '\0') continue;
         cJSON *obj = cJSON_CreateObject();
         cJSON_AddStringToObject(obj, "id", s->id);
         cJSON_AddBoolToObject(obj, "enabled", s->enabled);
+        if (s->name[0])    cJSON_AddStringToObject(obj, "name",    s->name);
+        if (s->version[0]) cJSON_AddStringToObject(obj, "version", s->version);
+        if (s->author[0])  cJSON_AddStringToObject(obj, "author",  s->author);
         cJSON_AddItemToArray(arr, obj);
     }
 
@@ -231,7 +229,10 @@ static bool plugin_load(Qs_PluginManager *pm, Qs_PluginState *s)
         return false;
     }
 
-    if (desc->id) snprintf(s->id, sizeof(s->id), "%s", desc->id);
+    if (desc->id)      snprintf(s->id,      sizeof(s->id),      "%s", desc->id);
+    if (desc->name)    snprintf(s->name,    sizeof(s->name),    "%s", desc->name);
+    if (desc->version) snprintf(s->version, sizeof(s->version), "%s", desc->version);
+    if (desc->author)  snprintf(s->author,  sizeof(s->author),  "%s", desc->author);
 
     s->lib    = lib;
     s->desc   = desc;
@@ -374,8 +375,7 @@ Qs_PluginManager *qs_plugin_manager_create(Qs_Engine *engine,
                  "%s" QS_PATH_SEP "plugins.json", cfg);
     }
 
-    /* Load persisted state before scanning so enable/disable flags are ready */
-    if (pm->state_path[0]) load_state(pm);
+
 
     return pm;
 }
@@ -384,12 +384,24 @@ void qs_plugin_manager_scan(Qs_PluginManager *pm)
 {
     if (!pm) return;
 
+    /* 1. Discover plugin libraries on disk */
     discover_plugins(pm);
 
+    /* 2. Load ALL to get their IDs and descriptors */
     for (uint32_t i = 0; i < pm->count; i++) {
         Qs_PluginState *s = &pm->entries[i];
-        if (s->enabled && !s->loaded && s->path[0])
+        if (!s->loaded && s->path[0])
             plugin_load(pm, s);
+    }
+
+    /* 3. Apply saved enable/disable state (now IDs are known) */
+    if (pm->state_path[0]) load_state(pm);
+
+    /* 4. Unload any that the state file says should be disabled */
+    for (uint32_t i = 0; i < pm->count; i++) {
+        Qs_PluginState *s = &pm->entries[i];
+        if (!s->enabled && s->loaded)
+            plugin_unload(pm, s);
     }
 
     save_state(pm);
@@ -418,6 +430,9 @@ bool qs_plugin_enable(Qs_PluginManager *pm, const char *id)
             if (!pm->entries[i].loaded)
                 plugin_load(pm, &pm->entries[i]);
             save_state(pm);
+            qs_event_fire(qs_engine_event_bus(pm->engine),
+                          QS_EVENT_PLUGIN_ENABLE_END,
+                          (void *)id, (uint32_t)(strlen(id) + 1));
             return true;
         }
     }
@@ -429,6 +444,9 @@ bool qs_plugin_disable(Qs_PluginManager *pm, const char *id)
     if (!pm || !id) return false;
     for (uint32_t i = 0; i < pm->count; i++) {
         if (strcmp(pm->entries[i].id, id) == 0) {
+            qs_event_fire(qs_engine_event_bus(pm->engine),
+                          QS_EVENT_PLUGIN_DISABLE_BEGIN,
+                          (void *)id, (uint32_t)(strlen(id) + 1));
             pm->entries[i].enabled = false;
             if (pm->entries[i].loaded)
                 plugin_unload(pm, &pm->entries[i]);
@@ -474,6 +492,21 @@ const char *qs_plugin_state_path(const Qs_PluginState *state)
 const char *qs_plugin_state_id(const Qs_PluginState *state)
 {
     return state ? state->id : NULL;
+}
+
+const char *qs_plugin_state_name(const Qs_PluginState *state)
+{
+    return (state && state->name[0]) ? state->name : NULL;
+}
+
+const char *qs_plugin_state_version(const Qs_PluginState *state)
+{
+    return (state && state->version[0]) ? state->version : NULL;
+}
+
+const char *qs_plugin_state_author(const Qs_PluginState *state)
+{
+    return (state && state->author[0]) ? state->author : NULL;
 }
 
 bool qs_plugin_reload(Qs_PluginManager *pm, const char *id)

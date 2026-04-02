@@ -403,7 +403,7 @@ static bool create_forward_pipeline(Qs_GpuContext *gpu, VkPassResources *ps)
     if(!vs||!fs){if(vs)qs_gpu_destroy_shader(gpu,vs);if(fs)qs_gpu_destroy_shader(gpu,fs);return false;}
     Qs_GpuDescriptorSetLayout *mat_layout=qs_material_set_layout();
     if(!mat_layout){qs_gpu_destroy_shader(gpu,vs);qs_gpu_destroy_shader(gpu,fs);
-        QS_LOG_ERROR("VkForward: material set layout unavailable");return false;}
+        QS_LOG_ERROR("PBR Renderer: material set layout unavailable");return false;}
     Qs_GpuPushConstantRange pcs[2]={{QS_GPU_SHADER_VERTEX,0,64},{QS_GPU_SHADER_FRAGMENT,64,48}};
     Qs_GpuDescriptorSetLayout *sets[]={ps->frame_set_layout,mat_layout};
     ps->forward_layout=qs_gpu_create_pipeline_layout(gpu,&(Qs_GpuPipelineLayoutDesc){sets,2,pcs,2});
@@ -467,15 +467,15 @@ static bool create_composite_pipeline(Qs_GpuContext *gpu, VkPassResources *ps,
 static bool vk_pass_resources_init(Qs_GpuContext *gpu, VkPassResources *ps)
 {
     if (ps->ok) return true;
-    if (!create_samplers(gpu,ps))                               { QS_LOG_ERROR("VkForward: samplers failed");          return false; }
-    if (!create_frame_set_layout(gpu,ps))                       { QS_LOG_ERROR("VkForward: frame set layout failed");  return false; }
-    if (!create_shadow_pipeline(gpu,ps))                        { QS_LOG_ERROR("VkForward: shadow pipeline failed");   return false; }
-    if (!create_forward_pipeline(gpu,ps))                       { QS_LOG_ERROR("VkForward: forward pipeline failed");  return false; }
-    if (!create_bloom_pipelines(gpu,ps))                        { QS_LOG_ERROR("VkForward: bloom pipelines failed");   return false; }
+    if (!create_samplers(gpu,ps))                               { QS_LOG_ERROR("PBR Renderer: samplers failed");          return false; }
+    if (!create_frame_set_layout(gpu,ps))                       { QS_LOG_ERROR("PBR Renderer: frame set layout failed");  return false; }
+    if (!create_shadow_pipeline(gpu,ps))                        { QS_LOG_ERROR("PBR Renderer: shadow pipeline failed");   return false; }
+    if (!create_forward_pipeline(gpu,ps))                       { QS_LOG_ERROR("PBR Renderer: forward pipeline failed");  return false; }
+    if (!create_bloom_pipelines(gpu,ps))                        { QS_LOG_ERROR("PBR Renderer: bloom pipelines failed");   return false; }
     if (!create_composite_pipeline(gpu,ps,QS_GPU_FORMAT_BGRA8_UNORM))
-                                                                { QS_LOG_ERROR("VkForward: composite pipeline failed");return false; }
+                                                                { QS_LOG_ERROR("PBR Renderer: composite pipeline failed");return false; }
     ps->ok = true;
-    QS_LOG_INFO("VkForward: shared pass resources ready");
+    QS_LOG_INFO("PBR Renderer: shared pass resources ready");
     return true;
 }
 
@@ -750,7 +750,7 @@ void vk_forward_attach(Qs_Engine *engine, VkRenderer *r, Qs_Renderer *handle)
     Qs_GpuContext   *gpu = r->gpu;
     VkPassResources *ps  = vk_renderer_pass_resources();
     if (!vk_pass_resources_init(gpu, ps)) {
-        QS_LOG_ERROR("VkForward: pass resources init failed"); return;
+        QS_LOG_ERROR("PBR Renderer: pass resources init failed"); return;
     }
 
     /* --- Declare engine-managed attachments --- */
@@ -785,12 +785,12 @@ void vk_forward_attach(Qs_Engine *engine, VkRenderer *r, Qs_Renderer *handle)
         .size=sizeof(ShadowUBO),.usage=QS_GPU_BUFFER_UNIFORM,
         .memory=QS_GPU_MEMORY_HOST_VISIBLE});
     if (!r->shadow_ubo) {
-        QS_LOG_ERROR("VkForward: shadow UBO creation failed"); return;
+        QS_LOG_ERROR("PBR Renderer: shadow UBO creation failed"); return;
     }
 
     /* --- Allocate descriptor pool and sets --- */
     if (!fwd_alloc_descriptors(r, gpu, ps)) {
-        QS_LOG_ERROR("VkForward: descriptor alloc failed"); return;
+        QS_LOG_ERROR("PBR Renderer: descriptor alloc failed"); return;
     }
 
     /* --- Write static descriptors (UBO bindings and shadow map samplers).
@@ -818,7 +818,7 @@ void vk_forward_attach(Qs_Engine *engine, VkRenderer *r, Qs_Renderer *handle)
         .name="composite",.priority=300,.execute=composite_pass_execute,.user_data=r});
 
     /* r->ok stays false until vk_forward_on_resize is called */
-    QS_LOG_INFO("VkForward: Forward+ renderer attached to '%s'", r->name);
+    QS_LOG_INFO("PBR Renderer: Forward+ renderer attached to '%s'", r->name);
 }
 
 void vk_forward_detach(VkRenderer *r)
@@ -855,7 +855,7 @@ void vk_forward_detach(VkRenderer *r)
     for (int i=0;i<2;i++) r->bloom_att[i] = NULL;
     r->ok = false;
 
-    QS_LOG_INFO("VkForward: detached from '%s'", r->name);
+    QS_LOG_INFO("PBR Renderer: detached from '%s'", r->name);
 
     /* Shared pass resources are cleaned up in vk_render_shutdown. */
 }
@@ -874,7 +874,7 @@ void vk_forward_on_resize(VkRenderer *r, uint32_t w, uint32_t h)
     Qs_GpuImageView *bloom1_view = qs_attachment_view(r->bloom_att[1]);
 
     if (!hdr_view || !bloom0_view || !bloom1_view) {
-        QS_LOG_ERROR("VkForward: on_resize — attachment views unavailable");
+        QS_LOG_ERROR("PBR Renderer: on_resize — attachment views unavailable");
         r->ok = false;
         return;
     }
@@ -892,5 +892,5 @@ void vk_forward_on_resize(VkRenderer *r, uint32_t w, uint32_t h)
                                    ps->linear_sampler, bloom0_view);
 
     r->ok = true;
-    QS_LOG_INFO("VkForward: on_resize %ux%u — descriptors updated", w, h);
+    QS_LOG_INFO("PBR Renderer: on_resize %ux%u — descriptors updated", w, h);
 }

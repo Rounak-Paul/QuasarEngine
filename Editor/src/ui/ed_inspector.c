@@ -116,7 +116,7 @@ static void on_field_input(Ca_TextInput *input, void *user_data)
     void *comp = qs_entity_get(scene, entity, b->comp_type);
     if (!comp) return;
 
-    const char *text = ca_input_get_text(input);
+    const char *text = ca_get_text(input);
     void *field_ptr = (char *)comp + b->field_offset;
 
     switch (b->field_type) {
@@ -163,7 +163,7 @@ static void on_entity_name_input(Ca_TextInput *input, void *user_data)
     Qs_Entity entity = editor_selected_entity(s_editor);
     if (!scene || entity == QS_ENTITY_INVALID) return;
 
-    const char *text = ca_input_get_text(input);
+    const char *text = ca_get_text(input);
     qs_entity_set_name(scene, entity, text ? text : "");
 }
 
@@ -180,7 +180,7 @@ static void on_tag_input(Ca_TextInput *input, void *user_data)
                           scene, entity, qs_tag_comp_type());
     if (!tag) return;
 
-    const char *text = ca_input_get_text(input);
+    const char *text = ca_get_text(input);
     snprintf(tag->tag, sizeof(tag->tag), "%s", text ? text : "");
 }
 
@@ -459,20 +459,20 @@ static void build_sections(Qs_Scene *scene, Qs_Entity entity)
 static void update_header(Qs_Scene *scene, Qs_Entity entity)
 {
     const char *name = qs_entity_name(scene, entity);
-    ca_input_set_text(s_entity_name_input, name ? name : "");
+    ca_set_text(s_entity_name_input, name ? name : "");
 
     Qs_IdComp *id_comp = (Qs_IdComp *)qs_entity_get(
                               scene, entity, qs_id_comp_type());
     if (id_comp) {
         char id_buf[32];
         snprintf(id_buf, sizeof(id_buf), ICON_ID "  %u", id_comp->id);
-        ca_label_set_text(s_id_value, id_buf);
+        ca_set_text(s_id_value, id_buf);
     }
 
     Qs_TagComp *tag_comp = (Qs_TagComp *)qs_entity_get(
                                 scene, entity, qs_tag_comp_type());
     if (tag_comp)
-        ca_input_set_text(s_tag_input, tag_comp->tag);
+        ca_set_text(s_tag_input, tag_comp->tag);
 }
 
 void ed_inspector_update(void *editor)
@@ -487,8 +487,8 @@ void ed_inspector_update(void *editor)
     if (!valid) {
         if (s_displayed_entity != QS_ENTITY_INVALID) {
             s_displayed_entity = QS_ENTITY_INVALID;
-            ca_div_set_hidden(s_header_div, true);
-            ca_label_set_hidden(s_no_selection, false);
+            ca_set_hidden(s_header_div, true);
+            ca_set_hidden(s_no_selection, false);
             ca_reconcile_begin(s_content_div);
             ca_div_end();
             free_bindings();
@@ -499,8 +499,8 @@ void ed_inspector_update(void *editor)
     if (entity == s_displayed_entity) return;
 
     s_displayed_entity = entity;
-    ca_div_set_hidden(s_header_div, false);
-    ca_label_set_hidden(s_no_selection, true);
+    ca_set_hidden(s_header_div, false);
+    ca_set_hidden(s_no_selection, true);
     update_header(scene, entity);
 
     ca_reconcile_begin(s_content_div);

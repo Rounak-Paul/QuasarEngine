@@ -45,7 +45,7 @@ static bool vk_render_init(Qs_Engine *engine, Qs_GpuContext *gpu, void **out_ctx
     data->gpu      = gpu;
     g_render_system = data;
     *out_ctx        = data;
-    QS_LOG_INFO("VkRenderer: render system initialised");
+    QS_LOG_INFO("PBR Renderer: render system initialised");
     return true;
 }
 
@@ -56,7 +56,7 @@ static void vk_render_shutdown(void *ctx)
     vk_pass_resources_shutdown(data->gpu, &data->passes);
     g_render_system = NULL;
     free(data);
-    QS_LOG_INFO("VkRenderer: render system shut down");
+    QS_LOG_INFO("PBR Renderer: render system shut down");
 }
 
 /* ================================================================
@@ -81,7 +81,7 @@ static void *vk_renderer_create(void *ctx, Qs_Engine *engine,
     else
         snprintf(r->name, sizeof(r->name), "renderer");
 
-    QS_LOG_INFO("VkRenderer: '%s' created", r->name);
+    QS_LOG_INFO("PBR Renderer: '%s' created", r->name);
 
     /* Attach the forward pass — declares attachments and adds render nodes. */
     vk_forward_attach(engine, r, handle);
@@ -96,7 +96,7 @@ static void vk_renderer_destroy(void *ctx, void *impl)
 
     vk_forward_detach(r);
 
-    QS_LOG_INFO("VkRenderer: '%s' destroyed", r->name);
+    QS_LOG_INFO("PBR Renderer: '%s' destroyed", r->name);
     free(r);
 }
 
@@ -120,7 +120,7 @@ VkPassResources *vk_renderer_pass_resources(void)
    ================================================================ */
 
 const Qs_RendererBackend vk_renderer_backend = {
-    .name               = "VulkanRenderer",
+    .name               = "PBRRenderer",
     .init               = vk_render_init,
     .shutdown           = vk_render_shutdown,
     .update             = NULL,

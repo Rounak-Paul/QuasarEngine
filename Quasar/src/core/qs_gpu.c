@@ -1343,6 +1343,12 @@ void qs_viewport_set_callbacks(Qs_Viewport *viewport,
                                 Qs_ViewportRenderFn on_render, void *render_data,
                                 Qs_ViewportResizeFn on_resize, void *resize_data)
 {
+    if (!on_render && !on_resize) {
+        /* Clear callbacks — remove trampoline from Causality viewport */
+        ca_viewport_set_callbacks((Ca_Viewport *)viewport,
+                                  NULL, NULL, NULL, NULL);
+        return;
+    }
     ViewportCallbackState *s = get_or_alloc_vp_state(viewport);
     s->user_render_fn   = on_render;
     s->user_render_data = render_data;

@@ -88,6 +88,9 @@ struct Qs_Renderer {
 
     /* Render settings */
     bool          wireframe;
+
+    /* Bound viewport (for unbinding on destroy) */
+    Qs_Viewport  *bound_viewport;
 };
 
 /* ================================================================
@@ -454,15 +457,16 @@ static void renderer_on_resize(Qs_Viewport *vp, uint32_t w, uint32_t h,
 static bool render_sys_init(Qs_System *sys, Qs_Engine *engine)
 {
     (void)sys;
-    if (g_backend_count == 0) {
-        QS_LOG_ERROR("Render system: no backends registered");
-        return false;
-    }
     Qs_GpuContext *gpu = qs_engine_gpu(engine);
     g_engine_ref = engine;
     g_gpu_ref    = gpu;
 
-    bool any_ok = false;
+    if (g_backend_count == 0) {
+        QS_LOG_WARN("Render system: no backends registered (renderer plugins may be disabled)");
+        g_system_running = true;
+        return true;
+    }
+
     for (uint32_t i = 0; i < g_backend_count; i++) {
         if (!g_backends[i].backend) continue;
         if (!g_backends[i].backend->init(engine, gpu, &g_backends[i].ctx)) {
@@ -471,11 +475,6 @@ static bool render_sys_init(Qs_System *sys, Qs_Engine *engine)
             continue;
         }
         QS_LOG_INFO("Render backend '%s' initialised", g_backends[i].backend->name);
-        any_ok = true;
-    }
-    if (!any_ok) {
-        QS_LOG_ERROR("Render system: all backends failed to initialise");
-        return false;
     }
     g_system_running = true;
     return true;
@@ -596,6 +595,10 @@ Qs_Renderer *qs_renderer_create(Qs_Engine *engine, const Qs_RendererDesc *desc)
 void qs_renderer_destroy(Qs_Renderer *renderer)
 {
     if (!renderer) return;
+    /* Unbind from viewport so stale callbacks are never invoked */
+    if (renderer->bound_viewport)
+        qs_viewport_set_callbacks(renderer->bound_viewport,
+                                  NULL, NULL, NULL, NULL);
     /* Backend cleanup first (frees descriptor sets that reference engine UBOs) */
     if (renderer->backend && renderer->backend->renderer_destroy)
         renderer->backend->renderer_destroy(renderer->ctx, renderer->impl);
@@ -615,6 +618,7 @@ void qs_renderer_destroy(Qs_Renderer *renderer)
 void qs_renderer_bind(Qs_Renderer *renderer, Qs_Viewport *viewport)
 {
     if (!renderer || !viewport) return;
+    renderer->bound_viewport = viewport;
     qs_viewport_set_callbacks(viewport, renderer_on_render, renderer,
                                renderer_on_resize, renderer);
     /* Trigger resize immediately for viewports that already have a size */

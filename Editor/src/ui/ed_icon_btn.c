@@ -1,12 +1,12 @@
 #include "ed_icon_btn.h"
 
-void ed_icon_btn(const EdIconBtnDesc *desc)
+Ca_Button *ed_icon_btn(const EdIconBtnDesc *desc)
 {
-    if (!desc || !desc->icon) return;
+    if (!desc || !desc->icon) return NULL;
 
     const char *style = desc->active ? "toolbar-icon-btn active" : "toolbar-icon-btn";
 
-    ca_btn(&(Ca_BtnDesc){
+    return ca_btn(&(Ca_BtnDesc){
         .text       = desc->icon,
         .id         = desc->id,
         .style      = style,

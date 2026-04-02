@@ -586,9 +586,6 @@ typedef enum LauncherTab {
     TAB_COUNT,
 } LauncherTab;
 
-#define TAB_BG_ACTIVE   0x1A1A38FF   /* #1a1a38, full alpha (RGBA packing) */
-#define TAB_BG_INACTIVE 0x00000000   /* transparent */
-
 static struct {
     Ca_Instance   *instance;
     Ca_Window     *window;
@@ -608,10 +605,7 @@ static struct {
 
     /* Projects page */
     Ca_Div        *page_projects;
-    Ca_Button     *entry_btns[MAX_RECENT];
-    Ca_Label      *entry_names[MAX_RECENT];
-    Ca_Label      *entry_paths[MAX_RECENT];
-    Ca_Label      *empty_label;
+    Ca_Div        *project_list;  /* rebuilt dynamically */
 
     /* New Project page */
     Ca_Div        *page_new_project;
@@ -628,13 +622,14 @@ static void switch_tab(LauncherTab tab)
 {
     s_launcher.active_tab = tab;
 
-    ca_div_set_hidden(s_launcher.page_projects,    tab != TAB_PROJECTS);
-    ca_div_set_hidden(s_launcher.page_new_project, tab != TAB_NEW_PROJECT);
+    ca_set_hidden(s_launcher.page_projects,    tab != TAB_PROJECTS);
+    ca_set_hidden(s_launcher.page_new_project, tab != TAB_NEW_PROJECT);
 
-    ca_button_set_background(s_launcher.tab_btns[TAB_PROJECTS],
-        tab == TAB_PROJECTS ? TAB_BG_ACTIVE : TAB_BG_INACTIVE);
-    ca_button_set_background(s_launcher.tab_btns[TAB_NEW_PROJECT],
-        tab == TAB_NEW_PROJECT ? TAB_BG_ACTIVE : TAB_BG_INACTIVE);
+    for (int i = 0; i < TAB_COUNT; i++) {
+        ca_set_style(s_launcher.tab_btns[i],
+            i == (int)tab ? "launcher-tab launcher-tab-active"
+                          : "launcher-tab");
+    }
 }
 
 /* ================================================================
@@ -719,7 +714,7 @@ static void on_browse_path_confirm(const char *path, void *user_data)
     (void)user_data;
     if (!path) return;
     snprintf(s_launcher.new_project_dir, MAX_PATH_LEN, "%s", path);
-    ca_label_set_text(s_launcher.path_label, s_launcher.new_project_dir);
+    ca_set_text(s_launcher.path_label, s_launcher.new_project_dir);
 }
 
 static void on_browse_path(Ca_Button *btn, void *data)
@@ -735,7 +730,7 @@ static void on_browse_path(Ca_Button *btn, void *data)
 static void on_create_project(Ca_Button *btn, void *data)
 {
     (void)btn; (void)data;
-    const char *name = ca_input_get_text(s_launcher.name_input);
+    const char *name = ca_get_text(s_launcher.name_input);
     if (!name || name[0] == '\0') return;
     if (s_launcher.new_project_dir[0] == '\0') return;
 
@@ -763,6 +758,38 @@ static void on_create_project(Ca_Button *btn, void *data)
 /* ================================================================
    UI BUILD
    ================================================================ */
+
+static void rebuild_project_list(void)
+{
+    ca_div_clear(s_launcher.project_list);
+
+    if (s_launcher.recent_count == 0) {
+        ca_text(&(Ca_TextDesc){
+            .text  = "No projects found.  Create a new project to get started.",
+            .style = "launcher-empty",
+        });
+    }
+
+    for (int i = 0; i < s_launcher.recent_count; i++) {
+        ca_btn_begin(&(Ca_BtnDesc){
+            .on_click   = on_entry_click,
+            .click_data = (void *)(intptr_t)i,
+            .style      = "launcher-entry",
+            .direction  = CA_VERTICAL,
+        });
+        ca_text(&(Ca_TextDesc){
+            .text  = s_launcher.recent[i].name,
+            .style = "launcher-entry-name",
+        });
+        ca_text(&(Ca_TextDesc){
+            .text  = s_launcher.recent[i].path,
+            .style = "launcher-entry-path",
+        });
+        ca_btn_end();
+    }
+
+    ca_div_end();
+}
 
 static void build_launcher_ui(void)
 {
@@ -837,39 +864,13 @@ static void build_launcher_ui(void)
             });
             ca_div_end();
 
-            /* Project list */
-            ca_div_begin(&(Ca_DivDesc){
+            /* Project list — rebuilt dynamically */
+            s_launcher.project_list = ca_div_begin(&(Ca_DivDesc){
                 .direction = CA_VERTICAL,
                 .style     = "launcher-list",
             });
+            ca_div_end();
 
-            s_launcher.empty_label = ca_text(&(Ca_TextDesc){
-                .text   = "No projects found.  Create a new project to get started.",
-                .style  = "launcher-empty",
-                .hidden = (s_launcher.recent_count > 0),
-            });
-
-            for (int i = 0; i < MAX_RECENT; i++) {
-                bool has = (i < s_launcher.recent_count);
-                s_launcher.entry_btns[i] = ca_btn_begin(&(Ca_BtnDesc){
-                    .on_click   = on_entry_click,
-                    .click_data = (void *)(intptr_t)i,
-                    .style      = "launcher-entry",
-                    .hidden     = !has,
-                    .direction  = CA_VERTICAL,
-                });
-                s_launcher.entry_names[i] = ca_text(&(Ca_TextDesc){
-                    .text  = has ? s_launcher.recent[i].name : "",
-                    .style = "launcher-entry-name",
-                });
-                s_launcher.entry_paths[i] = ca_text(&(Ca_TextDesc){
-                    .text  = has ? s_launcher.recent[i].path : "",
-                    .style = "launcher-entry-path",
-                });
-                ca_btn_end();
-            }
-
-            ca_div_end(); /* list */
             ca_div_end(); /* page_projects */
 
             /* ---- New Project page ---- */
@@ -1036,8 +1037,9 @@ bool ed_project_launcher_run(char *out_path, size_t out_path_size)
     /* Init file browser for Open Project / Browse path */
     ed_file_browser_init(s_launcher.instance);
 
-    /* Build UI */
+    /* Build UI then populate the project list */
     build_launcher_ui();
+    rebuild_project_list();
 
     /* Run event loop */
     while (ca_instance_tick(s_launcher.instance)) {

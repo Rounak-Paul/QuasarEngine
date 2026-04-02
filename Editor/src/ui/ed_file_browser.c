@@ -284,15 +284,15 @@ static void sync_widgets(void)
     if (!s_fb.window) return;
 
     /* Nav buttons */
-    ca_button_set_disabled(s_fb.btn_back,    s_fb.history_pos <= 0);
-    ca_button_set_disabled(s_fb.btn_forward,
+    ca_set_disabled(s_fb.btn_back,    s_fb.history_pos <= 0);
+    ca_set_disabled(s_fb.btn_forward,
                            s_fb.history_pos + 1 >= s_fb.history_count);
 
     /* Path input */
-    ca_input_set_text(s_fb.path_input, s_fb.current_path);
+    ca_set_text(s_fb.path_input, s_fb.current_path);
 
     /* Empty label */
-    ca_label_set_hidden(s_fb.empty_label, s_fb.entry_count > 0);
+    ca_set_hidden(s_fb.empty_label, s_fb.entry_count > 0);
 
     /* Entry buttons */
     for (int i = 0; i < FB_MAX_ENTRIES; ++i) {
@@ -302,15 +302,15 @@ static void sync_widgets(void)
             const char *icon = e->is_dir ? ICON_FOLDER : ICON_FILE;
             snprintf(label, sizeof(label), " %s  %s", icon, e->name);
 
-            ca_button_set_text(s_fb.entry_btns[i], label);
-            ca_button_set_hidden(s_fb.entry_btns[i], false);
+            ca_set_text(s_fb.entry_btns[i], label);
+            ca_set_hidden(s_fb.entry_btns[i], false);
 
             if (s_fb.selected == i)
-                ca_button_set_background(s_fb.entry_btns[i], CA_THEME_BG_OVERLAY);
+                ca_set_background(s_fb.entry_btns[i], CA_THEME_BG_OVERLAY);
             else
-                ca_button_set_background(s_fb.entry_btns[i], 0);
+                ca_set_background(s_fb.entry_btns[i], 0);
         } else {
-            ca_button_set_hidden(s_fb.entry_btns[i], true);
+            ca_set_hidden(s_fb.entry_btns[i], true);
         }
     }
 
@@ -320,7 +320,7 @@ static void sync_widgets(void)
         && !s_fb.entries[s_fb.selected].is_dir) {
         sel_name = s_fb.entries[s_fb.selected].name;
     }
-    ca_label_set_text(s_fb.selected_label, sel_name);
+    ca_set_text(s_fb.selected_label, sel_name);
 
     /* Confirm button */
     bool can_confirm = false;
@@ -330,11 +330,11 @@ static void sync_widgets(void)
              && !s_fb.entries[s_fb.selected].is_dir)
         can_confirm = true;
 
-    ca_button_set_disabled(s_fb.confirm_btn, !can_confirm);
+    ca_set_disabled(s_fb.confirm_btn, !can_confirm);
 
     const char *btn_text = (s_fb.mode == ED_FB_OPEN_FOLDER)
                          ? "Select Folder" : "Open";
-    ca_button_set_text(s_fb.confirm_btn, btn_text);
+    ca_set_text(s_fb.confirm_btn, btn_text);
 
     s_fb.dirty = false;
 }
@@ -455,7 +455,7 @@ static void on_nav_go(Ca_Button *btn, void *data)
 {
     (void)btn; (void)data;
     if (!s_fb.path_input) return;
-    const char *text = ca_input_get_text(s_fb.path_input);
+    const char *text = ca_get_text(s_fb.path_input);
     if (text && text[0]) navigate_to(text);
 }
 

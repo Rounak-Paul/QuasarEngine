@@ -512,123 +512,115 @@ static const char *g_editor_css =
     "}"
 
 
-    /* ---- Plugin Manager modal ---- */
-    ".plugin-manager-modal {"
-    "  width: 520px;"
-    "  height: 440px;"
-    "  background: #16161a;"
-    "  corner-radius: 8px;"
-    "  padding: 0px;"
+    /* ---- Plugin Manager window ---- */
+    ".pm-root {"
+    "  width: 100%;"
+    "  height: 100%;"
+    "  background: #111114;"
+    "}"
+
+    ".pm-spacer { flex-grow: 1; }"
+
+    ".pm-header {"
+    "  width: 100%;"
+    "  height: 32px;"
+    "  background: #16161c;"
+    "  align-items: center;"
+    "  padding: 0px 14px;"
     "  gap: 0px;"
     "}"
 
-    ".plugin-manager-titlebar {"
-    "  background: #1c1c22;"
-    "  width: 100%;"
-    "  height: 32px;"
-    "  padding: 0px 12px;"
-    "  align-items: center;"
-    "  corner-radius-top-left: 8px;"
-    "  corner-radius-top-right: 8px;"
-    "}"
-
-    ".plugin-manager-title {"
-    "  color: #c8d0ff;"
-    "  font-size: 13px;"
+    ".pm-hdr {"
+    "  color: #5a5e7a;"
+    "  font-size: 10px;"
     "  font-weight: bold;"
-    "  flex-grow: 1;"
     "}"
 
-    ".plugin-manager-close-btn {"
-    "  background: transparent;"
-    "  color: #8890b0;"
-    "  font-size: 14px;"
-    "  width: 24px;"
-    "  height: 24px;"
-    "  align-items: center;"
-    "  text-align: center;"
+    ".pm-col-status  { width: 64px; }"
+    ".pm-col-name    { width: 140px; }"
+    ".pm-col-version { width: 60px; }"
+    ".pm-col-author  { width: 100px; }"
+    ".pm-col-actions { width: 80px; }"
+
+    ".pm-separator {"
+    "  width: 100%;"
+    "  height: 1px;"
+    "  background: #1e2030;"
     "}"
 
-    ".plugin-manager-content {"
+    ".pm-body {"
     "  width: 100%;"
     "  flex-grow: 1;"
     "  overflow-y: scroll;"
-    "  padding: 8px;"
     "  gap: 0px;"
     "}"
 
-    ".plugin-manager-empty {"
+    ".pm-empty {"
     "  color: #4a4e6a;"
     "  font-size: 12px;"
     "  text-align: center;"
-    "  padding: 16px;"
+    "  padding: 32px;"
     "}"
 
-    /* ---- Plugin list row ---- */
-    ".plugin-row {"
+    ".pm-row {"
     "  width: 100%;"
-    "  background: #111114;"
-    "  corner-radius: 6px;"
-    "  padding: 8px;"
-    "  margin-bottom: 4px;"
+    "  height: 28px;"
+    "  align-items: center;"
+    "  padding: 0px 14px;"
+    "  gap: 0px;"
     "}"
 
-    ".plugin-row-header {"
-    "  width: 100%;"
+    ".pm-row-alt {"
+    "  background: #13131a;"
+    "}"
+
+    ".pm-status {"
+    "  width: 64px;"
+    "  font-size: 10px;"
+    "  font-weight: bold;"
+    "}"
+
+    ".pm-status-active   { color: #6bffb8; }"
+    ".pm-status-loading  { color: #ffd166; }"
+    ".pm-status-disabled { color: #4a4e6a; }"
+
+    ".pm-cell-name {"
+    "  width: 140px;"
+    "  color: #e0e4ff;"
+    "  font-size: 12px;"
+    "}"
+
+    ".pm-cell-version {"
+    "  width: 60px;"
+    "  color: #5a5e7a;"
+    "  font-size: 11px;"
+    "}"
+
+    ".pm-cell-author {"
+    "  width: 100px;"
+    "  color: #5a5e7a;"
+    "  font-size: 11px;"
+    "}"
+
+    ".pm-cell-actions {"
+    "  width: 80px;"
     "  align-items: center;"
     "  gap: 6px;"
     "}"
 
-    ".plugin-name {"
-    "  color: #c8d0ff;"
-    "  font-size: 12px;"
-    "  font-weight: bold;"
-    "}"
-
-    ".plugin-version {"
-    "  color: #4a4e6a;"
-    "  font-size: 11px;"
-    "}"
-
-    ".plugin-spacer {"
-    "  flex-grow: 1;"
-    "}"
-
-    ".plugin-status-loaded {"
-    "  color: #6bffb8;"
-    "  font-size: 11px;"
-    "}"
-
-    ".plugin-status-loading {"
-    "  color: #ffd166;"
-    "  font-size: 11px;"
-    "}"
-
-    ".plugin-status-disabled {"
-    "  color: #4a4e6a;"
-    "  font-size: 11px;"
-    "}"
-
-    ".plugin-reload-btn {"
+    ".pm-reload-btn {"
     "  background: transparent;"
     "  color: #6e8aff;"
     "  font-size: 12px;"
-    "  width: 22px;"
-    "  height: 22px;"
+    "  width: 20px;"
+    "  height: 20px;"
     "  align-items: center;"
     "  text-align: center;"
     "}"
 
-    ".plugin-description {"
-    "  color: #8890b0;"
-    "  font-size: 11px;"
-    "  margin-top: 4px;"
-    "}"
-
-    ".plugin-author {"
-    "  color: #4a4e6a;"
-    "  font-size: 11px;"
-    "  margin-top: 2px;"
+    ".pm-toggle {"
+    "  width: 30px;"
+    "  height: 16px;"
     "}"
 
     /* ---- Renderer Settings modal ---- */
@@ -735,8 +727,8 @@ static bool on_plugin_reload_end(const Qs_Event *e, void *userdata)
             .clear_color = { 0.0f, 0.0f, 0.0f, 1.0f },
             .depth_test  = true,
         });
-        if (ed->scene_renderer) {
-            /* Camera position/facing will be reapplied by ed_camera_update next frame */
+        if (ed->scene_renderer && ed->scene_viewport) {
+            qs_renderer_bind(ed->scene_renderer, (Qs_Viewport *)ed->scene_viewport);
         }
     }
     return false;
@@ -1068,13 +1060,15 @@ Editor *editor_create(const EditorDesc *desc)
     });
 
     /* Position camera for a good view of the test scene */
-    Qs_Camera *cam = qs_renderer_camera(ed->scene_renderer);
-    cam->position[0] =  5.0f;
-    cam->position[1] =  4.0f;
-    cam->position[2] =  8.0f;
-    cam->target[0]   =  0.0f;
-    cam->target[1]   =  0.5f;
-    cam->target[2]   =  0.0f;
+    if (ed->scene_renderer) {
+        Qs_Camera *cam = qs_renderer_camera(ed->scene_renderer);
+        cam->position[0] =  5.0f;
+        cam->position[1] =  4.0f;
+        cam->position[2] =  8.0f;
+        cam->target[0]   =  0.0f;
+        cam->target[1]   =  0.5f;
+        cam->target[2]   =  0.0f;
+    }
 
     /* ---- Load scene from project ---- */
     if (ed->project) {
@@ -1101,8 +1095,10 @@ Editor *editor_create(const EditorDesc *desc)
 
     /* Subscribe to plugin reload events to refresh the scene renderer */
     Qs_EventBus *bus = qs_engine_event_bus(ed->engine);
-    qs_event_subscribe(bus, QS_EVENT_PLUGIN_RELOAD_BEGIN, on_plugin_reload_begin, ed);
-    qs_event_subscribe(bus, QS_EVENT_PLUGIN_RELOAD_END,   on_plugin_reload_end,   ed);
+    qs_event_subscribe(bus, QS_EVENT_PLUGIN_RELOAD_BEGIN,  on_plugin_reload_begin, ed);
+    qs_event_subscribe(bus, QS_EVENT_PLUGIN_RELOAD_END,    on_plugin_reload_end,   ed);
+    qs_event_subscribe(bus, QS_EVENT_PLUGIN_DISABLE_BEGIN, on_plugin_reload_begin, ed);
+    qs_event_subscribe(bus, QS_EVENT_PLUGIN_ENABLE_END,    on_plugin_reload_end,   ed);
 
     ed_camera_init(&ed->cam);
 

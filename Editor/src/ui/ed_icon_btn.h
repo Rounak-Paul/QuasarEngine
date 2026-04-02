@@ -15,6 +15,7 @@ typedef struct EdIconBtnDesc {
 
 /// Emits a single toolbar icon button.  Renders the icon glyph centred inside
 /// a square button node styled with .toolbar-icon-btn (and .active when active).
-void ed_icon_btn(const EdIconBtnDesc *desc);
+/// Returns the Ca_Button handle so callers can update its style at runtime.
+Ca_Button *ed_icon_btn(const EdIconBtnDesc *desc);
 
 #endif /* ED_ICON_BTN_H */

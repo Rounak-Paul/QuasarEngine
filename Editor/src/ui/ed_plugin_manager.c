@@ -5,51 +5,36 @@
 #include <string.h>
 
 /* ================================================================
-   PLUGIN MANAGER — a separate Ca_Window listing all plugins.
-
-   The window is created on demand (ed_plugin_manager_open).
-   Its content div is torn down and rebuilt every frame using the
-   window's on_frame callback so enable/disable/reload state is
-   always current.  There is no overlay div and no modal inside the
-   main editor window tree — the manager is entirely self-contained.
+   PLUGIN MANAGER WINDOW  –  table layout
    ================================================================ */
 
-/* Nerd Font icons */
-#define ICON_PLUGIN    "\xEF\x87\x9E"   /* U+F1DE sliders     */
-#define ICON_RELOAD    "\xEF\x80\xA1"   /* U+F021 refresh     */
-#define ICON_ENABLED   "\xEF\x81\x99"   /* U+F059 circle-info */
+#define ICON_RELOAD "\xEF\x80\xA1"  /* U+F021 refresh */
 
 /* ---- Module state ---- */
 
 static Editor    *s_editor;
 static Ca_Window *s_win;
-static Ca_Div    *s_content_div;
+static Ca_Div    *s_body;
 
-/* ---- Toggle callbacks ---- */
-
-typedef struct PluginToggleCtx {
-    char id[256];
-} PluginToggleCtx;
+/* ---- Callback context ---- */
 
 #define MAX_PLUGINS 64
-static PluginToggleCtx s_toggle_ctx[MAX_PLUGINS];
-static uint32_t        s_toggle_ctx_count;
 
-typedef struct PluginReloadCtx {
-    char id[256];
-} PluginReloadCtx;
+typedef struct { char id[256]; } PluginCtx;
 
-static PluginReloadCtx s_reload_ctx[MAX_PLUGINS];
-static uint32_t        s_reload_ctx_count;
+static PluginCtx s_toggle_ctx[MAX_PLUGINS];
+static PluginCtx s_reload_ctx[MAX_PLUGINS];
+static uint32_t  s_ctx_count;
 
-static void on_enable_toggle(Ca_Toggle *t, void *user_data)
+/* ---- Callbacks ---- */
+
+static void on_toggle(Ca_Toggle *t, void *user_data)
 {
     if (!s_editor) return;
-    PluginToggleCtx *ctx = (PluginToggleCtx *)user_data;
+    PluginCtx *ctx = user_data;
     Qs_PluginManager *pm = qs_engine_plugin_manager(editor_engine(s_editor));
     if (!pm) return;
-    bool on = ca_toggle_get(t);
-    if (on)
+    if (ca_toggle_get(t))
         qs_plugin_enable(pm, ctx->id);
     else
         qs_plugin_disable(pm, ctx->id);
@@ -59,269 +44,200 @@ static void on_reload(Ca_Button *btn, void *user_data)
 {
     (void)btn;
     if (!s_editor) return;
-    PluginReloadCtx *ctx = (PluginReloadCtx *)user_data;
+    PluginCtx *ctx = user_data;
     Qs_PluginManager *pm = qs_engine_plugin_manager(editor_engine(s_editor));
     if (pm) qs_plugin_reload(pm, ctx->id);
 }
 
-static void on_close_win(Ca_Button *btn, void *user_data)
-{
-    (void)btn; (void)user_data;
-    if (s_win) ca_window_close(s_win);
-}
-
-/* ================================================================
-   INIT — call once after engine start to store context
-   ================================================================ */
+/* ---- Init ---- */
 
 void ed_plugin_manager_init(void *editor)
 {
     s_editor = (Editor *)editor;
 }
 
-/* ================================================================
-   PER-FRAME CONTENT REBUILD — registered as window on_frame callback
-   ================================================================ */
+/* ---- Helpers ---- */
 
-static void plugin_manager_win_frame(void *data)
+static const char *status_label(bool enabled, bool loaded)
+{
+    if (loaded)  return "Active";
+    if (enabled) return "Loading";
+    return "Disabled";
+}
+
+static const char *status_style(bool enabled, bool loaded)
+{
+    if (loaded)  return "pm-status pm-status-active";
+    if (enabled) return "pm-status pm-status-loading";
+    return "pm-status pm-status-disabled";
+}
+
+/* ---- Per-frame content rebuild ---- */
+
+static void plugin_manager_frame(void *data)
 {
     (void)data;
-    if (!s_content_div) return;
+    if (!s_body) return;
 
     Qs_PluginManager *pm = s_editor
         ? qs_engine_plugin_manager(editor_engine(s_editor)) : NULL;
 
-    /* Rebuild context arrays — max one per plugin */
-    s_toggle_ctx_count = 0;
-    s_reload_ctx_count = 0;
+    s_ctx_count = 0;
+    ca_reconcile_begin(s_body);
 
-    ca_reconcile_begin(s_content_div);
-
-    if (!pm) {
+    if (!pm || qs_plugin_count(pm) == 0) {
         ca_text(&(Ca_TextDesc){
-            .text  = "No plugin manager.",
-            .style = "plugin-manager-empty",
+            .text  = pm ? "No plugins loaded." : "Plugin manager unavailable.",
+            .style = "pm-empty",
         });
         ca_div_end();
         return;
     }
 
     uint32_t count = qs_plugin_count(pm);
-    if (count == 0) {
-        ca_text(&(Ca_TextDesc){
-            .text  = "No plugins discovered.",
-            .style = "plugin-manager-empty",
-        });
-        ca_div_end();
-        return;
-    }
-
-    for (uint32_t i = 0; i < count; i++) {
+    for (uint32_t i = 0; i < count && s_ctx_count < MAX_PLUGINS; i++) {
         const Qs_PluginState *state = qs_plugin_state_at(pm, i);
         if (!state) continue;
 
-        const char *plugin_id = qs_plugin_state_id(state);
-        if (!plugin_id) plugin_id = "plugin";
+        const char *pid     = qs_plugin_state_id(state);
+        const char *name    = qs_plugin_state_name(state);
+        const char *version = qs_plugin_state_version(state);
+        const char *author  = qs_plugin_state_author(state);
+        bool        enabled = qs_plugin_state_enabled(state);
+        bool        loaded  = qs_plugin_state_loaded(state);
 
-        const Qs_PluginDesc *desc = qs_plugin_state_desc(state);
-        bool enabled = qs_plugin_state_enabled(state);
-        bool loaded  = qs_plugin_state_loaded(state);
+        if (!pid)  pid  = "unknown";
+        if (!name) name = pid;
 
-        /* Allocate stable toggle/reload context slots */
-        PluginToggleCtx *tctx = NULL;
-        PluginReloadCtx *rctx = NULL;
-        if (s_toggle_ctx_count < MAX_PLUGINS) {
-            tctx = &s_toggle_ctx[s_toggle_ctx_count++];
-            const char *id = qs_plugin_state_id(state);
-            snprintf(tctx->id, sizeof(tctx->id), "%s",
-                     id ? id : "");
-        }
-        if (s_reload_ctx_count < MAX_PLUGINS) {
-            rctx = &s_reload_ctx[s_reload_ctx_count++];
-            const char *id = qs_plugin_state_id(state);
-            snprintf(rctx->id, sizeof(rctx->id), "%s",
-                     id ? id : "");
-        }
+        uint32_t ci = s_ctx_count++;
+        snprintf(s_toggle_ctx[ci].id, sizeof(s_toggle_ctx[ci].id), "%s", pid);
+        snprintf(s_reload_ctx[ci].id, sizeof(s_reload_ctx[ci].id), "%s", pid);
 
-        /* Row container */
-        char row_id[96];
-        snprintf(row_id, sizeof(row_id), "plugin-row-%s", plugin_id);
+        char row_key[128];
+        snprintf(row_key, sizeof(row_key), "pm-row-%s", pid);
+
+        /* ---- Table row ---- */
         ca_div_begin(&(Ca_DivDesc){
-            .direction = CA_VERTICAL,
-            .id        = row_id,
-            .style     = "plugin-row",
+            .direction = CA_HORIZONTAL,
+            .id        = row_key,
+            .style     = (i & 1) ? "pm-row pm-row-alt" : "pm-row",
         });
         {
-            /* Top row: name + toggle + reload */
-            char header_id[96];
-            snprintf(header_id, sizeof(header_id), "plugin-row-header-%s", plugin_id);
+            /* Col: Status */
+            ca_text(&(Ca_TextDesc){
+                .text  = status_label(enabled, loaded),
+                .style = status_style(enabled, loaded),
+            });
+
+            /* Col: Name */
+            ca_text(&(Ca_TextDesc){
+                .text  = name,
+                .style = "pm-cell-name",
+            });
+
+            /* Col: Version */
+            ca_text(&(Ca_TextDesc){
+                .text  = version ? version : "\xe2\x80\x94",
+                .style = "pm-cell-version",
+            });
+
+            /* Col: Author */
+            ca_text(&(Ca_TextDesc){
+                .text  = author ? author : "\xe2\x80\x94",
+                .style = "pm-cell-author",
+            });
+
+            /* Spacer */
+            ca_div_begin(&(Ca_DivDesc){ .style = "pm-spacer" });
+            ca_div_end();
+
+            /* Col: Actions */
             ca_div_begin(&(Ca_DivDesc){
                 .direction = CA_HORIZONTAL,
-                .id        = header_id,
-                .style     = "plugin-row-header",
+                .style     = "pm-cell-actions",
             });
             {
-                /* Plugin name */
-                const char *name = desc ? desc->name : qs_plugin_state_id(state);
-                char label[128];
-                snprintf(label, sizeof(label), "%s  %s",
-                         ICON_PLUGIN, name ? name : "(unknown)");
-                char name_id[96];
-                snprintf(name_id, sizeof(name_id), "plugin-name-%s", plugin_id);
-                ca_text(&(Ca_TextDesc){
-                    .text  = label,
-                    .id    = name_id,
-                    .style = "plugin-name",
-                });
+                char reload_id[128], toggle_id[128];
+                snprintf(reload_id, sizeof(reload_id), "pm-rel-%s", pid);
+                snprintf(toggle_id, sizeof(toggle_id), "pm-tgl-%s", pid);
 
-                /* Version badge */
-                if (desc && desc->version) {
-                    char ver[64];
-                    snprintf(ver, sizeof(ver), "v%s", desc->version);
-                    char ver_id[96];
-                    snprintf(ver_id, sizeof(ver_id), "plugin-version-%s", plugin_id);
-                    ca_text(&(Ca_TextDesc){
-                        .text  = ver,
-                        .id    = ver_id,
-                        .style = "plugin-version",
-                    });
-                }
-
-                /* Spacer */
-                ca_div_begin(&(Ca_DivDesc){ .style = "plugin-spacer" });
-                ca_div_end();
-
-                /* Status label */
-                char status_id[96];
-                snprintf(status_id, sizeof(status_id), "plugin-status-%s", plugin_id);
-                ca_text(&(Ca_TextDesc){
-                    .text  = loaded ? "loaded" : (enabled ? "loading..." : "disabled"),
-                    .id    = status_id,
-                    .style = loaded ? "plugin-status-loaded"
-                                    : (enabled ? "plugin-status-loading"
-                                               : "plugin-status-disabled"),
-                });
-
-                /* Reload button — only for loaded plugins */
-                if (loaded && rctx) {
-                    char reload_id[96];
-                    snprintf(reload_id, sizeof(reload_id), "plugin-reload-%s", plugin_id);
+                if (loaded) {
                     ca_btn(&(Ca_BtnDesc){
                         .text       = ICON_RELOAD,
                         .id         = reload_id,
-                        .style      = "plugin-reload-btn",
+                        .style      = "pm-reload-btn",
                         .on_click   = on_reload,
-                        .click_data = rctx,
+                        .click_data = &s_reload_ctx[ci],
                     });
                 }
 
-                /* Enable toggle */
-                if (tctx) {
-                    char toggle_id[96];
-                    snprintf(toggle_id, sizeof(toggle_id), "plugin-toggle-%s", plugin_id);
-                    ca_toggle(&(Ca_ToggleDesc){
-                        .on          = enabled,
-                        .id          = toggle_id,
-                        .on_change   = on_enable_toggle,
-                        .change_data = tctx,
-                    });
-                }
-            }
-            ca_div_end(); /* plugin-row-header */
-
-            /* Description */
-            if (desc && desc->description) {
-                char desc_id[96];
-                snprintf(desc_id, sizeof(desc_id), "plugin-desc-%s", plugin_id);
-                ca_text(&(Ca_TextDesc){
-                    .text  = desc->description,
-                    .id    = desc_id,
-                    .style = "plugin-description",
+                ca_toggle(&(Ca_ToggleDesc){
+                    .on          = enabled,
+                    .id          = toggle_id,
+                    .style       = "pm-toggle",
+                    .on_change   = on_toggle,
+                    .change_data = &s_toggle_ctx[ci],
                 });
             }
-
-            /* Author */
-            if (desc && desc->author) {
-                char author_buf[128];
-                snprintf(author_buf, sizeof(author_buf),
-                         "Author: %s", desc->author);
-                char author_id[96];
-                snprintf(author_id, sizeof(author_id), "plugin-author-%s", plugin_id);
-                ca_text(&(Ca_TextDesc){
-                    .text  = author_buf,
-                    .id    = author_id,
-                    .style = "plugin-author",
-                });
-            }
+            ca_div_end();
         }
-        ca_div_end(); /* plugin-row */
-
-        ca_hr(&(Ca_HrDesc){ .color = 0 });
+        ca_div_end();
     }
 
-    ca_div_end(); /* content div */
+    ca_div_end();
 }
 
-/* ================================================================
-   OPEN — creates the plugin manager window on demand
-   ================================================================ */
+/* ---- Open ---- */
 
 void ed_plugin_manager_open(void)
 {
-    /* If already open, do nothing (window is alive) */
     if (s_win && ca_window_is_open(s_win)) return;
-
     if (!s_editor) return;
-    Ca_Window *main_win = qs_engine_window(editor_engine(s_editor));
+
+    Ca_Window  *main_win = qs_engine_window(editor_engine(s_editor));
     if (!main_win) return;
     Ca_Instance *inst = ca_window_instance(main_win);
     if (!inst) return;
 
     s_win = ca_window_create(inst, &(Ca_WindowDesc){
-        .title  = ICON_PLUGIN "  Plugin Manager",
-        .width  = 540,
-        .height = 480,
+        .title  = "Plugin Manager",
+        .width  = 560,
+        .height = 360,
     });
     if (!s_win) return;
 
-    /* Build the static shell — title label + scrollable content area */
     ca_ui_begin(s_win, &(Ca_DivDesc){
-        .direction  = CA_VERTICAL,
-        .style      = "plugin-manager-root",
+        .direction = CA_VERTICAL,
+        .style     = "pm-root",
     });
     {
-        /* Title bar */
+        /* Column header */
         ca_div_begin(&(Ca_DivDesc){
             .direction = CA_HORIZONTAL,
-            .style     = "plugin-manager-titlebar",
+            .style     = "pm-header",
         });
         {
-            ca_text(&(Ca_TextDesc){
-                .text  = ICON_PLUGIN "  Plugin Manager",
-                .style = "plugin-manager-title",
-            });
-            ca_div_begin(&(Ca_DivDesc){ .style = "plugin-spacer" });
+            ca_text(&(Ca_TextDesc){ .text = "Status",  .style = "pm-hdr pm-col-status" });
+            ca_text(&(Ca_TextDesc){ .text = "Name",    .style = "pm-hdr pm-col-name" });
+            ca_text(&(Ca_TextDesc){ .text = "Version", .style = "pm-hdr pm-col-version" });
+            ca_text(&(Ca_TextDesc){ .text = "Author",  .style = "pm-hdr pm-col-author" });
+            ca_div_begin(&(Ca_DivDesc){ .style = "pm-spacer" });
             ca_div_end();
-            ca_btn(&(Ca_BtnDesc){
-                .text       = "Close",
-                .style      = "plugin-manager-close-btn",
-                .on_click   = on_close_win,
-                .click_data = NULL,
-            });
+            ca_text(&(Ca_TextDesc){ .text = "Actions", .style = "pm-hdr pm-col-actions" });
         }
         ca_div_end();
 
-        ca_hr(&(Ca_HrDesc){ .color = 0 });
+        /* Separator */
+        ca_hr(&(Ca_HrDesc){ .style = "pm-separator" });
 
-        /* Dynamic content area — rebuilt each frame via on_frame */
-        s_content_div = ca_div_begin(&(Ca_DivDesc){
+        /* Scrollable body */
+        s_body = ca_div_begin(&(Ca_DivDesc){
             .direction = CA_VERTICAL,
-            .style     = "plugin-manager-content",
+            .style     = "pm-body",
         });
         ca_div_end();
     }
     ca_ui_end();
 
-    /* Register per-frame rebuild callback */
-    ca_window_set_on_frame(s_win, plugin_manager_win_frame, NULL);
+    ca_window_set_on_frame(s_win, plugin_manager_frame, NULL);
 }

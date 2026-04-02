@@ -190,11 +190,11 @@ void ed_console_update(void *editor)
                      hrs, min, sec, ms,
                      qs_log_level_str(e->level), e->message);
 
-            ca_label_set_text(s_console_lines[i], line_buf);
-            ca_label_set_color(s_console_lines[i], log_level_color(e->level));
-            ca_label_set_hidden(s_console_lines[i], false);
+            ca_set_text(s_console_lines[i], line_buf);
+            ca_set_color(s_console_lines[i], log_level_color(e->level));
+            ca_set_hidden(s_console_lines[i], false);
         } else {
-            ca_label_set_hidden(s_console_lines[i], true);
+            ca_set_hidden(s_console_lines[i], true);
         }
     }
 }

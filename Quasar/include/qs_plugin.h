@@ -146,6 +146,15 @@ const char *qs_plugin_state_path(const Qs_PluginState *state);
 /// from the persisted state).
 const char *qs_plugin_state_id(const Qs_PluginState *state);
 
+/// Returns the plugin's human-readable name.
+const char *qs_plugin_state_name(const Qs_PluginState *state);
+
+/// Returns the plugin's version string.
+const char *qs_plugin_state_version(const Qs_PluginState *state);
+
+/// Returns the plugin's author.
+const char *qs_plugin_state_author(const Qs_PluginState *state);
+
 /// Unloads a currently loaded plugin and immediately reloads it from disk.
 /// Useful for hot-reload during development.  Returns false if the plugin id
 /// is unknown or if the reload fails (the plugin is left unloaded in that case).

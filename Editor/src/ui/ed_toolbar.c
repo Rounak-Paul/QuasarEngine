@@ -40,20 +40,23 @@ void ed_toolbar_init(void *editor)
 /* ---- Wireframe button ---- */
 static void on_wireframe_click(Ca_Button *btn, void *user_data)
 {
-    (void)btn;
     Qs_Renderer *renderer = (Qs_Renderer *)user_data;
     if (!renderer) return;
-    qs_renderer_set_wireframe(renderer, !qs_renderer_wireframe(renderer));
+    bool now_active = !qs_renderer_wireframe(renderer);
+    qs_renderer_set_wireframe(renderer, now_active);
+    ca_set_style(btn, now_active ? "toolbar-icon-btn active"
+                                        : "toolbar-icon-btn");
 }
 
 /* ---- Plugin item trampoline ---- */
 static void on_plugin_item_click(Ca_Button *btn, void *user_data)
 {
-    (void)btn;
     PluginItemCtx *ctx = (PluginItemCtx *)user_data;
     if (!ctx || !ctx->active) return;
     /* Toggle active state first, then notify the plugin */
     *ctx->active = !(*ctx->active);
+    ca_set_style(btn, *ctx->active ? "toolbar-icon-btn active"
+                                          : "toolbar-icon-btn");
     if (ctx->plugin_on_click)
         ctx->plugin_on_click(ctx->engine, ctx->active);
 }
