@@ -43,15 +43,16 @@ typedef struct Qs_Camera {
 
 /// Per-frame uniform block written by the engine each frame.
 typedef struct Qs_FrameUBO {
-    float view[16];
-    float proj[16];
-    float inv_view_proj[16];
-    float cam_pos[3];
-    float time;
-    float screen_width;
-    float screen_height;
-    float _pad[2];
-} Qs_FrameUBO; /* 208 bytes, std140 */
+    float    view[16];
+    float    proj[16];
+    float    inv_view_proj[16];
+    float    cam_pos[3];
+    float    time;
+    float    screen_width;
+    float    screen_height;
+    uint32_t debug_flags;
+    float    _pad;
+} Qs_FrameUBO; /* 224 bytes, std140 */
 
 #define QS_LIGHTS_MAX 128
 
@@ -235,6 +236,11 @@ void        qs_renderer_extents         (const Qs_Renderer *renderer,
 /// Toggle wireframe rendering.  When enabled, all geometry is drawn as lines.
 void        qs_renderer_set_wireframe   (Qs_Renderer *renderer, bool wireframe);
 bool        qs_renderer_wireframe       (const Qs_Renderer *renderer);
+
+/// Toggle normal-vector debug visualisation.  When enabled, fragments are
+/// shaded as world-space normals remapped to [0,1] instead of PBR output.
+void        qs_renderer_set_show_normals(Qs_Renderer *renderer, bool show);
+bool        qs_renderer_show_normals    (const Qs_Renderer *renderer);
 
 Qs_RenderNode *qs_renderer_add_node   (Qs_Renderer *renderer,
                                         const Qs_RenderNodeDesc *desc);

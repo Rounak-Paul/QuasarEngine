@@ -7,8 +7,10 @@
 #include <string.h>
 #include <stdio.h>
 
-/* U+EB9C — codicon grid icon used as wireframe indicator */
-#define TOOLBAR_ICON_WIREFRAME  "\xEE\xAE\x9C"
+/* U+F096 — FA square-o: empty outlined square representing wireframe/outline rendering */
+#define TOOLBAR_ICON_WIREFRAME  "\xEF\x82\x96"
+/* U+F14E — FA compass: orientation indicator representing surface normals */
+#define TOOLBAR_ICON_NORMALS    "\xEF\x85\x8E"
 
 /* ================================================================
    Plugin toolbar state — persists across frames.
@@ -48,6 +50,17 @@ static void on_wireframe_click(Ca_Button *btn, void *user_data)
                                         : "toolbar-icon-btn");
 }
 
+/* ---- Normals debug button ---- */
+static void on_show_normals_click(Ca_Button *btn, void *user_data)
+{
+    Qs_Renderer *renderer = (Qs_Renderer *)user_data;
+    if (!renderer) return;
+    bool now_active = !qs_renderer_show_normals(renderer);
+    qs_renderer_set_show_normals(renderer, now_active);
+    ca_set_style(btn, now_active ? "toolbar-icon-btn active"
+                                        : "toolbar-icon-btn");
+}
+
 /* ---- Plugin item trampoline ---- */
 static void on_plugin_item_click(Ca_Button *btn, void *user_data)
 {
@@ -78,6 +91,14 @@ void ed_toolbar(Ca_Window *window, void *editor)
         .tooltip    = "Wireframe",
         .active     = renderer && qs_renderer_wireframe(renderer),
         .on_click   = on_wireframe_click,
+        .click_data = renderer,
+    });
+    ed_icon_btn(&(EdIconBtnDesc){
+        .icon       = TOOLBAR_ICON_NORMALS,
+        .id         = "toolbar-normals",
+        .tooltip    = "Show Normals",
+        .active     = renderer && qs_renderer_show_normals(renderer),
+        .on_click   = on_show_normals_click,
         .click_data = renderer,
     });
 

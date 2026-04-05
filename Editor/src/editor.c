@@ -87,7 +87,6 @@ static const char *g_editor_css =
 
     ".toolbar-icon-btn.active {"
     "  color: #6e8aff;"
-    "  background: #242430;"
     "}"
 
     /* ---- Panels ---- */
