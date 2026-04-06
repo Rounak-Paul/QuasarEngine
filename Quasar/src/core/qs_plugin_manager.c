@@ -451,6 +451,9 @@ bool qs_plugin_disable(Qs_PluginManager *pm, const char *id)
             if (pm->entries[i].loaded)
                 plugin_unload(pm, &pm->entries[i]);
             save_state(pm);
+            qs_event_fire(qs_engine_event_bus(pm->engine),
+                          QS_EVENT_PLUGIN_DISABLE_END,
+                          (void *)id, (uint32_t)(strlen(id) + 1));
             return true;
         }
     }

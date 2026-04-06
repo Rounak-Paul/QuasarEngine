@@ -1,5 +1,6 @@
 #include "quasar.h"
 #include "qs_plugin.h"
+#include "qs_ext.h"
 #include "qs_dylib.h"
 
 #ifdef _WIN32
@@ -41,6 +42,7 @@ struct Qs_Engine {
     float             dt;
     Qs_FrameFn        on_frame;
     void*             frame_userdata;
+    Qs_ExtRegistry*   extensions;
 };
 
 static double engine_clock(void)
@@ -146,6 +148,10 @@ Qs_Engine* qs_engine_create(const Qs_EngineDesc* desc) {
     Qs_SystemDesc input_desc = qs_input_system_desc();
     if (!qs_system_register(engine->systems, &input_desc)) goto fail;
 
+    /* ---- Extension registry ---- */
+    engine->extensions = qs_ext_registry_create();
+    if (!engine->extensions) goto fail;
+
     /* ---- Plugin loading ----
        Plugins may register additional systems (e.g. renderer) here,
        before Scene is initialised so dependency order is preserved. */
@@ -183,6 +189,7 @@ Qs_Engine* qs_engine_create(const Qs_EngineDesc* desc) {
 
 fail:
     if (engine->plugins) qs_plugin_manager_destroy(engine->plugins);
+    if (engine->extensions) qs_ext_registry_destroy(engine->extensions);
     if (engine->systems) qs_system_manager_destroy(engine->systems);
     ca_instance_destroy(engine->ca_instance);
     free(engine->app_name);
@@ -195,6 +202,7 @@ void qs_engine_destroy(Qs_Engine* engine) {
     qs_event_fire(qs_engine_event_bus(engine), QS_EVENT_ENGINE_SHUTDOWN, NULL, 0);
     /* Plugins must clean up render nodes / pipelines before systems tear down. */
     if (engine->plugins) qs_plugin_manager_destroy(engine->plugins);
+    if (engine->extensions) qs_ext_registry_destroy(engine->extensions);
     qs_system_manager_destroy(engine->systems);
     if (engine->stylesheet) ca_css_destroy(engine->stylesheet);
     ca_instance_destroy(engine->ca_instance);
@@ -269,6 +277,10 @@ Qs_SystemManager* qs_engine_systems(Qs_Engine* engine) {
 
 Qs_PluginManager* qs_engine_plugin_manager(Qs_Engine* engine) {
     return engine ? engine->plugins : NULL;
+}
+
+Qs_ExtRegistry* qs_engine_ext_registry(const Qs_Engine* engine) {
+    return engine ? engine->extensions : NULL;
 }
 
 const char* qs_version_string(void) {

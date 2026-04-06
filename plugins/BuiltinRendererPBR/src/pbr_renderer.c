@@ -33,6 +33,15 @@ typedef struct {
 
 static VkRenderSystemData *g_render_system;
 
+/* Active Qs_Renderer handle — set in create, cleared in destroy.
+   Used by the plugin toolbar to access wireframe / debug_flags. */
+static Qs_Renderer *s_active_handle = NULL;
+
+Qs_Renderer *pbr_active_renderer(void)
+{
+    return s_active_handle;
+}
+
 /* ================================================================
    BACKEND LIFECYCLE
    ================================================================ */
@@ -85,6 +94,7 @@ static void *pbr_renderer_create(void *ctx, Qs_Engine *engine,
 
     /* Attach the forward pass — declares attachments and adds render nodes. */
     pbr_forward_attach(engine, r, handle);
+    s_active_handle = handle;
     return r;
 }
 
@@ -95,6 +105,9 @@ static void pbr_renderer_destroy(void *ctx, void *impl)
     if (!r) return;
 
     pbr_forward_detach(r);
+
+    if (s_active_handle == r->engine_renderer)
+        s_active_handle = NULL;
 
     QS_LOG_INFO("PBR Renderer: '%s' destroyed", r->name);
     free(r);

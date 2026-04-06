@@ -7,18 +7,17 @@
 #include <string.h>
 
 /* ================================================================
-   EDITOR MENU BAR — static File menu + dynamic Plugins menu
+   EDITOR MENU BAR — static File menu + dynamic extension menus
    ================================================================
 
    ed_menu_bar_sync() is called every frame.  It tracks a simple
-   fingerprint of the currently loaded plugins and only calls
-   ca_window_set_title_bar_menus() when the fingerprint changes —
-   leaving the causality menu bar widget undisturbed (so any open
-   dropdown stays open) between changes.
+   fingerprint of the currently registered menu extensions and only
+   calls ca_window_set_title_bar_menus() when the fingerprint
+   changes — leaving the causality menu bar widget undisturbed (so
+   any open dropdown stays open) between changes.
    ================================================================ */
 
-/* Max plugin sub-menus we'll include in the Plugins top-level menu */
-#define MAX_PLUGIN_MENUS  16
+#define MAX_MENU_EXTENSIONS 16
 
 static void action_open_file(void *user_data)
 {
@@ -57,28 +56,26 @@ static void action_manage_plugins(void *user_data)
     ed_plugin_manager_open();
 }
 
-/* ---- Per-plugin item storage for the current sync ---- */
+/* ---- Per-extension item storage for the current sync ---- */
 
 typedef struct {
     char             label[128];
-    Ca_MenuItemDesc  items[ED_PLUGIN_MENU_MAX_ITEMS];
+    Ca_MenuItemDesc  items[QS_MENU_MAX_ITEMS];
     int              item_count;
-} PluginMenuSlot;
+} MenuExtSlot;
 
-static PluginMenuSlot s_plugin_slots[MAX_PLUGIN_MENUS];
+static MenuExtSlot s_ext_slots[MAX_MENU_EXTENSIONS];
 
-/* Fingerprint of the last-pushed plugin state.
-   -1 forces the first-frame push. */
 static int s_menu_fingerprint = -1;
 
-static int plugin_fingerprint(Qs_PluginManager *pm)
+static int menu_fingerprint(const Qs_Engine *engine)
 {
-    if (!pm) return 0;
-    int fp = (int)qs_plugin_count(pm) + 1;
-    uint32_t total = qs_plugin_count(pm);
-    for (uint32_t i = 0; i < total; i++) {
-        const Qs_PluginState *state = qs_plugin_state_at(pm, i);
-        if (state && qs_plugin_state_loaded(state))
+    if (!engine) return 0;
+    uint32_t n = qs_engine_ext_count(engine, QS_EXT_EDITOR_MENU);
+    int fp = (int)n + 1;
+    for (uint32_t i = 0; i < n; i++) {
+        const Qs_MenuExt *ext = qs_engine_ext_interface(engine, QS_EXT_EDITOR_MENU, i);
+        if (ext && ext->label)
             fp = fp * 31 + (int)(i + 1);
     }
     return fp;
@@ -90,35 +87,31 @@ void ed_menu_bar_sync(Ca_Window *window, void *editor)
 {
     if (!window) return;
 
-    Editor           *ed = (Editor *)editor;
-    Qs_Engine        *engine = editor_engine(ed);
-    Qs_PluginManager *pm     = engine ? qs_engine_plugin_manager(engine) : NULL;
+    Editor    *ed     = (Editor *)editor;
+    Qs_Engine *engine = editor_engine(ed);
 
-    /* Skip rebuild if plugin state hasn't changed */
-    int fp = plugin_fingerprint(pm);
+    int fp = menu_fingerprint(engine);
     if (fp == s_menu_fingerprint) return;
     s_menu_fingerprint = fp;
 
-    /* ---- Build plugin sub-menus from loaded plugins ---- */
-    int plugin_menu_count = 0;
-    memset(s_plugin_slots, 0, sizeof(s_plugin_slots));
+    /* ---- Build sub-menus from menu extensions ---- */
+    int ext_menu_count = 0;
+    memset(s_ext_slots, 0, sizeof(s_ext_slots));
 
-    if (pm) {
-        uint32_t total = qs_plugin_count(pm);
-        for (uint32_t i = 0; i < total && plugin_menu_count < MAX_PLUGIN_MENUS; i++) {
-            const Qs_PluginState *state = qs_plugin_state_at(pm, i);
-            if (!state || !qs_plugin_state_loaded(state)) continue;
-            const Qs_PluginDesc *desc = qs_plugin_state_desc(state);
-            if (!desc || !desc->on_editor_menu) continue;
+    if (engine) {
+        uint32_t n = qs_engine_ext_count(engine, QS_EXT_EDITOR_MENU);
+        for (uint32_t i = 0; i < n && ext_menu_count < MAX_MENU_EXTENSIONS; i++) {
+            const Qs_MenuExt *ext  = qs_engine_ext_interface(engine, QS_EXT_EDITOR_MENU, i);
+            void             *data = qs_engine_ext_data(engine, QS_EXT_EDITOR_MENU, i);
+            if (!ext || !ext->get_items) continue;
 
-            PluginMenuSlot *slot = &s_plugin_slots[plugin_menu_count];
-            const char *name = desc->name ? desc->name : qs_plugin_state_id(state);
-            snprintf(slot->label, sizeof(slot->label), "%s",
-                     name ? name : "(plugin)");
+            MenuExtSlot *slot = &s_ext_slots[ext_menu_count];
+            const char *label = ext->label ? ext->label : "(extension)";
+            snprintf(slot->label, sizeof(slot->label), "%s", label);
             slot->item_count = 0;
-            desc->on_editor_menu(engine, slot->items, &slot->item_count);
+            ext->get_items(data, engine, slot->items, &slot->item_count);
             if (slot->item_count > 0)
-                plugin_menu_count++;
+                ext_menu_count++;
         }
     }
 
@@ -130,19 +123,19 @@ void ed_menu_bar_sync(Ca_Window *window, void *editor)
     };
 
     /* ---- Assemble top-level Plugins menu items ---- */
-    #define PLUGINS_FLAT_MAX (2 + MAX_PLUGIN_MENUS)
+    #define PLUGINS_FLAT_MAX (2 + MAX_MENU_EXTENSIONS)
     Ca_MenuItemDesc plugins_items[PLUGINS_FLAT_MAX];
     int             plugins_item_count = 0;
 
     plugins_items[plugins_item_count++] = manage_item;
 
-    if (plugin_menu_count > 0) {
+    if (ext_menu_count > 0) {
         Ca_MenuItemDesc sep = { .separator = true };
         plugins_items[plugins_item_count++] = sep;
     }
 
-    for (int p = 0; p < plugin_menu_count; p++) {
-        PluginMenuSlot *slot = &s_plugin_slots[p];
+    for (int p = 0; p < ext_menu_count; p++) {
+        MenuExtSlot *slot = &s_ext_slots[p];
         Ca_MenuItemDesc plugin_item = {
             .label          = slot->label,
             .action         = NULL,
@@ -170,5 +163,4 @@ void ed_menu_bar_sync(Ca_Window *window, void *editor)
 
     ca_window_set_title_bar_menus(window, menus, 2);
 }
-
 

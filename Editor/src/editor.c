@@ -714,8 +714,8 @@ static bool on_plugin_reload_begin(const Qs_Event *e, void *userdata)
     return false;
 }
 
-/* Fires synchronously after the plugin has been successfully reloaded.
-   Recreate the scene renderer pointing at the freshly registered backend. */
+/* Fires synchronously after the plugin has been successfully reloaded
+   or enabled.  Recreate the scene renderer and rebuild the toolbar. */
 static bool on_plugin_reload_end(const Qs_Event *e, void *userdata)
 {
     (void)e;
@@ -730,6 +730,17 @@ static bool on_plugin_reload_end(const Qs_Event *e, void *userdata)
             qs_renderer_bind(ed->scene_renderer, (Qs_Viewport *)ed->scene_viewport);
         }
     }
+    ed_toolbar_rebuild();
+    return false;
+}
+
+/* Fires after a plugin is fully disabled and unloaded.
+   Only rebuild the toolbar — do NOT recreate the renderer since
+   the backend that provides it may be the one being disabled. */
+static bool on_plugin_disable_end(const Qs_Event *e, void *userdata)
+{
+    (void)e; (void)userdata;
+    ed_toolbar_rebuild();
     return false;
 }
 
@@ -1077,12 +1088,13 @@ Editor *editor_create(const EditorDesc *desc)
         editor_load_scene(ed, scene_path);
     }
 
+    ed_plugin_manager_init(ed);
+    ed_toolbar_init(ed);
+
     editor_build_ui(ed);
 
     ca_window_set_title(qs_engine_window(ed->engine), "Quasar Editor");
 
-    ed_plugin_manager_init(ed);
-    ed_toolbar_init(ed);
     ed_file_browser_init(ca_window_instance(qs_engine_window(ed->engine)));
 
     qs_engine_set_event_handler(ed->engine, CA_EVENT_KEY,          on_key_event,    ed);
@@ -1097,6 +1109,7 @@ Editor *editor_create(const EditorDesc *desc)
     qs_event_subscribe(bus, QS_EVENT_PLUGIN_RELOAD_BEGIN,  on_plugin_reload_begin, ed);
     qs_event_subscribe(bus, QS_EVENT_PLUGIN_RELOAD_END,    on_plugin_reload_end,   ed);
     qs_event_subscribe(bus, QS_EVENT_PLUGIN_DISABLE_BEGIN, on_plugin_reload_begin, ed);
+    qs_event_subscribe(bus, QS_EVENT_PLUGIN_DISABLE_END,   on_plugin_disable_end,  ed);
     qs_event_subscribe(bus, QS_EVENT_PLUGIN_ENABLE_END,    on_plugin_reload_end,   ed);
 
     ed_camera_init(&ed->cam);

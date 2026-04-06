@@ -107,6 +107,12 @@ typedef struct PbrPassResources {
 /* Returns the shared pass resources owned by the global render system. */
 PbrPassResources *pbr_renderer_pass_resources(void);
 
+/* Returns the active Qs_Renderer handle (set during renderer_create). */
+Qs_Renderer *pbr_active_renderer(void);
+
+/* Debug flag bits owned by the PBR plugin (stored in Qs_FrameUBO.debug_flags) */
+#define PBR_DEBUG_SHOW_NORMALS 0x1u
+
 /* ----------------------------------------------------------------
    pbr_forward.c entry points called from pbr_renderer.c
    ---------------------------------------------------------------- */

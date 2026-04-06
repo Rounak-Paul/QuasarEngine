@@ -7,23 +7,6 @@
 typedef struct Qs_Engine        Qs_Engine;
 typedef struct Qs_PluginManager Qs_PluginManager;
 typedef struct Qs_PluginState   Qs_PluginState;
-typedef struct Ca_MenuItemDesc  Ca_MenuItemDesc;
-
-/// Maximum number of menu items a plugin may contribute to its menu entry.
-#define ED_PLUGIN_MENU_MAX_ITEMS 16
-
-/// Maximum number of toolbar items a plugin may contribute.
-#define QS_PLUGIN_TOOLBAR_MAX_ITEMS 8
-
-/// A single icon button contributed by a plugin to the editor toolbar.
-typedef struct Qs_ToolbarItem {
-    const char *icon;     ///< UTF-8 icon glyph (Codicon / NF icon)
-    const char *id;       ///< Unique stable string id for active-state tracking
-    const char *tooltip;  ///< Optional tooltip text (may be NULL)
-    bool        active;   ///< Initial active state
-    /// Called when the button is clicked.  Toggle state is passed in/out via *active.
-    void (*on_click)(Qs_Engine *engine, bool *active);
-} Qs_ToolbarItem;
 
 /* ================================================================
    PLUGIN ABI
@@ -31,7 +14,7 @@ typedef struct Qs_ToolbarItem {
 
 /// Current API version. Plugins must set api_version to this value.
 /// A plugin with a mismatched version is rejected at load time.
-#define QS_PLUGIN_API_VERSION  2
+#define QS_PLUGIN_API_VERSION  3
 
 /// Symbol name every plugin shared library must export.
 #define QS_PLUGIN_ENTRY_SYMBOL "qs_plugin_entry"
@@ -44,9 +27,10 @@ typedef struct Qs_ToolbarItem {
 #endif
 
 /// Describes a plugin and provides its lifecycle callbacks.
-/// Plugins return a pointer to a static instance of this struct from
-/// qs_plugin_entry().  The pointer must remain valid for the lifetime of
-/// the loaded library.
+///
+/// All capabilities (toolbar items, menu entries, inspector panels, engine
+/// systems, etc.) are registered dynamically in on_load() via the extension
+/// point registry (see qs_ext.h) rather than through fixed callback slots.
 typedef struct Qs_PluginDesc {
     /// Reverse-DNS unique identifier, e.g. "com.quasar.builtin.renderer.pbr".
     const char *id;
@@ -67,27 +51,14 @@ typedef struct Qs_PluginDesc {
     uint32_t api_version;
 
     /// Called once after the plugin library is loaded and enabled.
-    /// Register engine systems, render nodes, component types, etc. here.
+    /// Register extensions, engine systems, render nodes, etc. here.
     /// May be NULL.
     void (*on_load)(Qs_Engine *engine);
 
     /// Called before the plugin library is unloaded.
-    /// Remove render nodes, release plugin-owned resources here.
-    /// Called before engine systems are shut down.
+    /// Unregister extensions, release plugin-owned resources here.
     /// May be NULL.
     void (*on_unload)(Qs_Engine *engine);
-
-    /// Called each editor frame to fill items into the plugin's entry in the
-    /// Plugins menu.  Write at most *count Ca_MenuItemDesc records into items
-    /// and set *count to the actual number written.  items points to a
-    /// temporary buffer of at most ED_PLUGIN_MENU_MAX_ITEMS entries.  May be NULL.
-    void (*on_editor_menu)(Qs_Engine *engine, Ca_MenuItemDesc *items, int *count);
-
-    /// Called each editor frame to fill icon buttons into the editor toolbar.
-    /// Write at most *count Qs_ToolbarItem records into items and set *count to
-    /// the actual number written.  items points to a temporary buffer of at most
-    /// QS_PLUGIN_TOOLBAR_MAX_ITEMS entries.  May be NULL.
-    void (*on_editor_toolbar)(Qs_Engine *engine, Qs_ToolbarItem *items, int *count);
 } Qs_PluginDesc;
 
 /// Entry point function type.  Every plugin library must export a function

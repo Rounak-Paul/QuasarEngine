@@ -237,10 +237,11 @@ void        qs_renderer_extents         (const Qs_Renderer *renderer,
 void        qs_renderer_set_wireframe   (Qs_Renderer *renderer, bool wireframe);
 bool        qs_renderer_wireframe       (const Qs_Renderer *renderer);
 
-/// Toggle normal-vector debug visualisation.  When enabled, fragments are
-/// shaded as world-space normals remapped to [0,1] instead of PBR output.
-void        qs_renderer_set_show_normals(Qs_Renderer *renderer, bool show);
-bool        qs_renderer_show_normals    (const Qs_Renderer *renderer);
+/// Generic debug flag bitfield.  Backends define their own bit meanings and
+/// expose them through plugin toolbar items.  The engine writes the flags
+/// into Qs_FrameUBO.debug_flags each frame so shaders can read them.
+void        qs_renderer_set_debug_flags (Qs_Renderer *renderer, uint32_t flags);
+uint32_t    qs_renderer_debug_flags     (const Qs_Renderer *renderer);
 
 Qs_RenderNode *qs_renderer_add_node   (Qs_Renderer *renderer,
                                         const Qs_RenderNodeDesc *desc);

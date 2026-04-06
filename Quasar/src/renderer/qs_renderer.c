@@ -88,7 +88,7 @@ struct Qs_Renderer {
 
     /* Render settings */
     bool          wireframe;
-    bool          show_normals;
+    uint32_t      debug_flags;
 
     /* Bound viewport (for unbinding on destroy) */
     Qs_Viewport  *bound_viewport;
@@ -386,7 +386,7 @@ static void renderer_on_render(const Qs_GpuFrame *frame,
         fubo->time          = g_render_dt;
         fubo->screen_width  = (float)w;
         fubo->screen_height = (float)h;
-        fubo->debug_flags   = r->show_normals ? 1u : 0u;
+        fubo->debug_flags   = r->debug_flags;
         qs_gpu_unmap_buffer(r->gpu, r->frame_ubo);
     }
 
@@ -660,14 +660,14 @@ bool qs_renderer_wireframe(const Qs_Renderer *r)
     return r && r->wireframe;
 }
 
-void qs_renderer_set_show_normals(Qs_Renderer *r, bool show)
+void qs_renderer_set_debug_flags(Qs_Renderer *r, uint32_t flags)
 {
-    if (r) r->show_normals = show;
+    if (r) r->debug_flags = flags;
 }
 
-bool qs_renderer_show_normals(const Qs_Renderer *r)
+uint32_t qs_renderer_debug_flags(const Qs_Renderer *r)
 {
-    return r && r->show_normals;
+    return r ? r->debug_flags : 0;
 }
 
 void qs_renderer_extents(const Qs_Renderer *r, uint32_t *out_w, uint32_t *out_h)

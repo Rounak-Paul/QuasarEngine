@@ -28,7 +28,8 @@ typedef uint32_t Qs_EventId;
 #define QS_EVENT_PLUGIN_RELOAD_BEGIN ((Qs_EventId)13)   /* fired before plugin unload  */
 #define QS_EVENT_PLUGIN_RELOAD_END   ((Qs_EventId)14)   /* fired after plugin reloaded */
 #define QS_EVENT_PLUGIN_DISABLE_BEGIN ((Qs_EventId)15)  /* fired before plugin disable */
-#define QS_EVENT_PLUGIN_ENABLE_END    ((Qs_EventId)16)  /* fired after plugin enabled  */
+#define QS_EVENT_PLUGIN_DISABLE_END   ((Qs_EventId)16)  /* fired after plugin disabled */
+#define QS_EVENT_PLUGIN_ENABLE_END    ((Qs_EventId)17)  /* fired after plugin enabled  */
 
 /// Opaque event bus handle.
 typedef struct Qs_EventBus Qs_EventBus;

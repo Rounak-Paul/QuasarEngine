@@ -8,12 +8,14 @@
 extern const Qs_RendererBackend pbr_renderer_backend;
 
 /* ---- Plugin globals ---- */
-static Qs_Engine  *s_engine          = NULL;
-static Ca_Window  *s_renderer_win    = NULL;
-static Ca_Label   *s_lbl_fps         = NULL;
-static Ca_Label   *s_lbl_frametime   = NULL;
-static Ca_Label   *s_lbl_bloom       = NULL;
-static Ca_Label   *s_lbl_vignette    = NULL;
+static Qs_Engine    *s_engine          = NULL;
+static Qs_Extension *s_ext_menu        = NULL;
+static Qs_Extension *s_ext_toolbar     = NULL;
+static Ca_Window    *s_renderer_win    = NULL;
+static Ca_Label     *s_lbl_fps         = NULL;
+static Ca_Label     *s_lbl_frametime   = NULL;
+static Ca_Label     *s_lbl_bloom       = NULL;
+static Ca_Label     *s_lbl_vignette    = NULL;
 
 /* ---- on_frame: update stat labels ---- */
 
@@ -145,15 +147,40 @@ static void open_renderer_window(void *user_data)
 
 /* ---- Plugin lifecycle ---- */
 
+/* Forward declarations for extension callbacks defined below */
+static void pbr_get_menu_items(void *data, Qs_Engine *engine,
+                               Ca_MenuItemDesc *items, int *count);
+static void pbr_get_toolbar_items(void *data, Qs_Engine *engine,
+                                  Qs_ToolbarItem *items, int *count);
+
 static void on_load(Qs_Engine *engine)
 {
     s_engine = engine;
     qs_renderer_backend_register(&pbr_renderer_backend);
+
+    /* Register editor extensions */
+    static const Qs_MenuExt menu_ext = {
+        .label     = "BuiltinRendererPBR",
+        .get_items = pbr_get_menu_items,
+    };
+    s_ext_menu = qs_engine_ext_register(engine, QS_EXT_EDITOR_MENU,
+                                        &menu_ext, NULL);
+
+    static const Qs_ToolbarExt toolbar_ext = {
+        .get_items = pbr_get_toolbar_items,
+    };
+    s_ext_toolbar = qs_engine_ext_register(engine, QS_EXT_EDITOR_TOOLBAR,
+                                           &toolbar_ext, NULL);
 }
 
 static void on_unload(Qs_Engine *engine)
 {
     (void)engine;
+
+    /* Unregister extensions */
+    if (s_ext_toolbar) { qs_ext_unregister(s_ext_toolbar); s_ext_toolbar = NULL; }
+    if (s_ext_menu)    { qs_ext_unregister(s_ext_menu);    s_ext_menu = NULL; }
+
     if (s_renderer_win && ca_window_is_open(s_renderer_win))
         ca_window_close(s_renderer_win);
     s_renderer_win    = NULL;
@@ -165,27 +192,82 @@ static void on_unload(Qs_Engine *engine)
     qs_renderer_backend_unregister("PBRRenderer");
 }
 
-/* ---- Editor menu ---- */
+/* ---- Editor menu extension ---- */
 
-static void on_editor_menu(Qs_Engine *engine, Ca_MenuItemDesc *items, int *count)
+static void pbr_get_menu_items(void *data, Qs_Engine *engine,
+                               Ca_MenuItemDesc *items, int *count)
 {
+    (void)data;
     (void)engine;
     items[0] = (Ca_MenuItemDesc){ "Renderer Panel...", open_renderer_window, NULL };
     *count = 1;
 }
 
+/* ---- Editor toolbar extension ---- */
+
+/* U+F096 — FA square-o: wireframe/outline rendering */
+#define PBR_ICON_WIREFRAME  "\xEF\x82\x96"
+/* U+F14E — FA compass: surface normals visualisation */
+#define PBR_ICON_NORMALS    "\xEF\x85\x8E"
+
+static void on_wireframe_click(Qs_Engine *engine, bool *active)
+{
+    (void)engine;
+    Qs_Renderer *r = pbr_active_renderer();
+    if (r) qs_renderer_set_wireframe(r, *active);
+}
+
+static void on_normals_click(Qs_Engine *engine, bool *active)
+{
+    (void)engine;
+    Qs_Renderer *r = pbr_active_renderer();
+    if (!r) return;
+    uint32_t flags = qs_renderer_debug_flags(r);
+    if (*active)
+        flags |= PBR_DEBUG_SHOW_NORMALS;
+    else
+        flags &= ~PBR_DEBUG_SHOW_NORMALS;
+    qs_renderer_set_debug_flags(r, flags);
+}
+
+static void pbr_get_toolbar_items(void *data, Qs_Engine *engine,
+                                  Qs_ToolbarItem *items, int *count)
+{
+    (void)data;
+    (void)engine;
+    Qs_Renderer *r = pbr_active_renderer();
+    int n = 0;
+
+    items[n++] = (Qs_ToolbarItem){
+        .icon     = PBR_ICON_WIREFRAME,
+        .id       = "pbr-wireframe",
+        .tooltip  = "Wireframe",
+        .active   = r ? qs_renderer_wireframe(r) : false,
+        .on_click = on_wireframe_click,
+    };
+
+    items[n++] = (Qs_ToolbarItem){
+        .icon     = PBR_ICON_NORMALS,
+        .id       = "pbr-normals",
+        .tooltip  = "Show Normals",
+        .active   = r ? (qs_renderer_debug_flags(r) & PBR_DEBUG_SHOW_NORMALS) != 0 : false,
+        .on_click = on_normals_click,
+    };
+
+    *count = n;
+}
+
 QS_PLUGIN_EXPORT const Qs_PluginDesc *qs_plugin_entry(void)
 {
     static const Qs_PluginDesc desc = {
-        .id             = "com.quasar.builtin.renderer.pbr",
-        .name           = "BuiltinRendererPBR",
-        .version        = "1.0.0",
-        .author         = "QuasarEngine",
-        .description    = "PBR renderer backend (Forward+, CSM shadows, bloom, ACES tonemap)",
-        .api_version    = QS_PLUGIN_API_VERSION,
-        .on_load        = on_load,
-        .on_unload      = on_unload,
-        .on_editor_menu = on_editor_menu,
+        .id          = "com.quasar.builtin.renderer.pbr",
+        .name        = "BuiltinRendererPBR",
+        .version     = "1.0.0",
+        .author      = "QuasarEngine",
+        .description = "PBR renderer backend (Forward+, CSM shadows, bloom, ACES tonemap)",
+        .api_version = QS_PLUGIN_API_VERSION,
+        .on_load     = on_load,
+        .on_unload   = on_unload,
     };
     return &desc;
 }

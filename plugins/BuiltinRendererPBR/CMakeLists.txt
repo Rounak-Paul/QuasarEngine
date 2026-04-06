@@ -12,7 +12,7 @@ endif()
 
 # Plugins link against Quasar which re-exports causality.
 # This gives access to both the engine API and the Causality UI API
-# for implementing on_editor_ui and on_editor_menu callbacks.
+# for registering extensions (toolbar, menu, inspector, etc.).
 target_link_libraries(BuiltinRendererPBR PRIVATE Quasar)
 
 # ── Output directories ────────────────────────────────────────────
