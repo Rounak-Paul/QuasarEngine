@@ -731,16 +731,18 @@ static bool on_plugin_reload_end(const Qs_Event *e, void *userdata)
         }
     }
     ed_toolbar_rebuild();
+    ed_menu_bar_invalidate();
     return false;
 }
 
 /* Fires after a plugin is fully disabled and unloaded.
-   Only rebuild the toolbar — do NOT recreate the renderer since
+   Only rebuild the toolbar and menu — do NOT recreate the renderer since
    the backend that provides it may be the one being disabled. */
 static bool on_plugin_disable_end(const Qs_Event *e, void *userdata)
 {
     (void)e; (void)userdata;
     ed_toolbar_rebuild();
+    ed_menu_bar_invalidate();
     return false;
 }
 
@@ -830,7 +832,7 @@ static void on_frame(Qs_Engine *engine, void *userdata)
         }
     }
 
-    ed_menu_bar_sync(qs_engine_window(ed->engine), ed);
+    ed_menu_bar_sync();
     ed_hierarchy_update(ed);
     ed_console_update(ed);
     ed_inspector_update(ed);
@@ -1094,6 +1096,7 @@ Editor *editor_create(const EditorDesc *desc)
     editor_build_ui(ed);
 
     ca_window_set_title(qs_engine_window(ed->engine), "Quasar Editor");
+    ed_menu_bar_init(qs_engine_window(ed->engine), ed);
 
     ed_file_browser_init(ca_window_instance(qs_engine_window(ed->engine)));
 

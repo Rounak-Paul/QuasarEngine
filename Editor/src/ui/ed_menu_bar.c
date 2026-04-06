@@ -10,14 +10,17 @@
    EDITOR MENU BAR — static File menu + dynamic extension menus
    ================================================================
 
-   ed_menu_bar_sync() is called every frame.  It tracks a simple
-   fingerprint of the currently registered menu extensions and only
-   calls ca_window_set_title_bar_menus() when the fingerprint
-   changes — leaving the causality menu bar widget undisturbed (so
-   any open dropdown stays open) between changes.
+   ed_menu_bar_init() sets up static state and does the first build.
+   ed_menu_bar_invalidate() is called on plugin events to schedule
+   a rebuild.  ed_menu_bar_sync() runs once per frame and only
+   rebuilds when the dirty flag is set.
    ================================================================ */
 
 #define MAX_MENU_EXTENSIONS 16
+
+static Ca_Window *s_window;
+static void      *s_editor;
+static bool       s_dirty;
 
 static void action_open_file(void *user_data)
 {
@@ -66,33 +69,14 @@ typedef struct {
 
 static MenuExtSlot s_ext_slots[MAX_MENU_EXTENSIONS];
 
-static int s_menu_fingerprint = -1;
-
-static int menu_fingerprint(const Qs_Engine *engine)
-{
-    if (!engine) return 0;
-    uint32_t n = qs_engine_ext_count(engine, QS_EXT_EDITOR_MENU);
-    int fp = (int)n + 1;
-    for (uint32_t i = 0; i < n; i++) {
-        const Qs_MenuExt *ext = qs_engine_ext_interface(engine, QS_EXT_EDITOR_MENU, i);
-        if (ext && ext->label)
-            fp = fp * 31 + (int)(i + 1);
-    }
-    return fp;
-}
-
 /* ------------------------------------------------------------------ */
 
-void ed_menu_bar_sync(Ca_Window *window, void *editor)
+static void menu_bar_rebuild(void)
 {
-    if (!window) return;
+    if (!s_window) return;
 
-    Editor    *ed     = (Editor *)editor;
+    Editor    *ed     = (Editor *)s_editor;
     Qs_Engine *engine = editor_engine(ed);
-
-    int fp = menu_fingerprint(engine);
-    if (fp == s_menu_fingerprint) return;
-    s_menu_fingerprint = fp;
 
     /* ---- Build sub-menus from menu extensions ---- */
     int ext_menu_count = 0;
@@ -150,9 +134,9 @@ void ed_menu_bar_sync(Ca_Window *window, void *editor)
 
     /* ---- Static File menu ---- */
     Ca_MenuItemDesc file_items[] = {
-        { .label = "Open File...",   .action = action_open_file,   .action_data = editor },
-        { .label = "Open Folder...", .action = action_open_folder, .action_data = editor },
-        { .label = "Exit",           .action = action_exit,        .action_data = editor },
+        { .label = "Open File...",   .action = action_open_file,   .action_data = s_editor },
+        { .label = "Open Folder...", .action = action_open_folder, .action_data = s_editor },
+        { .label = "Exit",           .action = action_exit,        .action_data = s_editor },
     };
 
     /* ---- Push all menus to the title bar ---- */
@@ -161,6 +145,26 @@ void ed_menu_bar_sync(Ca_Window *window, void *editor)
         { .label = "Plugins", .items = plugins_items,  .item_count = plugins_item_count },
     };
 
-    ca_window_set_title_bar_menus(window, menus, 2);
+    ca_window_set_title_bar_menus(s_window, menus, 2);
+}
+
+void ed_menu_bar_init(Ca_Window *window, void *editor)
+{
+    s_window = window;
+    s_editor = editor;
+    s_dirty  = false;
+    menu_bar_rebuild();
+}
+
+void ed_menu_bar_invalidate(void)
+{
+    s_dirty = true;
+}
+
+void ed_menu_bar_sync(void)
+{
+    if (!s_dirty) return;
+    s_dirty = false;
+    menu_bar_rebuild();
 }
 
