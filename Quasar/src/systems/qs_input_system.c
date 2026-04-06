@@ -46,13 +46,8 @@ static void input_system_update(Qs_System *system, Qs_Engine *engine, float dt)
     (void)system;
     (void)engine;
     (void)dt;
-    if (!g_input) return;
-    /* Snapshot key and mouse-button states so key_pressed / key_released
-       detect single-frame transitions.  Mouse position delta and scroll are
-       cleared by qs_input_end_frame(), which the engine calls at the end of
-       engine_frame after on_frame has consumed them. */
-    memcpy(g_input->previous,       g_input->current,       sizeof(g_input->current));
-    memcpy(g_input->mouse_previous, g_input->mouse_current, sizeof(g_input->mouse_current));
+    /* Snapshot is done in qs_input_end_frame() so that on_frame consumers
+       can read single-frame transitions (pressed / released). */
 }
 
 Qs_SystemDesc qs_input_system_desc(void)
@@ -176,6 +171,10 @@ void qs_input_mouse_delta(float *out_dx, float *out_dy)
 void qs_input_end_frame(void)
 {
     if (!g_input) return;
+    /* Snapshot key and mouse-button states so that key_pressed / key_released
+       detect single-frame transitions on the NEXT frame. */
+    memcpy(g_input->previous,       g_input->current,       sizeof(g_input->current));
+    memcpy(g_input->mouse_previous, g_input->mouse_current, sizeof(g_input->mouse_current));
     g_input->mouse_delta_x = 0.0f;
     g_input->mouse_delta_y = 0.0f;
     g_input->scroll_dx     = 0.0f;

@@ -1200,7 +1200,8 @@ void qs_cmd_begin_rendering(Qs_GpuCmd *cmd, const Qs_GpuRenderTarget *target)
         .sType       = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
         .imageView   = target->color ? target->color->view : VK_NULL_HANDLE,
         .imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-        .loadOp      = VK_ATTACHMENT_LOAD_OP_CLEAR,
+        .loadOp      = target->load_color ? VK_ATTACHMENT_LOAD_OP_LOAD
+                                          : VK_ATTACHMENT_LOAD_OP_CLEAR,
         .storeOp     = VK_ATTACHMENT_STORE_OP_STORE,
         .clearValue  = { .color = { .float32 = {
             target->clear_color[0], target->clear_color[1],
@@ -1211,7 +1212,8 @@ void qs_cmd_begin_rendering(Qs_GpuCmd *cmd, const Qs_GpuRenderTarget *target)
         .sType       = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
         .imageView   = target->depth ? target->depth->view : VK_NULL_HANDLE,
         .imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
-        .loadOp      = VK_ATTACHMENT_LOAD_OP_CLEAR,
+        .loadOp      = target->load_depth ? VK_ATTACHMENT_LOAD_OP_LOAD
+                                          : VK_ATTACHMENT_LOAD_OP_CLEAR,
         .storeOp     = VK_ATTACHMENT_STORE_OP_STORE,
         .clearValue  = { .depthStencil = { target->clear_depth, 0 } },
     };

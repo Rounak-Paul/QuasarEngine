@@ -1,5 +1,6 @@
 #include "editor.h"
 #include "ed_camera.h"
+#include "ed_gizmo.h"
 #include "ui/ed_menu_bar.h"
 #include "ui/ed_toolbar.h"
 #include "ui/ed_layout.h"
@@ -87,6 +88,12 @@ static const char *g_editor_css =
 
     ".toolbar-icon-btn.active {"
     "  color: #6e8aff;"
+    "}"
+
+    ".toolbar-separator {"
+    "  width: 1px;"
+    "  height: 14px;"
+    "  background: #2e2e3e;"
     "}"
 
     /* ---- Panels ---- */
@@ -729,6 +736,8 @@ static bool on_plugin_reload_end(const Qs_Event *e, void *userdata)
         if (ed->scene_renderer && ed->scene_viewport) {
             qs_renderer_bind(ed->scene_renderer, (Qs_Viewport *)ed->scene_viewport);
         }
+        if (ed->scene_renderer)
+            ed_gizmo_attach(ed->scene_renderer);
     }
     ed_toolbar_rebuild();
     ed_menu_bar_invalidate();
@@ -797,6 +806,7 @@ static void on_frame(Qs_Engine *engine, void *userdata)
     if (ed->scene_viewport)
         ca_viewport_request_redraw(ed->scene_viewport);
     ed_camera_update(&ed->cam, ed->scene_renderer, qs_engine_dt(ed->engine));
+    ed_gizmo_update(ed, qs_engine_dt(ed->engine));
 
     /* Submit scene renderables and lights for this frame */
     Qs_Scene *scene = qs_scene_active();
@@ -1065,11 +1075,16 @@ Editor *editor_create(const EditorDesc *desc)
 
     qs_engine_set_stylesheet(ed->engine, g_editor_css);
 
+    ed_gizmo_init(ed->engine);
+
     ed->scene_renderer = qs_renderer_create(ed->engine, &(Qs_RendererDesc){
         .name        = "scene",
         .clear_color = { 0.0f, 0.0f, 0.0f, 1.0f },
         .depth_test  = true,
     });
+
+    if (ed->scene_renderer)
+        ed_gizmo_attach(ed->scene_renderer);
 
     /* Position camera for a good view of the test scene */
     if (ed->scene_renderer) {
@@ -1146,6 +1161,11 @@ Qs_Engine *editor_engine(Editor *ed)
     return ed ? ed->engine : NULL;
 }
 
+Ca_Viewport *editor_scene_viewport(const Editor *ed)
+{
+    return ed ? ed->scene_viewport : NULL;
+}
+
 Qs_Entity editor_selected_entity(const Editor *ed)
 {
     return ed ? ed->selected_entity : QS_ENTITY_INVALID;
@@ -1160,6 +1180,7 @@ void editor_set_selected_entity(Editor *ed, Qs_Entity entity)
 void editor_destroy(Editor *ed)
 {
     if (!ed) return;
+    ed_gizmo_shutdown(ed->engine);
     qs_engine_destroy(ed->engine);
     qs_project_destroy(ed->project);
     free(ed);

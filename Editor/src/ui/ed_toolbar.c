@@ -1,5 +1,6 @@
 #include "ed_toolbar.h"
 #include "ed_icon_btn.h"
+#include "ed_gizmo.h"
 #include "editor.h"
 
 #include "quasar.h"
@@ -32,6 +33,30 @@ static ExtToolbarState s_ext_states[TOOLBAR_MAX_EXTENSIONS];
 static Ca_Div   *s_toolbar_div;
 static Qs_Engine *s_toolbar_engine;
 
+/* ---- Gizmo mode button state ---- */
+#define ICON_GIZMO_TRANSLATE "\xEF\x81\x87"   /* U+F047  arrows (move)     */
+#define ICON_GIZMO_ROTATE    "\xEF\x80\x9E"   /* U+F01E  redo (rotate)     */
+#define ICON_GIZMO_SCALE     "\xEF\x81\xA5"   /* U+F065  expand (scale)    */
+
+static Ca_Button *s_gizmo_btns[3];
+
+static void update_gizmo_btn_styles(void)
+{
+    EdGizmoMode m = ed_gizmo_mode();
+    for (int i = 0; i < 3; i++) {
+        if (!s_gizmo_btns[i]) continue;
+        ca_set_style(s_gizmo_btns[i], (int)m == i ? "toolbar-icon-btn active"
+                                                   : "toolbar-icon-btn");
+    }
+}
+
+static void on_gizmo_translate(Ca_Button *btn, void *data)
+{ (void)btn; (void)data; ed_gizmo_set_mode(ED_GIZMO_TRANSLATE); update_gizmo_btn_styles(); }
+static void on_gizmo_rotate(Ca_Button *btn, void *data)
+{ (void)btn; (void)data; ed_gizmo_set_mode(ED_GIZMO_ROTATE);    update_gizmo_btn_styles(); }
+static void on_gizmo_scale(Ca_Button *btn, void *data)
+{ (void)btn; (void)data; ed_gizmo_set_mode(ED_GIZMO_SCALE);     update_gizmo_btn_styles(); }
+
 void ed_toolbar_init(void *editor)
 {
     (void)editor;
@@ -52,10 +77,34 @@ static void on_ext_item_click(Ca_Button *btn, void *user_data)
         ctx->on_click(ctx->engine, ctx->active);
 }
 
-/* Populates the toolbar div with extension icon buttons.
+/* Populates the toolbar div with gizmo mode buttons, a separator, then
+   extension icon buttons.
    Assumes the caller has already entered s_toolbar_div as the current parent. */
 static void toolbar_populate(Qs_Engine *engine)
 {
+    /* ---- Gizmo mode buttons ---- */
+    EdGizmoMode mode = ed_gizmo_mode();
+    static const struct { const char *icon; const char *id; const char *tip; EdGizmoMode m; Ca_ClickFn fn; }
+    gizmo_defs[3] = {
+        { ICON_GIZMO_TRANSLATE, "gizmo-translate", "Translate (W)", ED_GIZMO_TRANSLATE, on_gizmo_translate },
+        { ICON_GIZMO_ROTATE,    "gizmo-rotate",    "Rotate (E)",    ED_GIZMO_ROTATE,    on_gizmo_rotate    },
+        { ICON_GIZMO_SCALE,     "gizmo-scale",     "Scale (R)",     ED_GIZMO_SCALE,     on_gizmo_scale     },
+    };
+    for (int i = 0; i < 3; i++) {
+        s_gizmo_btns[i] = ed_icon_btn(&(EdIconBtnDesc){
+            .icon       = gizmo_defs[i].icon,
+            .id         = gizmo_defs[i].id,
+            .tooltip    = gizmo_defs[i].tip,
+            .active     = mode == gizmo_defs[i].m,
+            .on_click   = gizmo_defs[i].fn,
+        });
+    }
+
+    /* Vertical separator */
+    ca_div_begin(&(Ca_DivDesc){ .style = "toolbar-separator" });
+    ca_div_end();
+
+    /* ---- Extension buttons ---- */
     uint32_t ext_count = qs_engine_ext_count(engine, QS_EXT_EDITOR_TOOLBAR);
     if (ext_count > TOOLBAR_MAX_EXTENSIONS)
         ext_count = TOOLBAR_MAX_EXTENSIONS;

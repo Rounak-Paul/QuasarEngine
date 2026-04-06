@@ -233,6 +233,8 @@ typedef struct Qs_GpuRenderTarget {
     float            clear_depth;     ///< Depth clear value (typically 1.0)
     uint32_t         width;
     uint32_t         height;
+    bool             load_color;      ///< true = LOAD existing contents instead of CLEAR
+    bool             load_depth;      ///< true = LOAD existing depth instead of CLEAR
 } Qs_GpuRenderTarget;
 
 /* ================================================================
