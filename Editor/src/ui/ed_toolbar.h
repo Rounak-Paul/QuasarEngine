@@ -12,4 +12,7 @@ void ed_toolbar(Ca_Window *window, void *editor);
 /// Rebuilds the toolbar contents (e.g. after plugin enable/disable).
 void ed_toolbar_rebuild(void);
 
+/// Sync gizmo button visual state with the current gizmo mode.
+void ed_toolbar_sync_gizmo(void);
+
 #endif

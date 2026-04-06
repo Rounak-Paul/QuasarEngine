@@ -186,3 +186,8 @@ void ed_toolbar_rebuild(void)
     memset(s_ext_states, 0, sizeof(s_ext_states));
     ca_div_invalidate(s_toolbar_div);
 }
+
+void ed_toolbar_sync_gizmo(void)
+{
+    update_gizmo_btn_styles();
+}

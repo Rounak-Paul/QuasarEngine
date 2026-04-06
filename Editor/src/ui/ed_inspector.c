@@ -35,6 +35,7 @@ typedef struct InputBinding {
     size_t            field_size;
     uint32_t          vec_index;
     Qs_FieldType      field_type;
+    Ca_TextInput     *widget;       /* NULL for checkbox / non-input fields */
 } InputBinding;
 
 /* ---- Module state ---- */
@@ -303,7 +304,7 @@ static void build_field(const char *comp_name, Qs_ComponentType *ct,
 
         char input_id[96];
         snprintf(input_id, sizeof(input_id), "ins-field-input-%s-%s", comp_name, fi->name);
-        ca_input(&(Ca_InputDesc){
+        b->widget = ca_input(&(Ca_InputDesc){
             .text        = (fi->type == QS_FIELD_STRING)
                             ? (const char *)field_ptr : buf,
             .id          = input_id,
@@ -352,7 +353,7 @@ static void build_field(const char *comp_name, Qs_ComponentType *ct,
             });
             char axis_input_id[96];
             snprintf(axis_input_id, sizeof(axis_input_id), "ins-field-axis-input-%s-%s-%u", comp_name, fi->name, i);
-            ca_input(&(Ca_InputDesc){
+            b->widget = ca_input(&(Ca_InputDesc){
                 .text        = buf,
                 .id          = axis_input_id,
                 .style       = "inspector-vec-input",
@@ -496,7 +497,42 @@ void ed_inspector_update(void *editor)
         return;
     }
 
-    if (entity == s_displayed_entity) return;
+    if (entity == s_displayed_entity) {
+        /* Same entity — refresh bound field values (e.g. during gizmo drag) */
+        if (!scene) return;
+        for (uint32_t i = 0; i < s_binding_count; i++) {
+            InputBinding *b = &s_bindings[i];
+            if (!b->widget || !b->comp_type) continue;
+            void *comp = qs_entity_get(scene, entity, b->comp_type);
+            if (!comp) continue;
+            const void *field_ptr = (const char *)comp + b->field_offset;
+            char buf[64];
+            switch (b->field_type) {
+            case QS_FIELD_FLOAT:
+                snprintf(buf, sizeof(buf), "%.3f", ((const float *)field_ptr)[0]);
+                break;
+            case QS_FIELD_FLOAT2:
+            case QS_FIELD_FLOAT3:
+            case QS_FIELD_FLOAT4:
+                snprintf(buf, sizeof(buf), "%.3f", ((const float *)field_ptr)[b->vec_index]);
+                break;
+            case QS_FIELD_INT32:
+                snprintf(buf, sizeof(buf), "%d", *(const int32_t *)field_ptr);
+                break;
+            case QS_FIELD_UINT32:
+                snprintf(buf, sizeof(buf), "%u", *(const uint32_t *)field_ptr);
+                break;
+            case QS_FIELD_STRING:
+                snprintf(buf, sizeof(buf), "%s", (const char *)field_ptr);
+                break;
+            default: continue;
+            }
+            const char *cur = ca_get_text(b->widget);
+            if (!cur || strcmp(cur, buf) != 0)
+                ca_set_text(b->widget, buf);
+        }
+        return;
+    }
 
     s_displayed_entity = entity;
     ca_set_hidden(s_header_div, false);
