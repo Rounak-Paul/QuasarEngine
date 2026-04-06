@@ -101,6 +101,16 @@ static void toolbar_populate(Qs_Engine *engine)
     }
 }
 
+/* Builder callback — invoked by Causality when the div is invalidated.
+   The div is already cleared and entered as the current parent. */
+static void toolbar_builder(Ca_Div *div, void *user_data)
+{
+    (void)div;
+    Qs_Engine *engine = (Qs_Engine *)user_data;
+    if (engine)
+        toolbar_populate(engine);
+}
+
 void ed_toolbar(Ca_Window *window, void *editor)
 {
     (void)window;
@@ -114,6 +124,7 @@ void ed_toolbar(Ca_Window *window, void *editor)
     s_toolbar_engine = engine;
     if (!engine) { ca_div_end(); return; }
 
+    ca_div_set_builder(s_toolbar_div, toolbar_builder, engine);
     toolbar_populate(engine);
 
     ca_div_end();
@@ -121,11 +132,8 @@ void ed_toolbar(Ca_Window *window, void *editor)
 
 void ed_toolbar_rebuild(void)
 {
-    if (!s_toolbar_div || !s_toolbar_engine) return;
+    if (!s_toolbar_div) return;
 
     memset(s_ext_states, 0, sizeof(s_ext_states));
-
-    ca_div_clear(s_toolbar_div);
-    toolbar_populate(s_toolbar_engine);
-    ca_div_end();
+    ca_div_invalidate(s_toolbar_div);
 }
