@@ -527,6 +527,7 @@ void ed_inspector_update(void *editor)
                 break;
             default: continue;
             }
+            if (ca_input_is_focused(b->widget)) continue;
             const char *cur = ca_get_text(b->widget);
             if (!cur || strcmp(cur, buf) != 0)
                 ca_set_text(b->widget, buf);
