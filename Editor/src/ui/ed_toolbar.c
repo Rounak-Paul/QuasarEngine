@@ -43,11 +43,8 @@ static Ca_Button *s_gizmo_btns[3];
 static void update_gizmo_btn_styles(void)
 {
     EdGizmoMode m = ed_gizmo_mode();
-    for (int i = 0; i < 3; i++) {
-        if (!s_gizmo_btns[i]) continue;
-        ca_set_style(s_gizmo_btns[i], (int)m == i ? "toolbar-icon-btn active"
-                                                   : "toolbar-icon-btn");
-    }
+    for (int i = 0; i < 3; i++)
+        ed_icon_btn_set_active(s_gizmo_btns[i], (int)m == i);
 }
 
 static void on_gizmo_translate(Ca_Button *btn, void *data)
@@ -71,8 +68,7 @@ static void on_ext_item_click(Ca_Button *btn, void *user_data)
     ExtItemCtx *ctx = (ExtItemCtx *)user_data;
     if (!ctx || !ctx->active) return;
     *ctx->active = !(*ctx->active);
-    ca_set_style(btn, *ctx->active ? "toolbar-icon-btn active"
-                                   : "toolbar-icon-btn");
+    ed_icon_btn_set_active(btn, *ctx->active);
     if (ctx->on_click)
         ctx->on_click(ctx->engine, ctx->active);
 }
@@ -86,18 +82,18 @@ static void toolbar_populate(Qs_Engine *engine)
     EdGizmoMode mode = ed_gizmo_mode();
     static const struct { const char *icon; const char *id; const char *tip; EdGizmoMode m; Ca_ClickFn fn; }
     gizmo_defs[3] = {
-        { ICON_GIZMO_TRANSLATE, "gizmo-translate", "Translate (W)", ED_GIZMO_TRANSLATE, on_gizmo_translate },
-        { ICON_GIZMO_ROTATE,    "gizmo-rotate",    "Rotate (E)",    ED_GIZMO_ROTATE,    on_gizmo_rotate    },
-        { ICON_GIZMO_SCALE,     "gizmo-scale",     "Scale (R)",     ED_GIZMO_SCALE,     on_gizmo_scale     },
+        { ICON_GIZMO_TRANSLATE, "gizmo-translate", "Translate (1)", ED_GIZMO_TRANSLATE, on_gizmo_translate },
+        { ICON_GIZMO_ROTATE,    "gizmo-rotate",    "Rotate (2)",    ED_GIZMO_ROTATE,    on_gizmo_rotate    },
+        { ICON_GIZMO_SCALE,     "gizmo-scale",     "Scale (3)",     ED_GIZMO_SCALE,     on_gizmo_scale     },
     };
     for (int i = 0; i < 3; i++) {
         s_gizmo_btns[i] = ed_icon_btn(&(EdIconBtnDesc){
             .icon       = gizmo_defs[i].icon,
             .id         = gizmo_defs[i].id,
             .tooltip    = gizmo_defs[i].tip,
-            .active     = mode == gizmo_defs[i].m,
             .on_click   = gizmo_defs[i].fn,
         });
+        ed_icon_btn_set_active(s_gizmo_btns[i], mode == gizmo_defs[i].m);
     }
 
     /* Vertical separator */
@@ -136,14 +132,14 @@ static void toolbar_populate(Qs_Engine *engine)
             char css_id[64];
             snprintf(css_id, sizeof(css_id), "ext-tb-%u-%d", ei, ii);
 
-            ed_icon_btn(&(EdIconBtnDesc){
+            Ca_Button *ebtn = ed_icon_btn(&(EdIconBtnDesc){
                 .icon       = item->icon,
                 .id         = css_id,
                 .tooltip    = item->tooltip,
-                .active     = estate->active[ii],
                 .on_click   = on_ext_item_click,
                 .click_data = ctx,
             });
+            ed_icon_btn_set_active(ebtn, estate->active[ii]);
         }
 
         if (!estate->initialised) estate->initialised = true;

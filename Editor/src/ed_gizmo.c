@@ -915,9 +915,9 @@ void ed_gizmo_update(void *editor, float dt)
     /* ---- Shortcut keys ---- */
     {
         EdGizmoMode prev = s_mode;
-        if (qs_input_key_pressed(QS_KEY_W)) s_mode = ED_GIZMO_TRANSLATE;
-        if (qs_input_key_pressed(QS_KEY_E)) s_mode = ED_GIZMO_ROTATE;
-        if (qs_input_key_pressed(QS_KEY_R)) s_mode = ED_GIZMO_SCALE;
+        if (qs_input_key_pressed(QS_KEY_1)) s_mode = ED_GIZMO_TRANSLATE;
+        if (qs_input_key_pressed(QS_KEY_2)) s_mode = ED_GIZMO_ROTATE;
+        if (qs_input_key_pressed(QS_KEY_3)) s_mode = ED_GIZMO_SCALE;
         if (s_mode != prev) ed_toolbar_sync_gizmo();
     }
 
