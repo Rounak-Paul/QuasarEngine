@@ -1,73 +1,9 @@
 #include "ed_camera.h"
 #include "qs_input.h"
+#include "qs_math.h"
 #include "qs_renderer.h"
 #include <math.h>
 #include <string.h>
-
-/* ================================================================
-   Math helpers (inline, no external deps)
-   ================================================================ */
-
-#ifndef QS_PI
-#  define QS_PI 3.14159265358979323846f
-#endif
-
-static inline float ed_to_rad(float deg) { return deg * (QS_PI / 180.0f); }
-static inline float ed_to_deg(float rad) { return rad * (180.0f / QS_PI); }
-static inline float ed_clampf(float v, float lo, float hi)
-{
-    return v < lo ? lo : (v > hi ? hi : v);
-}
-static inline float ed_sqrtf(float v) { return sqrtf(v < 0.0f ? 0.0f : v); }
-
-/* vec3 helpers */
-static inline void vec3_sub(const float a[3], const float b[3], float out[3])
-{
-    out[0] = a[0] - b[0];
-    out[1] = a[1] - b[1];
-    out[2] = a[2] - b[2];
-}
-static inline void vec3_add(const float a[3], const float b[3], float out[3])
-{
-    out[0] = a[0] + b[0];
-    out[1] = a[1] + b[1];
-    out[2] = a[2] + b[2];
-}
-static inline void vec3_scale(const float v[3], float s, float out[3])
-{
-    out[0] = v[0] * s;
-    out[1] = v[1] * s;
-    out[2] = v[2] * s;
-}
-static inline float vec3_dot(const float a[3], const float b[3])
-{
-    return a[0]*b[0] + a[1]*b[1] + a[2]*b[2];
-}
-static inline float vec3_len(const float v[3])
-{
-    return ed_sqrtf(vec3_dot(v, v));
-}
-static inline void vec3_norm(const float v[3], float out[3])
-{
-    float len = vec3_len(v);
-    if (len < 1e-7f) { out[0] = 0.0f; out[1] = 1.0f; out[2] = 0.0f; return; }
-    float inv = 1.0f / len;
-    out[0] = v[0] * inv;
-    out[1] = v[1] * inv;
-    out[2] = v[2] * inv;
-}
-static inline void vec3_cross(const float a[3], const float b[3], float out[3])
-{
-    out[0] = a[1]*b[2] - a[2]*b[1];
-    out[1] = a[2]*b[0] - a[0]*b[2];
-    out[2] = a[0]*b[1] - a[1]*b[0];
-}
-static inline void vec3_copy(const float src[3], float dst[3])
-{
-    dst[0] = src[0];
-    dst[1] = src[1];
-    dst[2] = src[2];
-}
 
 /* ================================================================
    ed_camera_init
@@ -87,15 +23,15 @@ void ed_camera_init(EditorCamera *cam)
 
     /* Derive yaw/pitch from initial look direction */
     float dir[3];
-    vec3_sub(cam->target, cam->position, dir);
-    float len_xz = ed_sqrtf(dir[0]*dir[0] + dir[2]*dir[2]);
-    cam->yaw      = ed_to_deg(atan2f(dir[0], dir[2]));
-    cam->pitch    = ed_to_deg(atan2f(-dir[1], len_xz));
+    qs_v3_sub(cam->target, cam->position, dir);
+    float len_xz = qs_safe_sqrtf(dir[0]*dir[0] + dir[2]*dir[2]);
+    cam->yaw      = qs_to_deg(atan2f(dir[0], dir[2]));
+    cam->pitch    = qs_to_deg(atan2f(-dir[1], len_xz));
 
     /* Orbit distance = magnitude of position→target vector */
     float d[3];
-    vec3_sub(cam->target, cam->position, d);
-    cam->orbit_distance = vec3_len(d);
+    qs_v3_sub(cam->target, cam->position, d);
+    cam->orbit_distance = qs_v3_len(d);
 
     cam->fly_speed      = 5.0f;
     cam->zoom_speed     = 1.5f;
@@ -113,12 +49,12 @@ void ed_camera_init(EditorCamera *cam)
  */
 static void cam_forward(float yaw_deg, float pitch_deg, float out[3])
 {
-    float y = ed_to_rad(yaw_deg);
-    float p = ed_to_rad(pitch_deg);
+    float y = qs_to_rad(yaw_deg);
+    float p = qs_to_rad(pitch_deg);
     out[0] = cosf(p) * sinf(y);
     out[1] = -sinf(p);
     out[2] = cosf(p) * cosf(y);
-    vec3_norm(out, out);
+    qs_v3_norm(out, out);
 }
 
 /* World up used for all cross-product calculations. */
@@ -132,8 +68,8 @@ static void cam_axes(const float fwd[3], float right[3], float up[3])
 {
     /* right = normalise(fwd × worldUp), but guard against near-parallel */
     float r[3];
-    vec3_cross(fwd, WORLD_UP, r);
-    float rlen = vec3_len(r);
+    qs_v3_cross(fwd, WORLD_UP, r);
+    float rlen = qs_v3_len(r);
     if (rlen < 0.01f) {
         /* Camera pointing nearly straight up/down: use +X as stable right */
         r[0] = 1.0f; r[1] = 0.0f; r[2] = 0.0f;
@@ -143,11 +79,11 @@ static void cam_axes(const float fwd[3], float right[3], float up[3])
     }
 
     float u[3];
-    vec3_cross(r, fwd, u);
-    vec3_norm(u, u);
+    qs_v3_cross(r, fwd, u);
+    qs_v3_norm(u, u);
 
-    vec3_copy(r, right);
-    vec3_copy(u, up);
+    qs_v3_copy(r, right);
+    qs_v3_copy(u, up);
 }
 
 /* ================================================================
@@ -174,7 +110,7 @@ void ed_camera_update(EditorCamera *cam, Qs_Renderer *renderer, float dt)
     if (right_down) {
         /* Rotate yaw/pitch */
         cam->yaw   += dx * cam->orbit_speed;
-        cam->pitch  = ed_clampf(cam->pitch - dy * cam->orbit_speed, -89.0f, 89.0f);
+        cam->pitch  = qs_clampf(cam->pitch - dy * cam->orbit_speed, -89.0f, 89.0f);
 
         /* WASD/QE movement in camera-local space */
         float fwd[3], right[3], up[3];
@@ -185,36 +121,36 @@ void ed_camera_update(EditorCamera *cam, Qs_Renderer *renderer, float dt)
         float spd = cam->fly_speed * dt;
 
         if (qs_input_key_down(QS_KEY_W)) {
-            float v[3]; vec3_scale(fwd,  spd, v); vec3_add(move, v, move); }
+            float v[3]; qs_v3_scale(fwd,  spd, v); qs_v3_add(move, v, move); }
         if (qs_input_key_down(QS_KEY_S)) {
-            float v[3]; vec3_scale(fwd, -spd, v); vec3_add(move, v, move); }
+            float v[3]; qs_v3_scale(fwd, -spd, v); qs_v3_add(move, v, move); }
         if (qs_input_key_down(QS_KEY_A)) {
-            float v[3]; vec3_scale(right, -spd, v); vec3_add(move, v, move); }
+            float v[3]; qs_v3_scale(right, -spd, v); qs_v3_add(move, v, move); }
         if (qs_input_key_down(QS_KEY_D)) {
-            float v[3]; vec3_scale(right,  spd, v); vec3_add(move, v, move); }
+            float v[3]; qs_v3_scale(right,  spd, v); qs_v3_add(move, v, move); }
         if (qs_input_key_down(QS_KEY_Q)) {
-            float v[3]; vec3_scale(up, -spd, v); vec3_add(move, v, move); }
+            float v[3]; qs_v3_scale(up, -spd, v); qs_v3_add(move, v, move); }
         if (qs_input_key_down(QS_KEY_E)) {
-            float v[3]; vec3_scale(up,  spd, v); vec3_add(move, v, move); }
+            float v[3]; qs_v3_scale(up,  spd, v); qs_v3_add(move, v, move); }
 
-        vec3_add(cam->position, move, cam->position);
+        qs_v3_add(cam->position, move, cam->position);
 
         /* Recalculate target from position + direction */
-        float t[3]; vec3_scale(fwd, cam->orbit_distance, t);
-        vec3_add(cam->position, t, cam->target);
+        float t[3]; qs_v3_scale(fwd, cam->orbit_distance, t);
+        qs_v3_add(cam->position, t, cam->target);
     }
 
     /* ---- Orbit mode (Alt + left mouse held) ---- */
     else if (alt_held && left_down) {
         cam->yaw   += dx * cam->orbit_speed;
-        cam->pitch  = ed_clampf(cam->pitch - dy * cam->orbit_speed, -89.0f, 89.0f);
+        cam->pitch  = qs_clampf(cam->pitch - dy * cam->orbit_speed, -89.0f, 89.0f);
 
         /* Recompute position from target + reversed direction */
         float fwd[3];
         cam_forward(cam->yaw, cam->pitch, fwd);
         float back[3];
-        vec3_scale(fwd, -cam->orbit_distance, back);
-        vec3_add(cam->target, back, cam->position);
+        qs_v3_scale(fwd, -cam->orbit_distance, back);
+        qs_v3_add(cam->target, back, cam->position);
     }
 
     /* ---- Pan mode (middle mouse held) ---- */
@@ -229,13 +165,13 @@ void ed_camera_update(EditorCamera *cam, Qs_Renderer *renderer, float dt)
 
         float delta[3] = { 0.0f, 0.0f, 0.0f };
         float r[3], u[3];
-        vec3_scale(right, -dx * scale, r);
-        vec3_scale(up,     dy * scale, u);
-        vec3_add(delta, r, delta);
-        vec3_add(delta, u, delta);
+        qs_v3_scale(right, -dx * scale, r);
+        qs_v3_scale(up,     dy * scale, u);
+        qs_v3_add(delta, r, delta);
+        qs_v3_add(delta, u, delta);
 
-        vec3_add(cam->position, delta, cam->position);
-        vec3_add(cam->target,   delta, cam->target);
+        qs_v3_add(cam->position, delta, cam->position);
+        qs_v3_add(cam->target,   delta, cam->target);
     }
 
     /* ---- Scroll dolly ---- */
@@ -243,27 +179,27 @@ void ed_camera_update(EditorCamera *cam, Qs_Renderer *renderer, float dt)
         float fwd[3];
         cam_forward(cam->yaw, cam->pitch, fwd);
         float dolly[3];
-        vec3_scale(fwd, sdy * cam->zoom_speed, dolly);
-        vec3_add(cam->position, dolly, cam->position);
-        vec3_add(cam->target,   dolly, cam->target);
+        qs_v3_scale(fwd, sdy * cam->zoom_speed, dolly);
+        qs_v3_add(cam->position, dolly, cam->position);
+        qs_v3_add(cam->target,   dolly, cam->target);
 
         /* Clamp orbit distance away from zero */
         float d[3];
-        vec3_sub(cam->target, cam->position, d);
-        cam->orbit_distance = ed_clampf(vec3_len(d), 0.1f, 1000.0f);
+        qs_v3_sub(cam->target, cam->position, d);
+        cam->orbit_distance = qs_clampf(qs_v3_len(d), 0.1f, 1000.0f);
     }
 
     /* ---- Write to scene renderer camera ---- */
     Qs_Camera *rc = qs_renderer_camera(renderer);
     if (rc) {
-        vec3_copy(cam->position, rc->position);
-        vec3_copy(cam->target,   rc->target);
+        qs_v3_copy(cam->position, rc->position);
+        qs_v3_copy(cam->target,   rc->target);
 
         /* Derive camera up from yaw/pitch */
         float fwd[3], right[3], up[3];
         cam_forward(cam->yaw, cam->pitch, fwd);
         cam_axes(fwd, right, up);
-        vec3_copy(up, rc->up);
+        qs_v3_copy(up, rc->up);
     }
 }
 
@@ -282,13 +218,13 @@ void ed_camera_focus(EditorCamera *cam, const float center[3], float radius)
     static const float TAN30 = 0.57735026918962576450914878050f; /* tan(PI/6) */
     float dist = (radius / TAN30) * 1.2f;
 
-    vec3_copy(center, cam->target);
+    qs_v3_copy(center, cam->target);
     cam->orbit_distance = dist;
 
     /* Keep current yaw/pitch, just move position back from the new target. */
     float fwd[3];
     cam_forward(cam->yaw, cam->pitch, fwd);
     float back[3];
-    vec3_scale(fwd, -dist, back);
-    vec3_add(cam->target, back, cam->position);
+    qs_v3_scale(fwd, -dist, back);
+    qs_v3_add(cam->target, back, cam->position);
 }

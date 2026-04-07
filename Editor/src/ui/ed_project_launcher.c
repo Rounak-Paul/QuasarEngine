@@ -407,11 +407,10 @@ static const char *g_launcher_css =
     "  gap: 8px;"
     "}"
 
-    /* ---- File browser styles (Quasar Dark) ---- */
-
+    /* ---- File browser ---- */
     ".fb-root {"
     "  width: 100%;"
-    "  height: 100%;"
+    "  overflow: hidden;"
     "}"
 
     ".fb-title-bar {"
@@ -447,6 +446,7 @@ static const char *g_launcher_css =
     "  background: #111114;"
     "  height: 38px;"
     "  width: 100%;"
+    "  flex-shrink: 0;"
     "  padding-left: 8px;"
     "  padding-right: 8px;"
     "  align-items: center;"
@@ -475,6 +475,7 @@ static const char *g_launcher_css =
     ".fb-col-header {"
     "  width: 100%;"
     "  height: 22px;"
+    "  flex-shrink: 0;"
     "  padding-left: 14px;"
     "  padding-right: 14px;"
     "  align-items: center;"
@@ -532,6 +533,8 @@ static const char *g_launcher_css =
     ".fb-bottom {"
     "  background: #1c1c22;"
     "  width: 100%;"
+    "  min-height: 70px;"
+    "  flex-shrink: 0;"
     "  padding: 6px 10px;"
     "  gap: 6px;"
     "}"

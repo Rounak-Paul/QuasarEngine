@@ -1,5 +1,6 @@
 #include "ed_hierarchy.h"
 #include "editor.h"
+#include "ed_icons.h"
 #include "ca_theme.h"
 
 #include <string.h>
@@ -8,12 +9,6 @@
 /* ================================================================
    HIERARCHY PANEL — scene entity tree
    ================================================================ */
-
-/* Nerd Font icons (Font Awesome range F000–F2E0) */
-#define ICON_SCENE      "\xEF\x82\xAC"   /* U+F0AC globe     */
-#define ICON_ENTITY     "\xEF\x84\x91"   /* U+F111 circle    */
-#define ICON_MESH       "\xEF\x86\xB2"   /* U+F1B2 cube      */
-#define ICON_LIGHT      "\xEF\x83\xAB"   /* U+F0EB lightbulb */
 
 /* We need a way to pass both the editor pointer and entity ID to the callback.
    Use a small static ring buffer of callback contexts. */

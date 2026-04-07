@@ -240,15 +240,15 @@ Qs_Material *qs_material_create(Qs_Engine *engine, const Qs_MaterialDesc *desc)
     m->alpha_mode                 = desc->alpha_mode;
     m->double_sided               = desc->double_sided;
 
-    m->params.base_color_factor[0] = desc->base_color_factor[0] != 0.0f ? desc->base_color_factor[0] : 1.0f;
-    m->params.base_color_factor[1] = desc->base_color_factor[1] != 0.0f ? desc->base_color_factor[1] : 1.0f;
-    m->params.base_color_factor[2] = desc->base_color_factor[2] != 0.0f ? desc->base_color_factor[2] : 1.0f;
-    m->params.base_color_factor[3] = desc->base_color_factor[3] != 0.0f ? desc->base_color_factor[3] : 1.0f;
+    m->params.base_color_factor[0] = desc->base_color_factor[0];
+    m->params.base_color_factor[1] = desc->base_color_factor[1];
+    m->params.base_color_factor[2] = desc->base_color_factor[2];
+    m->params.base_color_factor[3] = desc->base_color_factor[3];
     m->params.metallic_factor      = desc->metallic_factor;
-    m->params.roughness_factor     = desc->roughness_factor   != 0.0f ? desc->roughness_factor   : 1.0f;
-    m->params.normal_scale         = desc->normal_scale       != 0.0f ? desc->normal_scale       : 1.0f;
-    m->params.occlusion_strength   = desc->occlusion_strength != 0.0f ? desc->occlusion_strength : 1.0f;
-    m->params.alpha_cutoff         = desc->alpha_cutoff       != 0.0f ? desc->alpha_cutoff       : 0.5f;
+    m->params.roughness_factor     = desc->roughness_factor;
+    m->params.normal_scale         = desc->normal_scale;
+    m->params.occlusion_strength   = desc->occlusion_strength;
+    m->params.alpha_cutoff         = desc->alpha_cutoff;
     m->params.emissive_factor[0]   = desc->emissive_factor[0];
     m->params.emissive_factor[1]   = desc->emissive_factor[1];
     m->params.emissive_factor[2]   = desc->emissive_factor[2];

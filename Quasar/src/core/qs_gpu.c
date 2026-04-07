@@ -1,4 +1,5 @@
 #include "qs_gpu.h"
+#include "qs_log.h"
 #include "causality.h"
 #include <vulkan/vulkan.h>
 
@@ -188,19 +189,7 @@ static VkPipelineStageFlags layout_to_dst_stage(Qs_GpuImageLayout layout)
     }
 }
 
-static VkAccessFlags layout_to_src_access(Qs_GpuImageLayout layout)
-{
-    switch (layout) {
-    case QS_GPU_IMAGE_LAYOUT_TRANSFER_SRC:     return VK_ACCESS_TRANSFER_READ_BIT;
-    case QS_GPU_IMAGE_LAYOUT_TRANSFER_DST:     return VK_ACCESS_TRANSFER_WRITE_BIT;
-    case QS_GPU_IMAGE_LAYOUT_SHADER_READ:      return VK_ACCESS_SHADER_READ_BIT;
-    case QS_GPU_IMAGE_LAYOUT_COLOR_ATTACHMENT: return VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-    case QS_GPU_IMAGE_LAYOUT_DEPTH_ATTACHMENT: return VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-    default: return 0;
-    }
-}
-
-static VkAccessFlags layout_to_dst_access(Qs_GpuImageLayout layout)
+static VkAccessFlags layout_to_access(Qs_GpuImageLayout layout)
 {
     switch (layout) {
     case QS_GPU_IMAGE_LAYOUT_TRANSFER_SRC:     return VK_ACCESS_TRANSFER_READ_BIT;
@@ -381,9 +370,12 @@ static ViewportCallbackState *get_or_alloc_vp_state(Qs_Viewport *vp)
         if (s_vp_states[i].viewport == vp)
             return &s_vp_states[i];
     }
-    uint32_t idx = s_vp_state_count < MAX_VIEWPORT_STATES
-        ? s_vp_state_count++
-        : (s_vp_state_count % MAX_VIEWPORT_STATES); /* wrap if full */
+    if (s_vp_state_count >= MAX_VIEWPORT_STATES) {
+        QS_LOG_ERROR("Viewport state pool full (%d slots)", MAX_VIEWPORT_STATES);
+        return NULL;
+    }
+    uint32_t idx = s_vp_state_count++;
+    memset(&s_vp_states[idx], 0, sizeof(s_vp_states[idx]));
     s_vp_states[idx].viewport = vp;
     return &s_vp_states[idx];
 }
@@ -421,18 +413,24 @@ Qs_GpuContext *qs_engine_gpu(Qs_Engine *engine)
    BUFFER IMPLEMENTATION
    ================================================================ */
 
+static VkBufferUsageFlags buffer_usage_to_vk(Qs_GpuBufferUsage usage)
+{
+    VkBufferUsageFlags flags = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+    if (usage & QS_GPU_BUFFER_VERTEX)   flags |= VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+    if (usage & QS_GPU_BUFFER_INDEX)    flags |= VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
+    if (usage & QS_GPU_BUFFER_UNIFORM)  flags |= VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
+    if (usage & QS_GPU_BUFFER_STORAGE)  flags |= VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+    if (usage & QS_GPU_BUFFER_TRANSFER) flags |= VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+    return flags;
+}
+
 Qs_GpuBuffer *qs_gpu_create_buffer(Qs_GpuContext *gpu, const Qs_GpuBufferDesc *desc)
 {
     Ca_Instance    *ca     = to_ca(gpu);
     VkDevice        device = ca_gpu_device(ca);
     VkPhysicalDevice pd    = ca_gpu_physical_device(ca);
 
-    VkBufferUsageFlags usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
-    if (desc->usage & QS_GPU_BUFFER_VERTEX)   usage |= VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
-    if (desc->usage & QS_GPU_BUFFER_INDEX)    usage |= VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
-    if (desc->usage & QS_GPU_BUFFER_UNIFORM)  usage |= VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
-    if (desc->usage & QS_GPU_BUFFER_STORAGE)  usage |= VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
-    if (desc->usage & QS_GPU_BUFFER_TRANSFER) usage |= VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+    VkBufferUsageFlags usage = buffer_usage_to_vk(desc->usage);
 
     VkMemoryPropertyFlags mem_flags = (desc->memory == QS_GPU_MEMORY_HOST_VISIBLE)
         ? (VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT)
@@ -460,11 +458,7 @@ Qs_GpuBuffer *qs_gpu_create_buffer_from_data(Qs_GpuContext *gpu, Qs_GpuBufferUsa
     vkUnmapMemory(device, staging->memory);
 
     /* Device-local destination */
-    VkBufferUsageFlags vk_usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
-    if (usage & QS_GPU_BUFFER_VERTEX)  vk_usage |= VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
-    if (usage & QS_GPU_BUFFER_INDEX)   vk_usage |= VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
-    if (usage & QS_GPU_BUFFER_UNIFORM) vk_usage |= VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
-    if (usage & QS_GPU_BUFFER_STORAGE) vk_usage |= VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+    VkBufferUsageFlags vk_usage = buffer_usage_to_vk(usage);
 
     Qs_GpuBuffer *dst = create_buffer_raw(device, pd, (VkDeviceSize)size,
         vk_usage, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
@@ -501,8 +495,9 @@ void qs_gpu_destroy_buffer(Qs_GpuContext *gpu, Qs_GpuBuffer *buffer)
 void *qs_gpu_map_buffer(Qs_GpuContext *gpu, Qs_GpuBuffer *buffer)
 {
     if (!buffer) return NULL;
-    void *mapped;
-    vkMapMemory(ca_gpu_device(to_ca(gpu)), buffer->memory, 0, (VkDeviceSize)buffer->size, 0, &mapped);
+    void *mapped = NULL;
+    if (vkMapMemory(ca_gpu_device(to_ca(gpu)), buffer->memory, 0, (VkDeviceSize)buffer->size, 0, &mapped) != VK_SUCCESS)
+        return NULL;
     return mapped;
 }
 
@@ -735,14 +730,23 @@ Qs_GpuSampler *qs_gpu_create_sampler(Qs_GpuContext *gpu, const Qs_GpuSamplerDesc
 
     uint32_t mip_levels = desc->mip_levels > 0 ? desc->mip_levels : 1;
 
+    uint32_t mag = (uint32_t)desc->mag_filter;
+    uint32_t min = (uint32_t)desc->min_filter;
+    uint32_t wu  = (uint32_t)desc->wrap_u;
+    uint32_t wv  = (uint32_t)desc->wrap_v;
+    if (mag >= sizeof(filters)/sizeof(filters[0])) mag = 0;
+    if (min >= sizeof(filters)/sizeof(filters[0])) min = 0;
+    if (wu  >= sizeof(wraps)/sizeof(wraps[0]))     wu  = 0;
+    if (wv  >= sizeof(wraps)/sizeof(wraps[0]))     wv  = 0;
+
     VkSamplerCreateInfo ci = {
         .sType            = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
-        .magFilter        = filters[desc->mag_filter],
-        .minFilter        = filters[desc->min_filter],
+        .magFilter        = filters[mag],
+        .minFilter        = filters[min],
         .mipmapMode       = (mip_levels > 1) ? VK_SAMPLER_MIPMAP_MODE_LINEAR
                                               : VK_SAMPLER_MIPMAP_MODE_NEAREST,
-        .addressModeU     = wraps[desc->wrap_u],
-        .addressModeV     = wraps[desc->wrap_v],
+        .addressModeU     = wraps[wu],
+        .addressModeV     = wraps[wv],
         .addressModeW     = VK_SAMPLER_ADDRESS_MODE_REPEAT,
         .anisotropyEnable = desc->anisotropy ? VK_TRUE : VK_FALSE,
         .maxAnisotropy    = desc->anisotropy ? 16.0f : 1.0f,
@@ -1289,8 +1293,8 @@ void qs_cmd_image_barrier(Qs_GpuCmd *cmd, const Qs_GpuImageBarrier *barrier)
 {
     VkImageMemoryBarrier b = {
         .sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
-        .srcAccessMask       = layout_to_src_access(barrier->old_layout),
-        .dstAccessMask       = layout_to_dst_access(barrier->new_layout),
+        .srcAccessMask       = layout_to_access(barrier->old_layout),
+        .dstAccessMask       = layout_to_access(barrier->new_layout),
         .oldLayout           = layout_to_vk(barrier->old_layout),
         .newLayout           = layout_to_vk(barrier->new_layout),
         .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
@@ -1319,6 +1323,20 @@ void qs_cmd_copy_buffer_to_image(Qs_GpuCmd *cmd, Qs_GpuBuffer *src,
     };
     vkCmdCopyBufferToImage(cmd->cmd, src->buffer, dst->image,
                            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
+}
+
+void qs_cmd_copy_image_to_buffer(Qs_GpuCmd *cmd, Qs_GpuImage *src,
+                                  Qs_GpuBuffer *dst, uint32_t x, uint32_t y,
+                                  uint32_t width, uint32_t height)
+{
+    VkBufferImageCopy region = {
+        .bufferOffset     = 0,
+        .imageSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 },
+        .imageOffset      = { (int32_t)x, (int32_t)y, 0 },
+        .imageExtent      = { width, height, 1 },
+    };
+    vkCmdCopyImageToBuffer(cmd->cmd, src->image,
+                           VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, dst->buffer, 1, &region);
 }
 
 void qs_cmd_blit_image_mip(Qs_GpuCmd *cmd, Qs_GpuImage *image,
@@ -1352,6 +1370,7 @@ void qs_viewport_set_callbacks(Qs_Viewport *viewport,
         return;
     }
     ViewportCallbackState *s = get_or_alloc_vp_state(viewport);
+    if (!s) return;
     s->user_render_fn   = on_render;
     s->user_render_data = render_data;
     s->user_resize_fn   = on_resize;

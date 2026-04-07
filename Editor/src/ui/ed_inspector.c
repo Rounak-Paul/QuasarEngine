@@ -1,5 +1,6 @@
 #include "ed_inspector.h"
 #include "editor.h"
+#include "ed_icons.h"
 #include "ca_theme.h"
 
 #include <stdio.h>
@@ -18,14 +19,6 @@
    ================================================================ */
 
 #define MAX_VEC_ELEMS 4
-
-/* Nerd Font / FA icons */
-#define ICON_COMPONENT  "\xEF\x80\x93"   /* U+F013 cog       */
-#define ICON_TRANSFORM  "\xEF\x82\xB2"   /* U+F0B2 arrows    */
-#define ICON_MESH       "\xEF\x86\xB2"   /* U+F1B2 cube      */
-#define ICON_LIGHT      "\xEF\x83\xAB"   /* U+F0EB lightbulb */
-#define ICON_ID         "\xEF\x8A\x92"   /* U+F292 hashtag    */
-#define ICON_TAG        "\xEF\x81\x84"   /* U+F044 pencil     */
 
 /* ---- Binding data for on_change callbacks ---- */
 
@@ -67,8 +60,11 @@ static const char *s_axis_style[4] = {
 static InputBinding *alloc_binding(void)
 {
     if (s_binding_count == s_binding_cap) {
-        s_binding_cap = s_binding_cap ? s_binding_cap * 2 : 32;
-        s_bindings = realloc(s_bindings, s_binding_cap * sizeof(InputBinding));
+        uint32_t new_cap = s_binding_cap ? s_binding_cap * 2 : 32;
+        InputBinding *tmp = realloc(s_bindings, new_cap * sizeof(InputBinding));
+        if (!tmp) return NULL;
+        s_bindings    = tmp;
+        s_binding_cap = new_cap;
     }
     InputBinding *b = &s_bindings[s_binding_count++];
     memset(b, 0, sizeof(*b));

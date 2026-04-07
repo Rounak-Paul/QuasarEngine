@@ -113,9 +113,10 @@ static void load_state(Qs_PluginManager *pm)
 
     char *buf = malloc((size_t)sz + 1);
     if (!buf) { fclose(f); return; }
-    fread(buf, 1, (size_t)sz, f);
-    buf[sz] = '\0';
+    size_t nread = fread(buf, 1, (size_t)sz, f);
+    buf[nread] = '\0';
     fclose(f);
+    if (nread == 0) { free(buf); return; }
 
     cJSON *root = cJSON_Parse(buf);
     free(buf);

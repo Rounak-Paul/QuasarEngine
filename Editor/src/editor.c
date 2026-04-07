@@ -1,6 +1,8 @@
 #include "editor.h"
 #include "ed_camera.h"
 #include "ed_gizmo.h"
+#include "ed_pick.h"
+#include "qs_math.h"
 #include "ui/ed_menu_bar.h"
 #include "ui/ed_toolbar.h"
 #include "ui/ed_layout.h"
@@ -163,10 +165,9 @@ static const char *g_editor_css =
     "}"
 
     /* ---- File browser ---- */
-
     ".fb-root {"
     "  width: 100%;"
-    "  height: 100%;"
+    "  overflow: hidden;"
     "}"
 
     ".fb-title-bar {"
@@ -202,6 +203,7 @@ static const char *g_editor_css =
     "  background: #111114;"
     "  height: 38px;"
     "  width: 100%;"
+    "  flex-shrink: 0;"
     "  padding-left: 8px;"
     "  padding-right: 8px;"
     "  align-items: center;"
@@ -230,6 +232,7 @@ static const char *g_editor_css =
     ".fb-col-header {"
     "  width: 100%;"
     "  height: 22px;"
+    "  flex-shrink: 0;"
     "  padding-left: 14px;"
     "  padding-right: 14px;"
     "  align-items: center;"
@@ -287,6 +290,8 @@ static const char *g_editor_css =
     ".fb-bottom {"
     "  background: #1c1c22;"
     "  width: 100%;"
+    "  min-height: 70px;"
+    "  flex-shrink: 0;"
     "  padding: 6px 10px;"
     "  gap: 6px;"
     "}"
@@ -736,8 +741,10 @@ static bool on_plugin_reload_end(const Qs_Event *e, void *userdata)
         if (ed->scene_renderer && ed->scene_viewport) {
             qs_renderer_bind(ed->scene_renderer, (Qs_Viewport *)ed->scene_viewport);
         }
-        if (ed->scene_renderer)
+        if (ed->scene_renderer) {
+            ed_pick_attach(ed->scene_renderer);
             ed_gizmo_attach(ed->scene_renderer);
+        }
     }
     ed_toolbar_rebuild();
     ed_menu_bar_invalidate();
@@ -779,24 +786,10 @@ static void on_key_event(const Ca_Event *event, void *userdata)
 static void trs_to_matrix(const Qs_Transform *t, float m[16])
 {
     if (!t) {
-        for (int i = 0; i < 16; i++) m[i] = 0.0f;
-        m[0] = m[5] = m[10] = m[15] = 1.0f;
+        qs_m4_identity(m);
         return;
     }
-    float qx = t->rotation[0], qy = t->rotation[1];
-    float qz = t->rotation[2], qw = t->rotation[3];
-    float sx = t->scale[0],    sy = t->scale[1],    sz = t->scale[2];
-    float px = t->position[0], py = t->position[1], pz = t->position[2];
-    float xx = qx*qx, yy = qy*qy, zz = qz*qz;
-    float xy = qx*qy, xz = qx*qz, yz = qy*qz;
-    float wx = qw*qx, wy = qw*qy, wz = qw*qz;
-    m[ 0] = (1.0f - 2.0f*(yy+zz)) * sx;  m[ 1] = (2.0f*(xy+wz)) * sx;
-    m[ 2] = (2.0f*(xz-wy)) * sx;         m[ 3] = 0.0f;
-    m[ 4] = (2.0f*(xy-wz)) * sy;         m[ 5] = (1.0f - 2.0f*(xx+zz)) * sy;
-    m[ 6] = (2.0f*(yz+wx)) * sy;         m[ 7] = 0.0f;
-    m[ 8] = (2.0f*(xz+wy)) * sz;         m[ 9] = (2.0f*(yz-wx)) * sz;
-    m[10] = (1.0f - 2.0f*(xx+yy)) * sz;  m[11] = 0.0f;
-    m[12] = px; m[13] = py; m[14] = pz;  m[15] = 1.0f;
+    qs_m4_from_trs(m, t->position, t->rotation, t->scale);
 }
 
 static void on_frame(Qs_Engine *engine, void *userdata)
@@ -824,6 +817,7 @@ static void on_frame(Qs_Engine *engine, void *userdata)
             Qs_RenderableDesc r;
             r.mesh            = mc->mesh;
             r.material        = mc->material;
+            r.entity          = e;
             r.cast_shadows    = true;
             r.receive_shadows = true;
             r.bounds.min[0] = r.bounds.min[1] = r.bounds.min[2] = -100.0f;
@@ -864,19 +858,11 @@ typedef struct {
     void *ptr;
 } NamedResource;
 
-static Qs_Mesh *find_mesh(NamedResource *res, int count, const char *name)
+static void *find_named_resource(NamedResource *res, int count, const char *name)
 {
     for (int i = 0; i < count; i++)
         if (strcmp(res[i].name, name) == 0)
-            return (Qs_Mesh *)res[i].ptr;
-    return NULL;
-}
-
-static Qs_Material *find_material(NamedResource *res, int count, const char *name)
-{
-    for (int i = 0; i < count; i++)
-        if (strcmp(res[i].name, name) == 0)
-            return (Qs_Material *)res[i].ptr;
+            return res[i].ptr;
     return NULL;
 }
 
@@ -941,13 +927,16 @@ static bool editor_load_scene(Editor *ed, const char *path)
             const cJSON *metal =
                 cJSON_GetObjectItemCaseSensitive(mat_json, "metallic");
 
-            Qs_Material *m = qs_material_create(ed->engine, &(Qs_MaterialDesc){
-                .name              = mat_json->string,
-                .base_color_factor = { base_color[0], base_color[1],
-                                       base_color[2], base_color[3] },
-                .roughness_factor  = rough ? (float)rough->valuedouble : 0.5f,
-                .metallic_factor   = metal ? (float)metal->valuedouble : 0.0f,
-            });
+            Qs_MaterialDesc md = qs_material_desc_defaults();
+            md.name              = mat_json->string;
+            md.base_color_factor[0] = base_color[0];
+            md.base_color_factor[1] = base_color[1];
+            md.base_color_factor[2] = base_color[2];
+            md.base_color_factor[3] = base_color[3];
+            md.roughness_factor  = rough ? (float)rough->valuedouble : 0.5f;
+            md.metallic_factor   = metal ? (float)metal->valuedouble : 0.0f;
+
+            Qs_Material *m = qs_material_create(ed->engine, &md);
             if (m) {
                 snprintf(materials[mat_count].name, 64, "%s", mat_json->string);
                 materials[mat_count].ptr = m;
@@ -1012,9 +1001,9 @@ static bool editor_load_scene(Editor *ed, const char *path)
                               scene, e, qs_mesh_comp_type());
         if (!mc) continue;
         if (mc->mesh_name[0])
-            mc->mesh = find_mesh(meshes, mesh_count, mc->mesh_name);
+            mc->mesh = find_named_resource(meshes, mesh_count, mc->mesh_name);
         if (mc->material_name[0])
-            mc->material = find_material(materials, mat_count,
+            mc->material = find_named_resource(materials, mat_count,
                                          mc->material_name);
     }
 
@@ -1076,6 +1065,7 @@ Editor *editor_create(const EditorDesc *desc)
     qs_engine_set_stylesheet(ed->engine, g_editor_css);
 
     ed_gizmo_init(ed->engine);
+    ed_pick_init(ed->engine);
 
     ed->scene_renderer = qs_renderer_create(ed->engine, &(Qs_RendererDesc){
         .name        = "scene",
@@ -1083,18 +1073,22 @@ Editor *editor_create(const EditorDesc *desc)
         .depth_test  = true,
     });
 
-    if (ed->scene_renderer)
+    if (ed->scene_renderer) {
+        ed_pick_attach(ed->scene_renderer);
         ed_gizmo_attach(ed->scene_renderer);
+    }
 
     /* Position camera for a good view of the test scene */
     if (ed->scene_renderer) {
         Qs_Camera *cam = qs_renderer_camera(ed->scene_renderer);
-        cam->position[0] =  5.0f;
-        cam->position[1] =  4.0f;
-        cam->position[2] =  8.0f;
-        cam->target[0]   =  0.0f;
-        cam->target[1]   =  0.5f;
-        cam->target[2]   =  0.0f;
+        if (cam) {
+            cam->position[0] =  5.0f;
+            cam->position[1] =  4.0f;
+            cam->position[2] =  8.0f;
+            cam->target[0]   =  0.0f;
+            cam->target[1]   =  0.5f;
+            cam->target[2]   =  0.0f;
+        }
     }
 
     /* ---- Load scene from project ---- */
@@ -1180,6 +1174,7 @@ void editor_set_selected_entity(Editor *ed, Qs_Entity entity)
 void editor_destroy(Editor *ed)
 {
     if (!ed) return;
+    ed_pick_shutdown(ed->engine);
     ed_gizmo_shutdown(ed->engine);
     qs_engine_destroy(ed->engine);
     qs_project_destroy(ed->project);

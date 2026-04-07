@@ -20,6 +20,7 @@
  */
 
 #include "qs_renderer.h"
+#include "qs_math.h"
 #include "qs_gpu.h"
 #include "qs_material.h"
 #include "qs_light.h"
@@ -268,25 +269,6 @@ static const char *FULLSCREEN_VERT =
    MATH HELPERS (CSM computation)
    ================================================================ */
 
-static void fwd_mat4_identity(float m[16]) { memset(m,0,64); m[0]=m[5]=m[10]=m[15]=1.0f; }
-
-static void fwd_mat4_mul(float out[16], const float a[16], const float b[16])
-{
-    float tmp[16];
-    for (int c=0;c<4;c++) for (int r=0;r<4;r++) {
-        float s=0; for (int k=0;k<4;k++) s+=a[r+k*4]*b[k+c*4]; tmp[r+c*4]=s; }
-    memcpy(out, tmp, 64);
-}
-
-static void fwd_mat4_ortho(float out[16],
-    float l, float r, float b, float t, float n, float f)
-{
-    memset(out,0,64);
-    out[0]=2.0f/(r-l); out[5]=2.0f/(t-b); out[10]=-2.0f/(f-n);
-    out[12]=-(r+l)/(r-l); out[13]=-(t+b)/(t-b); out[14]=-(f+n)/(f-n);
-    out[15]=1.0f;
-}
-
 static void compute_csm(const Qs_Camera *cam,
                          const Qs_LightGPU *lights, uint32_t light_count,
                          float shadow_matrices[QS_CSM_CASCADES][16],
@@ -331,8 +313,8 @@ static void compute_csm(const Qs_Camera *cam,
         lv[2]=fd[0];   lv[6]=fd[1];  lv[10]=fd[2];    lv[14]=-(fd[0]*lx+fd[1]*ly+fd[2]*lz);
         lv[3]=0;lv[7]=0;lv[11]=0;lv[15]=1.0f;
         float lp[16]; float r2=radius*1.2f;
-        fwd_mat4_ortho(lp,-r2,r2,-r2,r2,-radius*5.0f,radius*5.0f);
-        fwd_mat4_mul(shadow_matrices[c], lp, lv);
+        qs_m4_ortho_lrtbnf(lp,-r2,r2,-r2,r2,-radius*5.0f,radius*5.0f);
+        qs_m4_mul(lp, lv, shadow_matrices[c]);
     }
 }
 
@@ -468,21 +450,23 @@ static bool create_composite_pipeline(Qs_GpuContext *gpu, PbrPassResources *ps,
 static bool pbr_pass_resources_init(Qs_GpuContext *gpu, PbrPassResources *ps)
 {
     if (ps->ok) return true;
-    if (!create_samplers(gpu,ps))                               { QS_LOG_ERROR("PBR Renderer: samplers failed");          return false; }
-    if (!create_frame_set_layout(gpu,ps))                       { QS_LOG_ERROR("PBR Renderer: frame set layout failed");  return false; }
-    if (!create_shadow_pipeline(gpu,ps))                        { QS_LOG_ERROR("PBR Renderer: shadow pipeline failed");   return false; }
-    if (!create_forward_pipeline(gpu,ps))                       { QS_LOG_ERROR("PBR Renderer: forward pipeline failed");  return false; }
-    if (!create_bloom_pipelines(gpu,ps))                        { QS_LOG_ERROR("PBR Renderer: bloom pipelines failed");   return false; }
+    if (!create_samplers(gpu,ps))                               { QS_LOG_ERROR("PBR Renderer: samplers failed");          goto fail; }
+    if (!create_frame_set_layout(gpu,ps))                       { QS_LOG_ERROR("PBR Renderer: frame set layout failed");  goto fail; }
+    if (!create_shadow_pipeline(gpu,ps))                        { QS_LOG_ERROR("PBR Renderer: shadow pipeline failed");   goto fail; }
+    if (!create_forward_pipeline(gpu,ps))                       { QS_LOG_ERROR("PBR Renderer: forward pipeline failed");  goto fail; }
+    if (!create_bloom_pipelines(gpu,ps))                        { QS_LOG_ERROR("PBR Renderer: bloom pipelines failed");   goto fail; }
     if (!create_composite_pipeline(gpu,ps,QS_GPU_FORMAT_BGRA8_UNORM))
-                                                                { QS_LOG_ERROR("PBR Renderer: composite pipeline failed");return false; }
+                                                                { QS_LOG_ERROR("PBR Renderer: composite pipeline failed");goto fail; }
     ps->ok = true;
     QS_LOG_INFO("PBR Renderer: shared pass resources ready");
     return true;
+fail:
+    pbr_pass_resources_shutdown(gpu, ps);
+    return false;
 }
 
 void pbr_pass_resources_shutdown(Qs_GpuContext *gpu, PbrPassResources *ps)
 {
-    if (!ps->ok) return;
     qs_gpu_destroy_pipeline(gpu, ps->shadow_pipeline);
     qs_gpu_destroy_pipeline_layout(gpu, ps->shadow_layout);
     qs_gpu_destroy_pipeline(gpu, ps->forward_pipeline);
@@ -786,12 +770,14 @@ void pbr_forward_attach(Qs_Engine *engine, PbrRenderer *r, Qs_Renderer *handle)
         .size=sizeof(ShadowUBO),.usage=QS_GPU_BUFFER_UNIFORM,
         .memory=QS_GPU_MEMORY_HOST_VISIBLE});
     if (!r->shadow_ubo) {
-        QS_LOG_ERROR("PBR Renderer: shadow UBO creation failed"); return;
+        QS_LOG_ERROR("PBR Renderer: shadow UBO creation failed");
+        pbr_forward_detach(r); return;
     }
 
     /* --- Allocate descriptor pool and sets --- */
     if (!fwd_alloc_descriptors(r, gpu, ps)) {
-        QS_LOG_ERROR("PBR Renderer: descriptor alloc failed"); return;
+        QS_LOG_ERROR("PBR Renderer: descriptor alloc failed");
+        pbr_forward_detach(r); return;
     }
 
     /* --- Write static descriptors (UBO bindings and shadow map samplers).

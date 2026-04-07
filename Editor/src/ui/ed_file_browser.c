@@ -94,7 +94,7 @@ static struct {
     void          *user_data;
 
     /* ---- Retained widget handles ---- */
-    Ca_Label      *title_label;
+
     Ca_TextInput  *path_input;
     Ca_Button     *btn_back;
     Ca_Button     *btn_forward;
@@ -496,17 +496,6 @@ static void build_window_ui(void)
         .style     = "fb-root",
     });
     {
-        /* ---- Title bar ---- */
-        ca_div_begin(&(Ca_DivDesc){
-            .direction = CA_HORIZONTAL,
-            .style     = "fb-title-bar",
-        });
-        s_fb.title_label = ca_text(&(Ca_TextDesc){
-            .text  = s_fb.title,
-            .style = "fb-title",
-        });
-        ca_div_end();
-
         /* ---- Navigation bar ---- */
         ca_div_begin(&(Ca_DivDesc){
             .direction = CA_HORIZONTAL,

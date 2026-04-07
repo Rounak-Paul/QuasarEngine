@@ -56,6 +56,19 @@ typedef struct Qs_MaterialDesc {
     bool          double_sided;
 } Qs_MaterialDesc;
 
+/// Returns a Qs_MaterialDesc with PBR-sane defaults pre-filled.
+/// Callers should modify individual fields after calling this.
+static inline Qs_MaterialDesc qs_material_desc_defaults(void)
+{
+    return (Qs_MaterialDesc){
+        .base_color_factor  = {1.0f, 1.0f, 1.0f, 1.0f},
+        .roughness_factor   = 1.0f,
+        .normal_scale       = 1.0f,
+        .occlusion_strength = 1.0f,
+        .alpha_cutoff       = 0.5f,
+    };
+}
+
 /* ================================================================
    PBR PARAMS - GPU-ready parameter block
    ================================================================ */

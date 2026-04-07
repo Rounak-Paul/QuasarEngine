@@ -8,6 +8,7 @@
  */
 
 #include "qs_light.h"
+#include "qs_math.h"
 #include "qs_system.h"
 #include "qs_log.h"
 
@@ -74,8 +75,6 @@ Qs_SystemDesc qs_light_system_desc(void)
    PUBLIC API
    ================================================================ */
 
-static float deg_to_rad(float deg) { return deg * 3.14159265f / 180.0f; }
-
 Qs_Light *qs_light_create(Qs_Engine *engine, const Qs_LightDesc *desc)
 {
     (void)engine;
@@ -102,18 +101,16 @@ Qs_Light *qs_light_create(Qs_Engine *engine, const Qs_LightDesc *desc)
     l->direction[1] = desc->direction[1];
     l->direction[2] = desc->direction[2];
 
-    l->color[0] = desc->color[0] != 0.0f ? desc->color[0] : 1.0f;
-    l->color[1] = desc->color[1] != 0.0f ? desc->color[1] : 1.0f;
-    l->color[2] = desc->color[2] != 0.0f ? desc->color[2] : 1.0f;
+    l->color[0] = desc->color[0];
+    l->color[1] = desc->color[1];
+    l->color[2] = desc->color[2];
 
-    l->intensity    = desc->intensity != 0.0f ? desc->intensity : 1.0f;
+    l->intensity    = desc->intensity;
     l->range        = desc->range;
     l->cast_shadows = desc->cast_shadows;
 
-    const float inner = desc->inner_cone_deg > 0.0f ? desc->inner_cone_deg : 30.0f;
-    const float outer = desc->outer_cone_deg > 0.0f ? desc->outer_cone_deg : 45.0f;
-    l->inner_cone_cos = cosf(deg_to_rad(inner));
-    l->outer_cone_cos = cosf(deg_to_rad(outer));
+    l->inner_cone_cos = cosf(qs_to_rad(desc->inner_cone_deg));
+    l->outer_cone_cos = cosf(qs_to_rad(desc->outer_cone_deg));
 
     /* Ensure direction is never a zero vector */
     if (l->direction[0] == 0.0f && l->direction[1] == 0.0f && l->direction[2] == 0.0f)
@@ -150,8 +147,8 @@ bool qs_light_enabled      (const Qs_Light *l)    { return l ? l->enabled : fals
 void qs_light_set_cone(Qs_Light *l, float inner_deg, float outer_deg)
 {
     if (!l) return;
-    l->inner_cone_cos = cosf(deg_to_rad(inner_deg));
-    l->outer_cone_cos = cosf(deg_to_rad(outer_deg));
+    l->inner_cone_cos = cosf(qs_to_rad(inner_deg));
+    l->outer_cone_cos = cosf(qs_to_rad(outer_deg));
 }
 
 bool qs_light_is_active(const Qs_Light *l)

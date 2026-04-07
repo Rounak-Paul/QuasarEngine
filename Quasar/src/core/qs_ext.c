@@ -42,6 +42,8 @@ struct Qs_Extension {
 #define MAX_HANDLES (MAX_POINTS * MAX_ENTRIES)
 static struct Qs_Extension s_handles[MAX_HANDLES];
 static uint32_t            s_handle_count;
+static uint32_t            s_free_list[MAX_HANDLES];
+static uint32_t            s_free_count;
 
 /* ================================================================
    HELPERS
@@ -106,9 +108,14 @@ Qs_Extension *qs_ext_register(Qs_ExtRegistry *reg, const char *point,
     p->entries[idx].point_idx = (uint32_t)(p - reg->points);
     p->entries[idx].entry_idx = idx;
 
-    /* Allocate a handle */
-    if (s_handle_count >= MAX_HANDLES) return NULL;
-    struct Qs_Extension *h = &s_handles[s_handle_count++];
+    /* Allocate a handle (prefer recycled slot from freelist) */
+    struct Qs_Extension *h;
+    if (s_free_count > 0) {
+        h = &s_handles[s_free_list[--s_free_count]];
+    } else {
+        if (s_handle_count >= MAX_HANDLES) return NULL;
+        h = &s_handles[s_handle_count++];
+    }
     h->registry  = reg;
     h->point_idx = p->entries[idx].point_idx;
     h->entry_idx = idx;
@@ -142,6 +149,11 @@ void qs_ext_unregister(Qs_Extension *ext)
     }
     p->count--;
     ext->registry = NULL;
+
+    /* Return handle slot to freelist */
+    uint32_t slot = (uint32_t)(ext - s_handles);
+    if (s_free_count < MAX_HANDLES)
+        s_free_list[s_free_count++] = slot;
 }
 
 /* ================================================================

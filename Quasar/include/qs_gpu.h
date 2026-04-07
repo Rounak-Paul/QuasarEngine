@@ -439,6 +439,11 @@ void qs_cmd_image_barrier(Qs_GpuCmd *cmd, const Qs_GpuImageBarrier *barrier);
 void qs_cmd_copy_buffer_to_image(Qs_GpuCmd *cmd, Qs_GpuBuffer *src,
                                   Qs_GpuImage *dst, uint32_t width, uint32_t height);
 
+/// Copies a region of an image into a buffer.  Image must be in TRANSFER_SRC layout.
+void qs_cmd_copy_image_to_buffer(Qs_GpuCmd *cmd, Qs_GpuImage *src,
+                                  Qs_GpuBuffer *dst, uint32_t x, uint32_t y,
+                                  uint32_t width, uint32_t height);
+
 /// Blits between two mip levels of the same image (for mipmap generation).
 void qs_cmd_blit_image_mip(Qs_GpuCmd *cmd, Qs_GpuImage *image,
                             uint32_t src_mip, uint32_t src_w, uint32_t src_h,

@@ -1,4 +1,5 @@
 ﻿#include "qs_renderer.h"
+#include "qs_math.h"
 #include "qs_scene.h"
 #include "qs_light.h"
 #include "qs_gpu.h"
@@ -198,69 +199,22 @@ void qs_renderer_backend_set_default(const char *name)
 }
 
 /* ================================================================
-   INTERNAL MATH HELPERS
+   VIEW/PROJECTION COMPUTATION
    ================================================================ */
-
-static void mat4_identity(float m[16])
-{
-    memset(m, 0, 64);
-    m[0] = m[5] = m[10] = m[15] = 1.0f;
-}
-
-static void mat4_look_at(float out[16], const float eye[3],
-                          const float center[3], const float up[3])
-{
-    float fx = center[0]-eye[0], fy = center[1]-eye[1], fz = center[2]-eye[2];
-    float len = sqrtf(fx*fx+fy*fy+fz*fz);
-    if (len > 1e-6f) { fx/=len; fy/=len; fz/=len; }
-    float sx = fy*up[2]-fz*up[1], sy = fz*up[0]-fx*up[2], sz = fx*up[1]-fy*up[0];
-    len = sqrtf(sx*sx+sy*sy+sz*sz);
-    if (len > 1e-6f) { sx/=len; sy/=len; sz/=len; }
-    float ux = sy*fz-sz*fy, uy = sz*fx-sx*fz, uz = sx*fy-sy*fx;
-    memset(out, 0, 64);
-    out[0]=sx; out[4]=sy; out[8] =sz; out[12]=-(sx*eye[0]+sy*eye[1]+sz*eye[2]);
-    out[1]=ux; out[5]=uy; out[9] =uz; out[13]=-(ux*eye[0]+uy*eye[1]+uz*eye[2]);
-    out[2]=-fx;out[6]=-fy;out[10]=-fz;out[14]= (fx*eye[0]+fy*eye[1]+fz*eye[2]);
-    out[3]=0;  out[7]=0;  out[11]=0;  out[15]=1.0f;
-}
-
-static void mat4_perspective(float out[16], float fov_rad, float aspect,
-                              float near_p, float far_p)
-{
-    memset(out, 0, 64);
-    float t = tanf(fov_rad*0.5f);
-    out[0]  = 1.0f/(aspect*t);
-    out[5]  = -1.0f/t;
-    out[10] = -(far_p+near_p)/(far_p-near_p);
-    out[11] = -1.0f;
-    out[14] = -(2.0f*far_p*near_p)/(far_p-near_p);
-}
-
-static void mat4_ortho(float out[16], float half_h, float aspect,
-                        float near_p, float far_p)
-{
-    memset(out, 0, 64);
-    float half_w = half_h*aspect;
-    out[0]  =  1.0f/half_w;
-    out[5]  = -1.0f/half_h;
-    out[10] = -2.0f/(far_p-near_p);
-    out[14] = -(far_p+near_p)/(far_p-near_p);
-    out[15] =  1.0f;
-}
 
 static void compute_matrices(const Qs_Camera *cam, uint32_t w, uint32_t h,
                               float view[16], float proj[16])
 {
-    mat4_look_at(view, cam->position, cam->target, cam->up);
+    qs_m4_look_at(view, cam->position, cam->target, cam->up);
     float aspect = (h > 0) ? (float)w/(float)h : 1.0f;
     if (cam->projection == QS_PROJECTION_ORTHOGRAPHIC) {
         float hh = cam->ortho_size > 0.0f ? cam->ortho_size : 5.0f;
-        mat4_ortho(proj, hh, aspect,
+        qs_m4_ortho(proj, hh, aspect,
                    cam->near_plane!=0.0f?cam->near_plane:0.1f,
                    cam->far_plane !=0.0f?cam->far_plane :100.0f);
     } else {
         float fov = cam->fov_deg > 0.0f ? cam->fov_deg : 60.0f;
-        mat4_perspective(proj, fov*3.14159265f/180.0f, aspect,
+        qs_m4_perspective(proj, qs_to_rad(fov), aspect,
                          cam->near_plane!=0.0f?cam->near_plane:0.1f,
                          cam->far_plane !=0.0f?cam->far_plane :1000.0f);
     }
@@ -379,7 +333,7 @@ static void renderer_on_render(const Qs_GpuFrame *frame,
     if (fubo) {
         memcpy(fubo->view, view, 64);
         memcpy(fubo->proj, proj, 64);
-        mat4_identity(fubo->inv_view_proj);
+        qs_m4_identity(fubo->inv_view_proj);
         fubo->cam_pos[0]    = r->camera.position[0];
         fubo->cam_pos[1]    = r->camera.position[1];
         fubo->cam_pos[2]    = r->camera.position[2];
@@ -584,6 +538,7 @@ Qs_Renderer *qs_renderer_create(Qs_Engine *engine, const Qs_RendererDesc *desc)
         .roughness_factor     = 0.8f,
         .occlusion_strength   = 1.0f,
         .normal_scale         = 1.0f,
+        .alpha_cutoff         = 0.5f,
     };
     const Qs_MaterialDesc *mat_desc = (desc && desc->default_material)
                                       ? desc->default_material : &s_fallback;
@@ -807,6 +762,7 @@ void qs_renderer_submit_renderable(Qs_Renderer *r, const Qs_RenderableDesc *desc
     /* Transform and culling */
     memcpy(ren->transform, desc->transform, 64);
     ren->bounds          = desc->bounds;
+    ren->entity          = desc->entity;
     ren->cast_shadows    = desc->cast_shadows;
     ren->receive_shadows = desc->receive_shadows;
 }
@@ -847,9 +803,8 @@ void qs_renderer_submit_light_comp(Qs_Renderer *r, const Qs_LightComp *lc)
     out->type            = (uint32_t)lc->type;
     out->cast_shadows    = lc->cast_shadows ? 1u : 0u;
     /* Convert cone degrees to cosines for the GPU shader */
-    float pi_over_180 = 3.14159265f / 180.0f;
-    float inner = lc->inner_cone_deg * pi_over_180;
-    float outer = lc->outer_cone_deg * pi_over_180;
+    float inner = qs_to_rad(lc->inner_cone_deg);
+    float outer = qs_to_rad(lc->outer_cone_deg);
     out->inner_cone_cos  = cosf(inner);
     out->outer_cone_cos  = cosf(outer > inner ? outer : inner);
     out->_pad            = 0;

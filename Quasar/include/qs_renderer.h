@@ -8,6 +8,7 @@
 #include "qs_light.h"
 #include "qs_mesh.h"
 #include "qs_material.h"
+#include "qs_scene.h"
 
 typedef struct Qs_Engine            Qs_Engine;
 typedef struct Qs_Renderer          Qs_Renderer;
@@ -84,6 +85,7 @@ typedef struct Qs_RenderableDesc {
     Qs_Material *material;          ///< NULL → engine uses the renderer default material.
     float        transform[16];     ///< Column-major model matrix.
     Qs_AABB      bounds;            ///< World-space AABB for engine-side culling.
+    Qs_Entity    entity;            ///< Source entity for GPU picking.
     bool         cast_shadows;
     bool         receive_shadows;
 } Qs_RenderableDesc;
@@ -108,6 +110,7 @@ typedef struct Qs_Renderable {
     /* Transform and visibility */
     float    transform[16];  ///< Column-major model matrix.
     Qs_AABB  bounds;         ///< World-space AABB.
+    Qs_Entity entity;        ///< Source entity for GPU picking.
     bool     cast_shadows;
     bool     receive_shadows;
 } Qs_Renderable;

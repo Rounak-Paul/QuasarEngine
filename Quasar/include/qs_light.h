@@ -39,6 +39,18 @@ typedef struct Qs_LightDesc {
     bool          cast_shadows;
 } Qs_LightDesc;
 
+/// Returns a Qs_LightDesc with sensible defaults pre-filled.
+/// Callers should modify individual fields after calling this.
+static inline Qs_LightDesc qs_light_desc_defaults(void)
+{
+    return (Qs_LightDesc){
+        .color          = {1.0f, 1.0f, 1.0f},
+        .intensity      = 1.0f,
+        .inner_cone_deg = 30.0f,
+        .outer_cone_deg = 45.0f,
+    };
+}
+
 /* ================================================================
    GPU-READY LIGHT DATA
    ================================================================ */

@@ -65,25 +65,12 @@ void qs_input_key_event(Qs_Key key, Qs_KeyAction action, int mods)
 {
     if (!g_input) return;
     if (key < 0 || key >= QS_KEY_MAX) return;
-
-    const char *name = qs_key_name(key);
-    const char *mods_str = "";
-    if (mods & QS_MOD_CONTROL) mods_str = "Ctrl+";
-    else if (mods & QS_MOD_SHIFT) mods_str = "Shift+";
-    else if (mods & QS_MOD_ALT) mods_str = "Alt+";
+    (void)mods;
 
     switch (action) {
-    case QS_KEY_PRESS:
-        g_input->current[key] = true;
-        // qs_log(QS_LOG_DEBUG, "Key Press: %s%s", mods_str, name);
-        break;
-    case QS_KEY_RELEASE:
-        g_input->current[key] = false;
-        // qs_log(QS_LOG_DEBUG, "Key Release: %s%s", mods_str, name);
-        break;
-    case QS_KEY_REPEAT:
-        // qs_log(QS_LOG_TRACE, "Key Hold: %s%s", mods_str, name);
-        break;
+    case QS_KEY_PRESS:   g_input->current[key] = true;  break;
+    case QS_KEY_RELEASE: g_input->current[key] = false; break;
+    case QS_KEY_REPEAT:  break;
     }
 }
 
