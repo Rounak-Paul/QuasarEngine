@@ -160,18 +160,47 @@ static const char *FORWARD_FRAG =
     "    float k=(r+1.0)*(r+1.0)/8.0;\n"
     "    return (NdotV/(NdotV*(1.0-k)+k))*(NdotL/(NdotL*(1.0-k)+k)); }\n"
     "vec3 F_Schlick(float c, vec3 F0) { return F0+(1.0-F0)*pow(clamp(1.0-c,0.0,1.0),5.0); }\n"
-    "float shadow_pcf(sampler2D sm, vec4 lsp) {\n"
-    "    vec3 p=lsp.xyz/lsp.w;\n"                                                          /* ortho: w=1, so p = clip coords = NDC            */
-    "    vec2 uv=p.xy*0.5+0.5;\n"                                                          /* remap XY [-1,1] -> UV [0,1]                      */
-    "    if(p.z<0.0||p.z>1.0||any(lessThan(uv,vec2(0)))||any(greaterThan(uv,vec2(1)))) return 1.0;\n"
-    "    float s=0.0; vec2 t=1.0/vec2(textureSize(sm,0)); float d=p.z-0.005;\n"            /* compare NDC z directly: depth buf stores [0,1]  */
-    "    for(int x=-1;x<=1;x++) for(int y=-1;y<=1;y++) s+=(texture(sm,uv+vec2(x,y)*t).r<d)?0.0:1.0;\n"
-    "    return s/9.0; }\n"
-    "float compute_shadow(vec3 wpos) {\n"
+    "const vec2 POISSON[16]=vec2[](\n"
+    "    vec2(-0.94201624,-0.39906216),vec2( 0.94558609,-0.76890725),\n"
+    "    vec2(-0.09418410,-0.92938870),vec2( 0.34495938, 0.29387760),\n"
+    "    vec2(-0.91588581, 0.45771432),vec2(-0.81544232,-0.87912464),\n"
+    "    vec2(-0.38277543, 0.27676845),vec2( 0.97484398, 0.75648379),\n"
+    "    vec2( 0.44323325,-0.97511554),vec2( 0.53742981,-0.47373420),\n"
+    "    vec2(-0.26496911,-0.41893023),vec2( 0.79197514, 0.19090188),\n"
+    "    vec2(-0.24188840, 0.99706507),vec2(-0.81409955, 0.91437590),\n"
+    "    vec2( 0.19984126, 0.78641367),vec2( 0.14383161,-0.14100790));\n"
+    "float shadow_pcf(sampler2D sm,vec4 lsp,float bias){\n"
+    "    vec3 p=lsp.xyz/lsp.w; vec2 uv=p.xy*0.5+0.5;\n"
+    "    if(p.z<0.0||p.z>1.0||any(lessThan(uv,vec2(0.0)))||any(greaterThan(uv,vec2(1.0)))) return 1.0;\n"
+    "    float z=p.z-bias;\n"
+    "    float spread=1.5/float(textureSize(sm,0).x);\n"
+    "    float angle=fract(52.9829189*fract(dot(gl_FragCoord.xy,vec2(0.06711056,0.00583715))))*6.28318;\n"
+    "    float ca=cos(angle); float sa=sin(angle);\n"
+    "    float s=0.0;\n"
+    "    for(int i=0;i<16;i++){\n"
+    "        vec2 r=vec2(ca*POISSON[i].x-sa*POISSON[i].y,sa*POISSON[i].x+ca*POISSON[i].y);\n"
+    "        s+=(texture(sm,uv+r*spread).r<z)?0.0:1.0;}\n"
+    "    return s/16.0;}\n"
+    "float compute_shadow(vec3 wpos,vec3 N,vec3 sun_dir){\n"
+    "    float NdotL=max(dot(N,normalize(-sun_dir)),0.0);\n"
+    "    float bias=max(0.0001*(1.0-NdotL),0.0003);\n"
     "    float depth=-(frame.view*vec4(wpos,1.0)).z;\n"
-    "    if(depth<shadow_data.cascade_splits[0]) return shadow_pcf(shadow_map_0,shadow_data.cascade_vp[0]*vec4(wpos,1.0));\n"
-    "    else if(depth<shadow_data.cascade_splits[1]) return shadow_pcf(shadow_map_1,shadow_data.cascade_vp[1]*vec4(wpos,1.0));\n"
-    "    else return shadow_pcf(shadow_map_2,shadow_data.cascade_vp[2]*vec4(wpos,1.0)); }\n"
+    "    float split0=shadow_data.cascade_splits[0];\n"
+    "    float split1=shadow_data.cascade_splits[1];\n"
+    "    float s;\n"
+    "    if(depth<split0){\n"
+    "        s=shadow_pcf(shadow_map_0,shadow_data.cascade_vp[0]*vec4(wpos,1.0),bias);\n"
+    "        float bt=split0*0.85; if(depth>bt){\n"
+    "            float t=clamp((depth-bt)/(split0-bt),0.0,1.0);\n"
+    "            s=mix(s,shadow_pcf(shadow_map_1,shadow_data.cascade_vp[1]*vec4(wpos,1.0),bias),t);}\n"
+    "    }else if(depth<split1){\n"
+    "        s=shadow_pcf(shadow_map_1,shadow_data.cascade_vp[1]*vec4(wpos,1.0),bias);\n"
+    "        float bt=split0+(split1-split0)*0.85; if(depth>bt){\n"
+    "            float t=clamp((depth-bt)/(split1-bt),0.0,1.0);\n"
+    "            s=mix(s,shadow_pcf(shadow_map_2,shadow_data.cascade_vp[2]*vec4(wpos,1.0),bias),t);}\n"
+    "    }else{\n"
+    "        s=shadow_pcf(shadow_map_2,shadow_data.cascade_vp[2]*vec4(wpos,1.0),bias);}\n"
+    "    return s;}\n"
     "void main() {\n"
     "    vec4 base=texture(u_base_color,v_uv)*mat_pc.base_color_factor;\n"
     "    vec2 mr=texture(u_metallic_roughness,v_uv).bg;\n"
@@ -202,7 +231,7 @@ static const char *FORWARD_FRAG =
     "        vec3 F=F_Schlick(VdotH,F0);\n"
     "        vec3 spec=(D*G*F)/(4.0*NdotV*NdotL);\n"
     "        vec3 kd=(vec3(1.0)-F)*(1.0-metallic);\n"
-    "        float shad=(l.cast_shadows!=0u&&l.type==0u)?compute_shadow(v_world_pos):1.0;\n"
+    "        float shad=(l.cast_shadows!=0u&&l.type==0u)?compute_shadow(v_world_pos,N,l.direction):1.0;\n"
     "        Lo+=(kd*base.rgb/PI+spec)*l.color*l.intensity*NdotL*att*shad;\n"
     "    }\n"
     "    vec3 ambient=0.03*base.rgb*ao;\n"
@@ -274,7 +303,7 @@ static void compute_csm(const Qs_Camera *cam,
                          float shadow_matrices[QS_CSM_CASCADES][16],
                          float shadow_splits[QS_CSM_CASCADES+1])
 {
-    /* Use the first directional light as the sun; fall back to a default. */
+    /* Find the first directional light; fall back to a default sun direction. */
     float light_dir[3] = { 0.4f, -1.0f, 0.3f };
     for (uint32_t i = 0; i < light_count; i++) {
         if (lights[i].type == (uint32_t)QS_LIGHT_DIRECTIONAL) {
@@ -287,33 +316,76 @@ static void compute_csm(const Qs_Camera *cam,
     float ld = sqrtf(light_dir[0]*light_dir[0]+light_dir[1]*light_dir[1]+light_dir[2]*light_dir[2]);
     if (ld > 1e-6f) { light_dir[0]/=ld; light_dir[1]/=ld; light_dir[2]/=ld; }
 
-    float near_p = cam->near_plane>0.0f ? cam->near_plane : 0.1f;
-    float far_p  = cam->far_plane >0.0f ? cam->far_plane  : 500.0f;
+    float near_p = cam->near_plane > 0.0f ? cam->near_plane : 0.1f;
+    float far_p  = cam->far_plane  > 0.0f ? cam->far_plane  : 500.0f;
 
+    /* Practical Split Scheme (blend of logarithmic and uniform) */
     shadow_splits[0] = near_p;
-    for (int i=1; i<=QS_CSM_CASCADES; i++) {
-        float fi = (float)i/(float)QS_CSM_CASCADES;
-        float lg = near_p*powf(far_p/near_p, fi);
-        float ln = near_p+(far_p-near_p)*fi;
-        shadow_splits[i] = 0.75f*lg+0.25f*ln;
+    for (int i = 1; i <= QS_CSM_CASCADES; i++) {
+        float fi = (float)i / (float)QS_CSM_CASCADES;
+        float lg = near_p * powf(far_p / near_p, fi);
+        float ln = near_p + (far_p - near_p) * fi;
+        shadow_splits[i] = 0.75f * lg + 0.25f * ln;
     }
-    for (int c=0; c<QS_CSM_CASCADES; c++) {
-        float radius = (shadow_splits[c+1]-shadow_splits[c])*0.6f+2.0f;
-        float cx=cam->target[0], cy=cam->target[1], cz=cam->target[2];
-        float lx=cx-light_dir[0]*radius, ly=cy-light_dir[1]*radius, lz=cz-light_dir[2]*radius;
-        float fd[3]={-light_dir[0],-light_dir[1],-light_dir[2]};
-        float up[3]={0,1,0};
-        float right[3]={fd[1]*up[2]-fd[2]*up[1],fd[2]*up[0]-fd[0]*up[2],fd[0]*up[1]-fd[1]*up[0]};
-        float rl=sqrtf(right[0]*right[0]+right[1]*right[1]+right[2]*right[2]);
-        if (rl>1e-6f){right[0]/=rl;right[1]/=rl;right[2]/=rl;}
-        float up2[3]={fd[1]*right[2]-fd[2]*right[1],fd[2]*right[0]-fd[0]*right[2],fd[0]*right[1]-fd[1]*right[0]};
-        float lv[16]; memset(lv,0,64);
-        lv[0]=right[0];lv[4]=right[1];lv[8]=right[2];  lv[12]=-(right[0]*lx+right[1]*ly+right[2]*lz);
-        lv[1]=up2[0];  lv[5]=up2[1]; lv[9]=up2[2];    lv[13]=-(up2[0]*lx+up2[1]*ly+up2[2]*lz);
-        lv[2]=fd[0];   lv[6]=fd[1];  lv[10]=fd[2];    lv[14]=-(fd[0]*lx+fd[1]*ly+fd[2]*lz);
-        lv[3]=0;lv[7]=0;lv[11]=0;lv[15]=1.0f;
-        float lp[16]; float r2=radius*1.2f;
-        qs_m4_ortho_lrtbnf(lp,-r2,r2,-r2,r2,-radius*5.0f,radius*5.0f);
+
+    /* Light-space orthonormal basis */
+    float l_fwd[3] = { light_dir[0], light_dir[1], light_dir[2] };
+    float l_up[3]  = { 0.0f, 1.0f, 0.0f };
+    if (fabsf(l_fwd[1]) > 0.99f) { l_up[0] = 1.0f; l_up[1] = 0.0f; l_up[2] = 0.0f; }
+    float l_right[3] = {
+        l_fwd[1]*l_up[2]-l_fwd[2]*l_up[1],
+        l_fwd[2]*l_up[0]-l_fwd[0]*l_up[2],
+        l_fwd[0]*l_up[1]-l_fwd[1]*l_up[0]
+    };
+    float ll = sqrtf(l_right[0]*l_right[0]+l_right[1]*l_right[1]+l_right[2]*l_right[2]);
+    if (ll > 1e-6f) { l_right[0]/=ll; l_right[1]/=ll; l_right[2]/=ll; }
+    float l_up2[3] = {
+        l_right[1]*l_fwd[2]-l_right[2]*l_fwd[1],
+        l_right[2]*l_fwd[0]-l_right[0]*l_fwd[2],
+        l_right[0]*l_fwd[1]-l_right[1]*l_fwd[0]
+    };
+
+    for (int c = 0; c < QS_CSM_CASCADES; c++) {
+        float near_c = shadow_splits[c], far_c = shadow_splits[c+1];
+
+        /* Shadow map XY radius: proportional to cascade depth slice.
+           Anchored on the camera's orbit target so the tightest coverage always
+           wraps the visible scene even when the camera is looking steeply downward
+           (placing the view-ray midpoint underground). */
+        float radius = (far_c - near_c) * 0.6f + 2.0f;
+
+        float cx = cam->target[0];
+        float cy = cam->target[1];
+        float cz = cam->target[2];
+
+        /* Snap center to texel grid in light space (eliminates shadow shimmer) */
+        float texel = 2.0f * radius / (float)QS_SHADOW_MAP_SIZE;
+        float lc_r  = cx*l_right[0] + cy*l_right[1] + cz*l_right[2];
+        float lc_u  = cx*l_up2[0]   + cy*l_up2[1]   + cz*l_up2[2];
+        float lc_d  = cx*l_fwd[0]   + cy*l_fwd[1]   + cz*l_fwd[2];
+        lc_r = roundf(lc_r / texel) * texel;
+        lc_u = roundf(lc_u / texel) * texel;
+        cx = lc_r*l_right[0] + lc_u*l_up2[0] + lc_d*l_fwd[0];
+        cy = lc_r*l_right[1] + lc_u*l_up2[1] + lc_d*l_fwd[1];
+        cz = lc_r*l_right[2] + lc_u*l_up2[2] + lc_d*l_fwd[2];
+
+        /* Pull light eye back so scene geometry sits well within the depth range. */
+        float pull = radius;
+        float lx = cx - light_dir[0]*pull;
+        float ly = cy - light_dir[1]*pull;
+        float lz = cz - light_dir[2]*pull;
+
+        /* Standard GL right-handed view matrix: Z row = -l_fwd.
+           Objects land at view_z = -pull (negative), consistent with ortho below. */
+        float lv[16]; memset(lv, 0, 64);
+        lv[0]= l_right[0]; lv[4]= l_right[1]; lv[8]= l_right[2];  lv[12]=-(l_right[0]*lx+l_right[1]*ly+l_right[2]*lz);
+        lv[1]= l_up2[0];   lv[5]= l_up2[1];   lv[9]= l_up2[2];    lv[13]=-(l_up2[0]*lx+l_up2[1]*ly+l_up2[2]*lz);
+        lv[2]=-l_fwd[0];   lv[6]=-l_fwd[1];   lv[10]=-l_fwd[2];   lv[14]= (l_fwd[0]*lx+l_fwd[1]*ly+l_fwd[2]*lz);
+        lv[3]=0; lv[7]=0; lv[11]=0; lv[15]=1.0f;
+        float lp[16];
+        /* Symmetric Z range [-5r, +5r] keeps scene geometry (view_z = -pull = -r)
+           centred in the depth range at NDC z = 0.2, identical to the original. */
+        qs_m4_ortho_lrtbnf(lp, -radius, radius, -radius, radius, -radius*5.0f, radius*5.0f);
         qs_m4_mul(lp, lv, shadow_matrices[c]);
     }
 }

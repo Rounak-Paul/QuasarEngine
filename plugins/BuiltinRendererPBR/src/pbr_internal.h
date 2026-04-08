@@ -11,8 +11,8 @@
 /* ----------------------------------------------------------------
    Constants
    ---------------------------------------------------------------- */
-#define QS_CSM_CASCADES   3
-#define QS_SHADOW_MAP_SIZE 1024
+#define QS_CSM_CASCADES    3
+#define QS_SHADOW_MAP_SIZE 2048
 
 /* ----------------------------------------------------------------
    PbrRenderer — plugin-internal per-renderer state.
