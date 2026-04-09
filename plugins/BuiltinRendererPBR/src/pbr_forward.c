@@ -183,7 +183,7 @@ static const char *FORWARD_FRAG =
     "    return s/16.0;}\n"
     "float compute_shadow(vec3 wpos,vec3 N,vec3 sun_dir){\n"
     "    float NdotL=max(dot(N,normalize(-sun_dir)),0.0);\n"
-    "    float bias=max(0.001*(1.0-NdotL),0.0003);\n"
+    "    float bias=max(0.003*(1.0-NdotL),0.0003);\n"
     "    float depth=-(frame.view*vec4(wpos,1.0)).z;\n"
     "    float split0=shadow_data.cascade_splits[0];\n"
     "    float split1=shadow_data.cascade_splits[1];\n"
