@@ -116,14 +116,14 @@ typedef struct {
 #define GIZMO_MAX_VERTS 4096
 
 /* Proportions (fractions of gizmo size) */
-#define GIZMO_SHAFT_WIDTH   0.022f
+#define GIZMO_SHAFT_WIDTH   0.042f
 #define GIZMO_SHAFT_OFFSET  0.06f   /* gap at center */
 #define GIZMO_CONE_LENGTH   0.22f
-#define GIZMO_CONE_RADIUS   0.055f
+#define GIZMO_CONE_RADIUS   0.075f
 #define GIZMO_CONE_SEGS     12
-#define GIZMO_RING_WIDTH    0.020f
+#define GIZMO_RING_WIDTH    0.038f
 #define GIZMO_RING_SEGS     64
-#define GIZMO_CUBE_HALF     0.050f
+#define GIZMO_CUBE_HALF     0.065f
 
 static EdGizmoMode  s_mode = ED_GIZMO_TRANSLATE;
 static Qs_Engine   *s_engine;
