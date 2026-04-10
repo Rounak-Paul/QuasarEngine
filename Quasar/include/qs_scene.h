@@ -19,8 +19,11 @@ struct cJSON;
    ENTITY — lightweight index handle
    ================================================================ */
 
+#ifndef QS_ENTITY_DEFINED
+#define QS_ENTITY_DEFINED
 typedef uint32_t Qs_Entity;
 #define QS_ENTITY_INVALID UINT32_MAX
+#endif
 
 /* ================================================================
    COMPONENT TYPE REGISTRATION
@@ -111,6 +114,16 @@ typedef struct Qs_TagComp {
     char tag[64];
 } Qs_TagComp;
 
+/// References an external entity definition file (.qentity) to be loaded
+/// and rendered as a single unit.  The model's internal hierarchy is
+/// rendered directly — no child entities are spawned in the scene.
+typedef struct Qs_EntityRefComp {
+    char            path[256];           ///< Path to the .qentity file (serialized).
+    /* ---- runtime fields (not serialized) ---- */
+    struct Qs_Asset *asset;              ///< Loaded asset handle.
+    float            base_transform[16]; ///< Normalization matrix from .qentity.
+} Qs_EntityRefComp;
+
 /// Returns the built-in Transform component type handle.
 Qs_ComponentType *qs_transform_type(void);
 
@@ -125,6 +138,9 @@ Qs_ComponentType *qs_id_comp_type(void);
 
 /// Returns the built-in TagComp component type handle.
 Qs_ComponentType *qs_tag_comp_type(void);
+
+/// Returns the built-in EntityRefComp component type handle.
+Qs_ComponentType *qs_entity_ref_comp_type(void);
 
 /* ================================================================
    SCENE
@@ -180,6 +196,12 @@ void qs_entity_set_enabled(Qs_Scene *scene, Qs_Entity entity, bool enabled);
 
 /// Returns true if the entity is enabled.
 bool qs_entity_enabled(const Qs_Scene *scene, Qs_Entity entity);
+
+/// Sets the parent of an entity.  Pass QS_ENTITY_INVALID to make it a root entity.
+void qs_entity_set_parent(Qs_Scene *scene, Qs_Entity entity, Qs_Entity parent);
+
+/// Returns the parent entity, or QS_ENTITY_INVALID if the entity is a root.
+Qs_Entity qs_entity_get_parent(const Qs_Scene *scene, Qs_Entity entity);
 
 /// Returns the number of alive entities in the scene.
 uint32_t qs_scene_entity_count(const Qs_Scene *scene);
@@ -240,5 +262,14 @@ bool qs_scene_save(const Qs_Scene *scene, const char *path);
 /// Loads a scene from a .qscene JSON file.  Creates entities and components
 /// inside the given (empty/new) scene.  Returns true on success.
 bool qs_scene_load(Qs_Scene *scene, Qs_Engine *engine, const char *path);
+
+/* ================================================================
+   WORLD TRANSFORM
+   ================================================================ */
+
+/// Computes the world-space model matrix for an entity by composing
+/// local transforms up the parent chain.  Result is column-major 4×4.
+void qs_scene_world_matrix(const Qs_Scene *scene, Qs_Entity entity,
+                           float out[16]);
 
 #endif

@@ -26,6 +26,7 @@ Qs_SystemDesc qs_texture_system_desc(void);
 Qs_SystemDesc qs_mesh_system_desc(void);
 Qs_SystemDesc qs_material_system_desc(void);
 Qs_SystemDesc qs_light_system_desc(void);
+Qs_SystemDesc qs_asset_system_desc(void);
 Qs_SystemDesc qs_scene_system_desc(void);
 
 struct Qs_Engine {
@@ -174,6 +175,10 @@ Qs_Engine* qs_engine_create(const Qs_EngineDesc* desc) {
 
     Qs_SystemDesc light_desc = qs_light_system_desc();
     if (!qs_system_register(engine->systems, &light_desc)) goto fail;
+
+    /* ---- Asset system (depends on texture/mesh/material for GPU upload) ---- */
+    Qs_SystemDesc asset_desc = qs_asset_system_desc();
+    if (!qs_system_register(engine->systems, &asset_desc)) goto fail;
 
     /* ---- Scene system (depends on renderer being registered first) ---- */
     Qs_SystemDesc scene_desc = qs_scene_system_desc();

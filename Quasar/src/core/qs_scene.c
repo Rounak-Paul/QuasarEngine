@@ -2,6 +2,7 @@
 #include "qs_reflect.h"
 #include "qs_log.h"
 #include "qs_system.h"
+#include "qs_math.h"
 #include "cJSON.h"
 
 #include <stdlib.h>
@@ -65,6 +66,7 @@ struct Qs_Scene {
     char              entity_names[QS_MAX_ENTITIES][32];
     uint64_t          alive[QS_ENTITY_MASK_WORDS];
     uint64_t          enabled[QS_ENTITY_MASK_WORDS];
+    uint32_t          parent_entity[QS_MAX_ENTITIES];  /* QS_ENTITY_INVALID = root */
     uint32_t          entity_count;
     uint32_t          next_entity_id;  /* Auto-increment for Qs_IdComp */
 
@@ -282,6 +284,13 @@ static void tag_comp_init(void *comp, Qs_Scene *scene, Qs_Entity entity)
     snprintf(tag->tag, sizeof(tag->tag), "Untagged");
 }
 
+static void entity_ref_comp_init(void *comp, Qs_Scene *scene, Qs_Entity entity)
+{
+    (void)scene; (void)entity;
+    Qs_EntityRefComp *erc = (Qs_EntityRefComp *)comp;
+    qs_m4_identity(erc->base_transform);
+}
+
 /* ================================================================
    BUILT-IN REFLECTION INFO
    ================================================================ */
@@ -353,6 +362,17 @@ static const Qs_TypeInfo s_tag_comp_type_info = {
     .field_count = QS_COUNTOF(s_tag_comp_fields),
 };
 
+static const Qs_FieldInfo s_entity_ref_comp_fields[] = {
+    QS_FIELD(Qs_EntityRefComp, path, QS_FIELD_STRING),
+};
+
+static const Qs_TypeInfo s_entity_ref_comp_type_info = {
+    .name        = "EntityRef",
+    .data_size   = sizeof(Qs_EntityRefComp),
+    .fields      = s_entity_ref_comp_fields,
+    .field_count = QS_COUNTOF(s_entity_ref_comp_fields),
+};
+
 /* ================================================================
    BUILT-IN TYPE HANDLES
    ================================================================ */
@@ -362,12 +382,14 @@ static Qs_ComponentType *s_mesh_comp_type;
 static Qs_ComponentType *s_light_comp_type;
 static Qs_ComponentType *s_id_comp_type;
 static Qs_ComponentType *s_tag_comp_type;
+static Qs_ComponentType *s_entity_ref_comp_type;
 
 Qs_ComponentType *qs_transform_type(void)  { return s_transform_type; }
 Qs_ComponentType *qs_mesh_comp_type(void)  { return s_mesh_comp_type; }
 Qs_ComponentType *qs_light_comp_type(void) { return s_light_comp_type; }
 Qs_ComponentType *qs_id_comp_type(void)    { return s_id_comp_type; }
 Qs_ComponentType *qs_tag_comp_type(void)   { return s_tag_comp_type; }
+Qs_ComponentType *qs_entity_ref_comp_type(void) { return s_entity_ref_comp_type; }
 
 static void register_builtin_types(Qs_Engine *engine)
 {
@@ -377,6 +399,7 @@ static void register_builtin_types(Qs_Engine *engine)
     qs_type_register(&s_light_comp_type_info);
     qs_type_register(&s_id_comp_type_info);
     qs_type_register(&s_tag_comp_type_info);
+    qs_type_register(&s_entity_ref_comp_type_info);
 
     s_id_comp_type = qs_component_register(engine, &(Qs_ComponentTypeDesc){
         .name      = "IdComp",
@@ -412,6 +435,13 @@ static void register_builtin_types(Qs_Engine *engine)
         .type_info = &s_light_comp_type_info,
         .init      = light_comp_init,
     });
+
+    s_entity_ref_comp_type = qs_component_register(engine, &(Qs_ComponentTypeDesc){
+        .name      = "EntityRef",
+        .data_size = sizeof(Qs_EntityRefComp),
+        .type_info = &s_entity_ref_comp_type_info,
+        .init      = entity_ref_comp_init,
+    });
 }
 
 /* ================================================================
@@ -443,6 +473,8 @@ Qs_Scene *qs_scene_create(Qs_Engine *engine, const Qs_SceneDesc *desc)
     scene->on_activate   = desc->on_activate;
     scene->on_deactivate = desc->on_deactivate;
     scene->user_data     = desc->user_data;
+
+    memset(scene->parent_entity, 0xFF, sizeof(scene->parent_entity));
 
     if (desc->name)
         snprintf(scene->name, sizeof(scene->name), "%s", desc->name);
@@ -584,6 +616,7 @@ void qs_entity_destroy(Qs_Scene *scene, Qs_Entity entity)
     bit_clear(scene->alive, entity);
     bit_clear(scene->enabled, entity);
     scene->entity_names[entity][0] = '\0';
+    scene->parent_entity[entity]   = QS_ENTITY_INVALID;
     if (scene->entity_count > 0) scene->entity_count--;
 }
 
@@ -627,6 +660,18 @@ bool qs_entity_enabled(const Qs_Scene *scene, Qs_Entity entity)
 {
     if (!scene || entity >= QS_MAX_ENTITIES) return false;
     return bit_test(scene->enabled, entity);
+}
+
+void qs_entity_set_parent(Qs_Scene *scene, Qs_Entity entity, Qs_Entity parent)
+{
+    if (!scene || entity >= QS_MAX_ENTITIES) return;
+    scene->parent_entity[entity] = parent;
+}
+
+Qs_Entity qs_entity_get_parent(const Qs_Scene *scene, Qs_Entity entity)
+{
+    if (!scene || entity >= QS_MAX_ENTITIES) return QS_ENTITY_INVALID;
+    return scene->parent_entity[entity];
 }
 
 uint32_t qs_scene_entity_count(const Qs_Scene *scene)
@@ -917,6 +962,7 @@ static void scene_system_shutdown(Qs_System *system, Qs_Engine *engine)
     s_light_comp_type = NULL;
     s_id_comp_type    = NULL;
     s_tag_comp_type   = NULL;
+    s_entity_ref_comp_type = NULL;
 
     QS_LOG_INFO("Scene system shut down");
 }
@@ -1027,4 +1073,37 @@ bool qs_scene_load(Qs_Scene *scene, Qs_Engine *engine, const char *path)
         QS_LOG_ERROR("Failed to deserialize scene: %s", path);
 
     return ok;
+}
+
+/* ================================================================
+   WORLD TRANSFORM
+   ================================================================ */
+
+void qs_scene_world_matrix(const Qs_Scene *scene, Qs_Entity entity,
+                           float out[16])
+{
+    qs_m4_identity(out);
+    if (!scene || entity >= QS_MAX_ENTITIES) return;
+
+    /* Walk up the parent chain and collect ancestor list (leaf → root). */
+    Qs_Entity chain[64];
+    int depth = 0;
+    for (Qs_Entity e = entity;
+         e != QS_ENTITY_INVALID && depth < 64;
+         e = scene->parent_entity[e])
+    {
+        chain[depth++] = e;
+    }
+
+    /* Multiply from root down to leaf: world = root * ... * parent * local */
+    for (int i = depth - 1; i >= 0; i--) {
+        const Qs_Transform *t = (const Qs_Transform *)qs_entity_get(
+            scene, chain[i], s_transform_type);
+        if (!t) continue;
+        float local[16];
+        qs_m4_from_trs(local, t->position, t->rotation, t->scale);
+        float tmp[16];
+        qs_m4_mul(out, local, tmp);
+        memcpy(out, tmp, sizeof(float) * 16);
+    }
 }

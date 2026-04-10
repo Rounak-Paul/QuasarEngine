@@ -20,6 +20,7 @@
 #include "qs_input.h"
 #include "qs_dylib.h"
 #include "qs_plugin.h"
+#include "qs_asset.h"
 #include "qs_ext.h"
 
 typedef struct Qs_Engine Qs_Engine;

@@ -91,6 +91,17 @@ void *qs_engine_ext_data(const Qs_Engine *engine,
    result of qs_ext_interface() to the correct type.
    ================================================================ */
 
+typedef struct Qs_Mesh     Qs_Mesh;
+typedef struct Qs_Material Qs_Material;
+typedef struct Qs_Texture  Qs_Texture;
+typedef struct Qs_Scene    Qs_Scene;
+
+#ifndef QS_ENTITY_DEFINED
+#define QS_ENTITY_DEFINED
+typedef uint32_t Qs_Entity;
+#define QS_ENTITY_INVALID UINT32_MAX
+#endif
+
 /* ---- editor.toolbar --------------------------------------------- */
 
 #define QS_EXT_EDITOR_TOOLBAR  "editor.toolbar"

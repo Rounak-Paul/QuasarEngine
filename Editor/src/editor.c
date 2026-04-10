@@ -19,6 +19,13 @@
 #include <stdlib.h>
 #include <string.h>
 
+#define MAX_LOADED_RESOURCES 32
+
+typedef struct {
+    Qs_Asset  *asset;
+    Qs_Entity  entity;
+} PendingEntity;
+
 struct Editor {
     Qs_Engine     *engine;
     Qs_Project    *project;
@@ -26,6 +33,14 @@ struct Editor {
     Ca_Viewport   *scene_viewport;
     Qs_Entity      selected_entity;
     EditorCamera   cam;
+
+    /* Asset handles for the active scene */
+    Qs_Asset     *loaded_assets[MAX_LOADED_RESOURCES];
+    uint32_t      loaded_asset_count;
+
+    /* EntityRef entities waiting for background loading to finish */
+    PendingEntity pending_entities[MAX_LOADED_RESOURCES];
+    uint32_t      pending_entity_count;
 };
 
 /* ---- Editor CSS theme (Quasar Dark) ---- */
@@ -782,16 +797,6 @@ static void on_key_event(const Ca_Event *event, void *userdata)
                        event->key.mods);
 }
 
-/* Builds a column-major 4x4 TRS model matrix from a Qs_Transform. */
-static void trs_to_matrix(const Qs_Transform *t, float m[16])
-{
-    if (!t) {
-        qs_m4_identity(m);
-        return;
-    }
-    qs_m4_from_trs(m, t->position, t->rotation, t->scale);
-}
-
 static void on_frame(Qs_Engine *engine, void *userdata)
 {
     (void)engine;
@@ -801,19 +806,41 @@ static void on_frame(Qs_Engine *engine, void *userdata)
     ed_camera_update(&ed->cam, ed->scene_renderer, qs_engine_dt(ed->engine));
     ed_gizmo_update(ed, qs_engine_dt(ed->engine));
 
+    /* Poll pending EntityRef assets — store on component when READY */
+    {
+        Qs_Scene *s = qs_scene_active();
+        uint32_t i = 0;
+        while (s && i < ed->pending_entity_count) {
+            Qs_AssetState state = qs_asset_state(ed->pending_entities[i].asset);
+            if (state == QS_ASSET_READY) {
+                Qs_EntityRefComp *erc = (Qs_EntityRefComp *)qs_entity_get(
+                    s, ed->pending_entities[i].entity, qs_entity_ref_comp_type());
+                if (erc)
+                    erc->asset = ed->pending_entities[i].asset;
+                ed->pending_entities[i] = ed->pending_entities[--ed->pending_entity_count];
+            } else if (state == QS_ASSET_ERROR) {
+                QS_LOG_ERROR("EntityRef asset failed: entity %u",
+                             ed->pending_entities[i].entity);
+                ed->pending_entities[i] = ed->pending_entities[--ed->pending_entity_count];
+            } else {
+                i++;
+            }
+        }
+    }
+
     /* Submit scene renderables and lights for this frame */
     Qs_Scene *scene = qs_scene_active();
     if (scene && ed->scene_renderer) {
         qs_renderer_clear_renderables(ed->scene_renderer);
         qs_renderer_clear_lights(ed->scene_renderer);
 
+        /* Submit MeshComp entities (inline geometry) */
         for (Qs_Entity e = qs_scene_first(scene, qs_mesh_comp_type());
              e != QS_ENTITY_INVALID;
              e = qs_scene_next(scene, qs_mesh_comp_type(), e))
         {
             Qs_MeshComp  *mc = qs_entity_get(scene, e, qs_mesh_comp_type());
             if (!mc || !mc->visible || !mc->mesh || !mc->material) continue;
-            Qs_Transform *tr = qs_entity_get(scene, e, qs_transform_type());
             Qs_RenderableDesc r;
             r.mesh            = mc->mesh;
             r.material        = mc->material;
@@ -822,8 +849,24 @@ static void on_frame(Qs_Engine *engine, void *userdata)
             r.receive_shadows = true;
             r.bounds.min[0] = r.bounds.min[1] = r.bounds.min[2] = -100.0f;
             r.bounds.max[0] = r.bounds.max[1] = r.bounds.max[2] =  100.0f;
-            trs_to_matrix(tr, r.transform);
+            qs_scene_world_matrix(scene, e, r.transform);
             qs_renderer_submit_renderable(ed->scene_renderer, &r);
+        }
+
+        /* Submit EntityRef entities (model assets rendered directly) */
+        for (Qs_Entity e = qs_scene_first(scene, qs_entity_ref_comp_type());
+             e != QS_ENTITY_INVALID;
+             e = qs_scene_next(scene, qs_entity_ref_comp_type(), e))
+        {
+            Qs_EntityRefComp *erc = qs_entity_get(scene, e, qs_entity_ref_comp_type());
+            if (!erc || !erc->asset) continue;
+
+            /* Compose: entity world × .qentity base transform */
+            float entity_world[16], composed[16];
+            qs_scene_world_matrix(scene, e, entity_world);
+            qs_m4_mul(entity_world, erc->base_transform, composed);
+
+            qs_asset_model_submit(erc->asset, ed->scene_renderer, composed, e);
         }
 
         for (Qs_Entity e = qs_scene_first(scene, qs_light_comp_type());
@@ -851,19 +894,20 @@ static void on_log(void *userdata)
 
 /* ---- Scene file loading ---- */
 
-#define MAX_SCENE_RESOURCES 64
-
-typedef struct {
-    char  name[64];
-    void *ptr;
-} NamedResource;
-
-static void *find_named_resource(NamedResource *res, int count, const char *name)
+/* Resolve the base directory of the scene file for relative asset paths. */
+static void scene_dir(const char *scene_path, char *out, size_t out_size)
 {
-    for (int i = 0; i < count; i++)
-        if (strcmp(res[i].name, name) == 0)
-            return res[i].ptr;
-    return NULL;
+    const char *last = NULL;
+    for (const char *p = scene_path; *p; p++)
+        if (*p == '/' || *p == '\\') last = p;
+    if (!last) {
+        snprintf(out, out_size, ".");
+    } else {
+        size_t len = (size_t)(last - scene_path);
+        if (len >= out_size) len = out_size - 1;
+        memcpy(out, scene_path, len);
+        out[len] = '\0';
+    }
 }
 
 static bool editor_load_scene(Editor *ed, const char *path)
@@ -901,110 +945,108 @@ static bool editor_load_scene(Editor *ed, const char *path)
     });
     qs_scene_set_active(scene);
 
-    /* ---- Create resources from the "resources" section ---- */
-    NamedResource meshes[MAX_SCENE_RESOURCES];
-    NamedResource materials[MAX_SCENE_RESOURCES];
-    int mesh_count = 0, mat_count = 0;
-
-    const cJSON *resources = cJSON_GetObjectItemCaseSensitive(root, "resources");
-    if (resources) {
-        /* Materials */
-        const cJSON *mats_json =
-            cJSON_GetObjectItemCaseSensitive(resources, "materials");
-        const cJSON *mat_json;
-        cJSON_ArrayForEach(mat_json, mats_json) {
-            if (mat_count >= MAX_SCENE_RESOURCES) break;
-
-            float base_color[4] = {1,1,1,1};
-            const cJSON *bc =
-                cJSON_GetObjectItemCaseSensitive(mat_json, "base_color");
-            if (cJSON_IsArray(bc)) {
-                for (int i = 0; i < 4 && i < cJSON_GetArraySize(bc); i++)
-                    base_color[i] = (float)cJSON_GetArrayItem(bc, i)->valuedouble;
-            }
-            const cJSON *rough =
-                cJSON_GetObjectItemCaseSensitive(mat_json, "roughness");
-            const cJSON *metal =
-                cJSON_GetObjectItemCaseSensitive(mat_json, "metallic");
-
-            Qs_MaterialDesc md = qs_material_desc_defaults();
-            md.name              = mat_json->string;
-            md.base_color_factor[0] = base_color[0];
-            md.base_color_factor[1] = base_color[1];
-            md.base_color_factor[2] = base_color[2];
-            md.base_color_factor[3] = base_color[3];
-            md.roughness_factor  = rough ? (float)rough->valuedouble : 0.5f;
-            md.metallic_factor   = metal ? (float)metal->valuedouble : 0.0f;
-
-            Qs_Material *m = qs_material_create(ed->engine, &md);
-            if (m) {
-                snprintf(materials[mat_count].name, 64, "%s", mat_json->string);
-                materials[mat_count].ptr = m;
-                mat_count++;
-            }
-        }
-
-        /* Meshes (primitives) */
-        const cJSON *meshes_json =
-            cJSON_GetObjectItemCaseSensitive(resources, "meshes");
-        const cJSON *mesh_json;
-        cJSON_ArrayForEach(mesh_json, meshes_json) {
-            if (mesh_count >= MAX_SCENE_RESOURCES) break;
-            const cJSON *type_val =
-                cJSON_GetObjectItemCaseSensitive(mesh_json, "type");
-            if (!cJSON_IsString(type_val)) continue;
-            const char *type = type_val->valuestring;
-
-            Qs_Mesh *m = NULL;
-            if (strcmp(type, "plane") == 0) {
-                const cJSON *sz =
-                    cJSON_GetObjectItemCaseSensitive(mesh_json, "size");
-                const cJSON *sd =
-                    cJSON_GetObjectItemCaseSensitive(mesh_json, "subdivisions");
-                m = qs_primitive_plane(ed->engine,
-                        sz ? (float)sz->valuedouble : 1.0f,
-                        sd ? (uint32_t)sd->valueint  : 1);
-            } else if (strcmp(type, "cube") == 0) {
-                const cJSON *sz =
-                    cJSON_GetObjectItemCaseSensitive(mesh_json, "size");
-                m = qs_primitive_cube(ed->engine,
-                        sz ? (float)sz->valuedouble : 1.0f);
-            } else if (strcmp(type, "sphere") == 0) {
-                const cJSON *rad =
-                    cJSON_GetObjectItemCaseSensitive(mesh_json, "radius");
-                const cJSON *sl =
-                    cJSON_GetObjectItemCaseSensitive(mesh_json, "slices");
-                const cJSON *st =
-                    cJSON_GetObjectItemCaseSensitive(mesh_json, "stacks");
-                m = qs_primitive_sphere(ed->engine,
-                        rad ? (float)rad->valuedouble    : 0.5f,
-                        sl  ? (uint32_t)sl->valueint     : 24,
-                        st  ? (uint32_t)st->valueint     : 16);
-            }
-            if (m) {
-                snprintf(meshes[mesh_count].name, 64, "%s", mesh_json->string);
-                meshes[mesh_count].ptr = m;
-                mesh_count++;
-            }
-        }
-    }
+    /* Directory of the scene file — used for resolving relative asset paths */
+    char dir[1024];
+    scene_dir(path, dir, sizeof(dir));
 
     /* ---- Load entities ---- */
     qs_scene_from_json(scene, ed->engine, root);
 
-    /* ---- Resolve mesh/material name references ---- */
-    for (Qs_Entity e = qs_scene_first(scene, qs_mesh_comp_type());
+    /* ---- Dispatch async loading for EntityRef entities ----
+       Each entity with an EntityRefComp references a .qentity file which
+       describes the model asset and its base (normalization) transform.
+       The on_frame callback stores the loaded asset on the component
+       when ready, and the render loop submits model meshes directly. */
+    for (Qs_Entity e = qs_scene_first(scene, qs_entity_ref_comp_type());
          e != QS_ENTITY_INVALID;
-         e = qs_scene_next(scene, qs_mesh_comp_type(), e))
+         e = qs_scene_next(scene, qs_entity_ref_comp_type(), e))
     {
-        Qs_MeshComp *mc = (Qs_MeshComp *)qs_entity_get(
-                              scene, e, qs_mesh_comp_type());
-        if (!mc) continue;
-        if (mc->mesh_name[0])
-            mc->mesh = find_named_resource(meshes, mesh_count, mc->mesh_name);
-        if (mc->material_name[0])
-            mc->material = find_named_resource(materials, mat_count,
-                                         mc->material_name);
+        Qs_EntityRefComp *erc = (Qs_EntityRefComp *)qs_entity_get(
+                                    scene, e, qs_entity_ref_comp_type());
+        if (!erc || !erc->path[0]) continue;
+
+        /* Resolve .qentity path relative to scene dir */
+        char qentity_path[1024];
+        if (erc->path[0] == '/' || erc->path[0] == '\\' ||
+            (erc->path[0] && erc->path[1] == ':'))
+            snprintf(qentity_path, sizeof(qentity_path), "%s", erc->path);
+        else
+            snprintf(qentity_path, sizeof(qentity_path), "%s/%s", dir, erc->path);
+
+        /* Read and parse the .qentity file */
+        FILE *ef = fopen(qentity_path, "r");
+        if (!ef) {
+            QS_LOG_ERROR("Scene '%s': cannot open entity file '%s'", path, qentity_path);
+            continue;
+        }
+        fseek(ef, 0, SEEK_END);
+        long elen = ftell(ef);
+        fseek(ef, 0, SEEK_SET);
+        if (elen <= 0) { fclose(ef); continue; }
+        char *ebuf = malloc((size_t)elen + 1);
+        if (!ebuf) { fclose(ef); continue; }
+        size_t enread = fread(ebuf, 1, (size_t)elen, ef);
+        ebuf[enread] = '\0';
+        fclose(ef);
+
+        cJSON *entity_def = cJSON_Parse(ebuf);
+        free(ebuf);
+        if (!entity_def) {
+            QS_LOG_ERROR("Scene '%s': failed to parse entity file '%s'", path, qentity_path);
+            continue;
+        }
+
+        /* Build the base (normalization) transform from the .qentity
+           "components" block using the same reflection-based serialization
+           as scene entities.  Fields absent from JSON keep their defaults. */
+        qs_m4_identity(erc->base_transform);
+        const cJSON *comps = cJSON_GetObjectItemCaseSensitive(entity_def, "components");
+        const cJSON *tr_json = comps ? cJSON_GetObjectItemCaseSensitive(comps, "Transform") : NULL;
+        if (cJSON_IsObject(tr_json)) {
+            Qs_Transform base_tr = {
+                .position = {0, 0, 0},
+                .rotation = {0, 0, 0, 1},
+                .scale    = {1, 1, 1},
+            };
+            const Qs_TypeInfo *tr_type = qs_type_find("Transform");
+            if (tr_type)
+                qs_reflect_from_json(&base_tr, tr_type, tr_json);
+            qs_m4_from_trs(erc->base_transform,
+                           base_tr.position, base_tr.rotation, base_tr.scale);
+        }
+
+        /* Extract model path and resolve relative to .qentity location */
+        const cJSON *model_val = cJSON_GetObjectItemCaseSensitive(entity_def, "model");
+        if (!cJSON_IsString(model_val) || !model_val->valuestring[0]) {
+            cJSON_Delete(entity_def);
+            continue;
+        }
+
+        char entity_dir[1024];
+        scene_dir(qentity_path, entity_dir, sizeof(entity_dir));
+
+        char model_path[1024];
+        const char *mstr = model_val->valuestring;
+        if (mstr[0] == '/' || mstr[0] == '\\' || (mstr[0] && mstr[1] == ':'))
+            snprintf(model_path, sizeof(model_path), "%s", mstr);
+        else
+            snprintf(model_path, sizeof(model_path), "%s/%s", entity_dir, mstr);
+
+        cJSON_Delete(entity_def);
+
+        Qs_Asset *asset = qs_asset_load(ed->engine, model_path);
+        if (!asset) {
+            QS_LOG_ERROR("Scene '%s': failed to start loading model '%s'", path, model_path);
+            continue;
+        }
+
+        if (ed->loaded_asset_count < MAX_LOADED_RESOURCES)
+            ed->loaded_assets[ed->loaded_asset_count++] = asset;
+
+        if (ed->pending_entity_count < MAX_LOADED_RESOURCES) {
+            ed->pending_entities[ed->pending_entity_count++] =
+                (PendingEntity){ .asset = asset, .entity = e };
+        }
     }
 
     /* Add a default directional sun light if the scene has no lights */
@@ -1174,6 +1216,11 @@ void editor_set_selected_entity(Editor *ed, Qs_Entity entity)
 void editor_destroy(Editor *ed)
 {
     if (!ed) return;
+    /* Release loaded asset handles */
+    for (uint32_t i = 0; i < ed->loaded_asset_count; i++) {
+        if (ed->loaded_assets[i])
+            qs_asset_release(ed->loaded_assets[i]);
+    }
     ed_pick_shutdown(ed->engine);
     ed_gizmo_shutdown(ed->engine);
     qs_engine_destroy(ed->engine);

@@ -12,7 +12,7 @@
 
 /* We need a way to pass both the editor pointer and entity ID to the callback.
    Use a small static ring buffer of callback contexts. */
-#define MAX_ENTITY_NODES 256
+#define MAX_ENTITY_NODES 4096
 
 typedef struct {
     Editor   *editor;
@@ -30,6 +30,80 @@ static void on_entity_select(Ca_TreeNode *tn, void *user_data)
     HierarchyClickCtx *ctx = (HierarchyClickCtx *)user_data;
     if (ctx && ctx->editor)
         editor_set_selected_entity(ctx->editor, ctx->entity);
+}
+
+static void render_entity_node(Editor *ed, Qs_Scene *scene, Qs_Entity entity, Qs_Entity selected);
+
+static void render_entity_children(Editor *ed, Qs_Scene *scene, Qs_Entity parent, Qs_Entity selected)
+{
+    for (Qs_Entity e = qs_scene_first(scene, qs_transform_type());
+         e != QS_ENTITY_INVALID;
+         e = qs_scene_next(scene, qs_transform_type(), e))
+    {
+        if (qs_entity_get_parent(scene, e) == parent)
+            render_entity_node(ed, scene, e, selected);
+    }
+}
+
+static void render_entity_node(Editor *ed, Qs_Scene *scene, Qs_Entity entity, Qs_Entity selected)
+{
+    const char *name = qs_entity_name(scene, entity);
+    if (!name) name = "(unnamed)";
+
+    bool has_mesh  = qs_entity_has(scene, entity, qs_mesh_comp_type());
+    bool has_light = qs_entity_has(scene, entity, qs_light_comp_type());
+
+    uint32_t    dot_color;
+    const char *dot_icon;
+    if (has_light) {
+        dot_color = CA_THEME_WARNING;
+        dot_icon  = ICON_LIGHT;
+    } else if (has_mesh) {
+        dot_color = CA_THEME_SUCCESS;
+        dot_icon  = ICON_MESH;
+    } else {
+        dot_color = CA_THEME_TEXT_MUTED;
+        dot_icon  = ICON_ENTITY;
+    }
+
+    HierarchyClickCtx *ctx = NULL;
+    if (s_click_idx < MAX_ENTITY_NODES) {
+        ctx = &s_click_ctx[s_click_idx++];
+        ctx->editor = ed;
+        ctx->entity = entity;
+    }
+
+    const char *style = (entity == selected)
+        ? "hierarchy-entity hierarchy-selected"
+        : "hierarchy-entity";
+
+    char node_id[64];
+    snprintf(node_id, sizeof(node_id), "hier-entity-%u", (unsigned)entity);
+
+    /* Check if this entity has children */
+    bool has_children = false;
+    for (Qs_Entity e = qs_scene_first(scene, qs_transform_type());
+         e != QS_ENTITY_INVALID;
+         e = qs_scene_next(scene, qs_transform_type(), e))
+    {
+        if (qs_entity_get_parent(scene, e) == entity) { has_children = true; break; }
+    }
+
+    ca_tree_node_begin(&(Ca_TreeNodeDesc){
+        .text        = name,
+        .id          = node_id,
+        .style       = style,
+        .icon        = dot_icon,
+        .icon_color  = dot_color,
+        .is_leaf     = !has_children,
+        .on_toggle   = ctx ? on_entity_select : NULL,
+        .toggle_data = ctx,
+    });
+
+    if (has_children)
+        render_entity_children(ed, scene, entity, selected);
+
+    ca_tree_node_end();
 }
 
 static void build_hierarchy(Editor *ed, Qs_Scene *scene)
@@ -55,58 +129,13 @@ static void build_hierarchy(Editor *ed, Qs_Scene *scene)
         {
             Qs_Entity selected = editor_selected_entity(ed);
 
-            /* Iterate all entities */
+            /* Render only root entities; children rendered recursively */
             for (Qs_Entity e = qs_scene_first(scene, qs_transform_type());
                  e != QS_ENTITY_INVALID;
                  e = qs_scene_next(scene, qs_transform_type(), e))
             {
-                const char *name = qs_entity_name(scene, e);
-                if (!name) name = "(unnamed)";
-
-                /* Pick icon based on entity's primary component */
-                bool has_mesh  = qs_entity_has(scene, e, qs_mesh_comp_type());
-                bool has_light = qs_entity_has(scene, e, qs_light_comp_type());
-
-                uint32_t dot_color;
-                const char *dot_icon;
-                if (has_light) {
-                    dot_color = CA_THEME_WARNING;
-                    dot_icon  = ICON_LIGHT;
-                } else if (has_mesh) {
-                    dot_color = CA_THEME_SUCCESS;
-                    dot_icon  = ICON_MESH;
-                } else {
-                    dot_color = CA_THEME_TEXT_MUTED;
-                    dot_icon  = ICON_ENTITY;
-                }
-
-                /* Set up click context */
-                HierarchyClickCtx *ctx = NULL;
-                if (s_click_idx < MAX_ENTITY_NODES) {
-                    ctx = &s_click_ctx[s_click_idx++];
-                    ctx->editor = ed;
-                    ctx->entity = e;
-                }
-
-                /* Highlight selected entity */
-                const char *style = (e == selected)
-                    ? "hierarchy-entity hierarchy-selected"
-                    : "hierarchy-entity";
-
-                char node_id[64];
-                snprintf(node_id, sizeof(node_id), "hier-entity-%u", (unsigned)e);
-
-                ca_tree_node_begin(&(Ca_TreeNodeDesc){
-                    .text        = name,
-                    .id          = node_id,
-                    .style       = style,
-                    .icon        = dot_icon,
-                    .icon_color  = dot_color,
-                    .is_leaf     = true,
-                    .on_toggle   = ctx ? on_entity_select : NULL,
-                    .toggle_data = ctx,
-                });
-                ca_tree_node_end();
+                if (qs_entity_get_parent(scene, e) == QS_ENTITY_INVALID)
+                    render_entity_node(ed, scene, e, selected);
             }
         }
         ca_tree_node_end();
