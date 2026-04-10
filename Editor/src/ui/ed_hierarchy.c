@@ -52,12 +52,16 @@ static void render_entity_node(Editor *ed, Qs_Scene *scene, Qs_Entity entity, Qs
 
     bool has_mesh  = qs_entity_has(scene, entity, qs_mesh_comp_type());
     bool has_light = qs_entity_has(scene, entity, qs_light_comp_type());
+    bool has_proto = qs_entity_has(scene, entity, qs_prototype_comp_type());
 
     uint32_t    dot_color;
     const char *dot_icon;
     if (has_light) {
         dot_color = CA_THEME_WARNING;
         dot_icon  = ICON_LIGHT;
+    } else if (has_proto) {
+        dot_color = CA_THEME_ACCENT;
+        dot_icon  = ICON_PROTOTYPE;
     } else if (has_mesh) {
         dot_color = CA_THEME_SUCCESS;
         dot_icon  = ICON_MESH;

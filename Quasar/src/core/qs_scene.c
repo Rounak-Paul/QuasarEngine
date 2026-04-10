@@ -284,11 +284,11 @@ static void tag_comp_init(void *comp, Qs_Scene *scene, Qs_Entity entity)
     snprintf(tag->tag, sizeof(tag->tag), "Untagged");
 }
 
-static void entity_ref_comp_init(void *comp, Qs_Scene *scene, Qs_Entity entity)
+static void prototype_comp_init(void *comp, Qs_Scene *scene, Qs_Entity entity)
 {
     (void)scene; (void)entity;
-    Qs_EntityRefComp *erc = (Qs_EntityRefComp *)comp;
-    qs_m4_identity(erc->base_transform);
+    Qs_PrototypeComp *pc = (Qs_PrototypeComp *)comp;
+    qs_m4_identity(pc->base_transform);
 }
 
 /* ================================================================
@@ -362,15 +362,15 @@ static const Qs_TypeInfo s_tag_comp_type_info = {
     .field_count = QS_COUNTOF(s_tag_comp_fields),
 };
 
-static const Qs_FieldInfo s_entity_ref_comp_fields[] = {
-    QS_FIELD(Qs_EntityRefComp, path, QS_FIELD_STRING),
+static const Qs_FieldInfo s_prototype_comp_fields[] = {
+    QS_FIELD(Qs_PrototypeComp, path, QS_FIELD_STRING),
 };
 
-static const Qs_TypeInfo s_entity_ref_comp_type_info = {
-    .name        = "EntityRef",
-    .data_size   = sizeof(Qs_EntityRefComp),
-    .fields      = s_entity_ref_comp_fields,
-    .field_count = QS_COUNTOF(s_entity_ref_comp_fields),
+static const Qs_TypeInfo s_prototype_comp_type_info = {
+    .name        = "Prototype",
+    .data_size   = sizeof(Qs_PrototypeComp),
+    .fields      = s_prototype_comp_fields,
+    .field_count = QS_COUNTOF(s_prototype_comp_fields),
 };
 
 /* ================================================================
@@ -382,14 +382,14 @@ static Qs_ComponentType *s_mesh_comp_type;
 static Qs_ComponentType *s_light_comp_type;
 static Qs_ComponentType *s_id_comp_type;
 static Qs_ComponentType *s_tag_comp_type;
-static Qs_ComponentType *s_entity_ref_comp_type;
+static Qs_ComponentType *s_prototype_comp_type;
 
 Qs_ComponentType *qs_transform_type(void)  { return s_transform_type; }
 Qs_ComponentType *qs_mesh_comp_type(void)  { return s_mesh_comp_type; }
 Qs_ComponentType *qs_light_comp_type(void) { return s_light_comp_type; }
 Qs_ComponentType *qs_id_comp_type(void)    { return s_id_comp_type; }
 Qs_ComponentType *qs_tag_comp_type(void)   { return s_tag_comp_type; }
-Qs_ComponentType *qs_entity_ref_comp_type(void) { return s_entity_ref_comp_type; }
+Qs_ComponentType *qs_prototype_comp_type(void) { return s_prototype_comp_type; }
 
 static void register_builtin_types(Qs_Engine *engine)
 {
@@ -399,7 +399,7 @@ static void register_builtin_types(Qs_Engine *engine)
     qs_type_register(&s_light_comp_type_info);
     qs_type_register(&s_id_comp_type_info);
     qs_type_register(&s_tag_comp_type_info);
-    qs_type_register(&s_entity_ref_comp_type_info);
+    qs_type_register(&s_prototype_comp_type_info);
 
     s_id_comp_type = qs_component_register(engine, &(Qs_ComponentTypeDesc){
         .name      = "IdComp",
@@ -436,11 +436,11 @@ static void register_builtin_types(Qs_Engine *engine)
         .init      = light_comp_init,
     });
 
-    s_entity_ref_comp_type = qs_component_register(engine, &(Qs_ComponentTypeDesc){
-        .name      = "EntityRef",
-        .data_size = sizeof(Qs_EntityRefComp),
-        .type_info = &s_entity_ref_comp_type_info,
-        .init      = entity_ref_comp_init,
+    s_prototype_comp_type = qs_component_register(engine, &(Qs_ComponentTypeDesc){
+        .name      = "Prototype",
+        .data_size = sizeof(Qs_PrototypeComp),
+        .type_info = &s_prototype_comp_type_info,
+        .init      = prototype_comp_init,
     });
 }
 
@@ -962,7 +962,7 @@ static void scene_system_shutdown(Qs_System *system, Qs_Engine *engine)
     s_light_comp_type = NULL;
     s_id_comp_type    = NULL;
     s_tag_comp_type   = NULL;
-    s_entity_ref_comp_type = NULL;
+    s_prototype_comp_type = NULL;
 
     QS_LOG_INFO("Scene system shut down");
 }

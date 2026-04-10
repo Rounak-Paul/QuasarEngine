@@ -114,15 +114,16 @@ typedef struct Qs_TagComp {
     char tag[64];
 } Qs_TagComp;
 
-/// References an external entity definition file (.qentity) to be loaded
-/// and rendered as a single unit.  The model's internal hierarchy is
-/// rendered directly — no child entities are spawned in the scene.
-typedef struct Qs_EntityRefComp {
-    char            path[256];           ///< Path to the .qentity file (serialized).
+/// References a prototype file (.qproto) — a reusable entity template
+/// analogous to a Unity prefab.  Prototypes are scenes that can be nested
+/// inside other scenes or other prototypes.  Imported models (e.g. glTF)
+/// are automatically converted to prototypes.
+typedef struct Qs_PrototypeComp {
+    char            path[256];           ///< Path to the .qproto file (serialized).
     /* ---- runtime fields (not serialized) ---- */
     struct Qs_Asset *asset;              ///< Loaded asset handle.
-    float            base_transform[16]; ///< Normalization matrix from .qentity.
-} Qs_EntityRefComp;
+    float            base_transform[16]; ///< Normalization matrix from .qproto.
+} Qs_PrototypeComp;
 
 /// Returns the built-in Transform component type handle.
 Qs_ComponentType *qs_transform_type(void);
@@ -139,8 +140,8 @@ Qs_ComponentType *qs_id_comp_type(void);
 /// Returns the built-in TagComp component type handle.
 Qs_ComponentType *qs_tag_comp_type(void);
 
-/// Returns the built-in EntityRefComp component type handle.
-Qs_ComponentType *qs_entity_ref_comp_type(void);
+/// Returns the built-in PrototypeComp component type handle.
+Qs_ComponentType *qs_prototype_comp_type(void);
 
 /* ================================================================
    SCENE

@@ -83,17 +83,19 @@ static void free_bindings(void)
 
 static const char *component_icon(const char *name)
 {
-    if (strcmp(name, "Transform") == 0) return ICON_TRANSFORM;
-    if (strcmp(name, "MeshComp") == 0)  return ICON_MESH;
-    if (strcmp(name, "LightComp") == 0) return ICON_LIGHT;
+    if (strcmp(name, "Transform") == 0)  return ICON_TRANSFORM;
+    if (strcmp(name, "MeshComp") == 0)   return ICON_MESH;
+    if (strcmp(name, "LightComp") == 0)  return ICON_LIGHT;
+    if (strcmp(name, "Prototype") == 0)  return ICON_PROTOTYPE;
     return ICON_COMPONENT;
 }
 
 static uint32_t component_icon_color(const char *name)
 {
-    if (strcmp(name, "Transform") == 0) return CA_THEME_ACCENT;
-    if (strcmp(name, "MeshComp")  == 0) return CA_THEME_SUCCESS;
-    if (strcmp(name, "LightComp") == 0) return CA_THEME_WARNING;
+    if (strcmp(name, "Transform") == 0)  return CA_THEME_ACCENT;
+    if (strcmp(name, "MeshComp")  == 0)  return CA_THEME_SUCCESS;
+    if (strcmp(name, "LightComp") == 0)  return CA_THEME_WARNING;
+    if (strcmp(name, "Prototype") == 0)  return CA_THEME_ACCENT;
     return CA_THEME_TEXT_MUTED;
 }
 
@@ -403,6 +405,40 @@ static void build_field(const char *comp_name, Qs_ComponentType *ct,
    BUILD SECTIONS — rebuild dynamic content for selected entity
    ================================================================ */
 
+static void on_edit_prototype(Ca_Button *btn, void *user_data)
+{
+    (void)btn; (void)user_data;
+    if (!s_editor) return;
+
+    /* Already in prototype mode — don't nest */
+    if (editor_mode(s_editor) == ED_MODE_PROTOTYPE) return;
+
+    Qs_Scene *scene = qs_scene_active();
+    Qs_Entity entity = editor_selected_entity(s_editor);
+    if (!scene || entity == QS_ENTITY_INVALID) return;
+
+    Qs_PrototypeComp *pc = (Qs_PrototypeComp *)qs_entity_get(
+        scene, entity, qs_prototype_comp_type());
+    if (!pc || !pc->path[0]) return;
+
+    /* Resolve the .qproto path relative to the project */
+    Qs_Project *proj = editor_project(s_editor);
+    if (!proj) return;
+
+    char full_path[1024];
+    if (pc->path[0] == '/' || pc->path[0] == '\\' ||
+        (pc->path[0] && pc->path[1] == ':')) {
+        snprintf(full_path, sizeof(full_path), "%s", pc->path);
+    } else {
+        /* Resolve relative to the scene file directory */
+        const char *proj_path = qs_project_path(proj);
+        snprintf(full_path, sizeof(full_path), "%s/scenes/%s",
+                 proj_path, pc->path);
+    }
+
+    editor_open_prototype(s_editor, full_path);
+}
+
 static void build_sections(Qs_Scene *scene, Qs_Entity entity)
 {
     uint32_t type_count = qs_component_type_count();
@@ -436,6 +472,17 @@ static void build_sections(Qs_Scene *scene, Qs_Entity entity)
             .style = "inspector-section-label",
             .color = component_icon_color(comp_name),
         });
+        /* "Edit" button for Prototype component in scene mode */
+        if (strcmp(comp_name, "Prototype") == 0 &&
+            editor_mode(s_editor) == ED_MODE_SCENE)
+        {
+            ca_btn(&(Ca_BtnDesc){
+                .text     = "Edit",
+                .id       = "ins-proto-edit-btn",
+                .style    = "inspector-edit-btn",
+                .on_click = on_edit_prototype,
+            });
+        }
         ca_div_end();
 
         /* Fields */

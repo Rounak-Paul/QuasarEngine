@@ -9,5 +9,6 @@
 #define ICON_TRANSFORM  "\xEF\x82\xB2"   /* U+F0B2 arrows    */
 #define ICON_ID         "\xEF\x8A\x92"   /* U+F292 hashtag   */
 #define ICON_TAG        "\xEF\x81\x84"   /* U+F044 pencil    */
+#define ICON_PROTOTYPE  "\xEF\x86\xB3"   /* U+F1B3 cubes     */
 
 #endif /* ED_ICONS_H */
