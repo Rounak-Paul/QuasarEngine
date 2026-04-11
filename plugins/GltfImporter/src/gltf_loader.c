@@ -23,6 +23,68 @@
 #include <string.h>
 #include <math.h>
 
+typedef struct GltfAllocNode {
+    void *ptr;
+    struct GltfAllocNode *next;
+} GltfAllocNode;
+
+typedef struct GltfAllocTracker {
+    GltfAllocNode *head;
+} GltfAllocTracker;
+
+static void *gltf_tracked_alloc(void *user, cgltf_size size)
+{
+    GltfAllocTracker *t = (GltfAllocTracker *)user;
+    if (!t || size == 0) return NULL;
+
+    void *ptr = malloc((size_t)size);
+    if (!ptr) return NULL;
+
+    GltfAllocNode *node = (GltfAllocNode *)malloc(sizeof(GltfAllocNode));
+    if (!node) {
+        free(ptr);
+        return NULL;
+    }
+
+    node->ptr = ptr;
+    node->next = t->head;
+    t->head = node;
+    return ptr;
+}
+
+static void gltf_tracked_free(void *user, void *ptr)
+{
+    GltfAllocTracker *t = (GltfAllocTracker *)user;
+    if (!t || !ptr) return;
+
+    GltfAllocNode **cur = &t->head;
+    while (*cur) {
+        if ((*cur)->ptr == ptr) {
+            GltfAllocNode *dead = *cur;
+            *cur = dead->next;
+            free(dead->ptr);
+            free(dead);
+            return;
+        }
+        cur = &(*cur)->next;
+    }
+
+    /* Ignore unknown pointers to avoid crashing on corrupted free chains. */
+}
+
+static void gltf_tracked_free_all(GltfAllocTracker *t)
+{
+    if (!t) return;
+    GltfAllocNode *n = t->head;
+    while (n) {
+        GltfAllocNode *next = n->next;
+        free(n->ptr);
+        free(n);
+        n = next;
+    }
+    t->head = NULL;
+}
+
 /* ================================================================
    HELPERS
    ================================================================ */
@@ -44,7 +106,7 @@ static void path_dir(const char *path, char *buf, size_t size)
     }
 }
 
-static void make_mesh_name(const cgltf_mesh *gm, cgltf_size prim_idx,
+static void make_mesh_name(const cgltf_mesh *gm, cgltf_size mesh_idx, cgltf_size prim_idx,
                            char *out, size_t size)
 {
     if (gm->name && gm->name[0]) {
@@ -53,8 +115,7 @@ static void make_mesh_name(const cgltf_mesh *gm, cgltf_size prim_idx,
         else
             snprintf(out, size, "%s", gm->name);
     } else {
-        snprintf(out, size, "mesh_%zu.%zu",
-                 (size_t)(gm - (const cgltf_mesh*)0), prim_idx);
+        snprintf(out, size, "mesh_%zu.%zu", mesh_idx, prim_idx);
     }
 }
 
@@ -324,7 +385,7 @@ static uint32_t count_import_nodes(const cgltf_data *gd)
     for (cgltf_size n = 0; n < gd->nodes_count; n++) {
         const cgltf_node *node = &gd->nodes[n];
         if (node->mesh && node->mesh->primitives_count > 1)
-            count += (uint32_t)(node->mesh->primitives_count - 1);
+            count += (uint32_t)node->mesh->primitives_count;
     }
     return count;
 }
@@ -418,17 +479,30 @@ static bool gltf_import(void *data_ptr, const char *path,
     (void)data_ptr;
     if (!path || !out) return false;
 
+    GltfAllocTracker tracker;
+    memset(&tracker, 0, sizeof(tracker));
+
     cgltf_options opts;
     memset(&opts, 0, sizeof(opts));
+    opts.memory.user_data = &tracker;
+    opts.memory.alloc_func = gltf_tracked_alloc;
+    opts.memory.free_func = gltf_tracked_free;
 
     cgltf_data *gd = NULL;
-    if (cgltf_parse_file(&opts, path, &gd) != cgltf_result_success)
-        return false;
-    if (cgltf_load_buffers(&opts, gd, path) != cgltf_result_success) {
-        cgltf_free(gd);
+    if (cgltf_parse_file(&opts, path, &gd) != cgltf_result_success) {
+        gltf_tracked_free_all(&tracker);
         return false;
     }
-    cgltf_validate(gd);
+    if (cgltf_load_buffers(&opts, gd, path) != cgltf_result_success) {
+        cgltf_free(gd);
+        gltf_tracked_free_all(&tracker);
+        return false;
+    }
+    if (cgltf_validate(gd) != cgltf_result_success) {
+        cgltf_free(gd);
+        gltf_tracked_free_all(&tracker);
+        return false;
+    }
 
     char dir_path[1024];
     path_dir(path, dir_path, sizeof(dir_path));
@@ -476,7 +550,7 @@ static bool gltf_import(void *data_ptr, const char *path,
                 if (prim->type != cgltf_primitive_type_triangles) continue;
 
                 Qs_ImportMesh *im = &meshes[prim_idx];
-                make_mesh_name(gm, pi, im->name, sizeof(im->name));
+                make_mesh_name(gm, mi, pi, im->name, sizeof(im->name));
 
                 im->vertices     = build_vertices(prim, &im->vertex_count);
                 im->indices      = build_indices(prim, &im->index_count);
@@ -518,7 +592,10 @@ static bool gltf_import(void *data_ptr, const char *path,
             /* parent */
             if (gn->parent) {
                 cgltf_size parent_idx = cgltf_node_index(gd, gn->parent);
-                in->parent_index = node_map[parent_idx];
+                if (parent_idx < gd->nodes_count)
+                    in->parent_index = node_map[parent_idx];
+                else
+                    in->parent_index = -1;
             } else {
                 in->parent_index = -1;
             }
@@ -583,6 +660,7 @@ static bool gltf_import(void *data_ptr, const char *path,
 
     free(decoded);
     cgltf_free(gd);
+    gltf_tracked_free_all(&tracker);
     return true;
 }
 
