@@ -311,3 +311,40 @@ Qs_GpuDescriptorSetLayout *qs_material_set_layout(void)
 {
     return g_material_sys ? g_material_sys->set_layout : NULL;
 }
+
+void qs_material_set_texture(Qs_Material *mat, uint32_t slot, Qs_Texture *tex)
+{
+    if (!mat || !mat->in_use || !g_material_sys || slot >= QS_PBR_BINDING_COUNT)
+        return;
+
+    Qs_Texture **stored[] = {
+        &mat->base_color_texture,
+        &mat->metallic_roughness_texture,
+        &mat->normal_texture,
+        &mat->occlusion_texture,
+        &mat->emissive_texture,
+    };
+    *stored[slot] = tex;
+
+    Qs_Texture *fallbacks[] = {
+        g_material_sys->default_white,
+        g_material_sys->default_white,
+        g_material_sys->default_normal,
+        g_material_sys->default_white,
+        g_material_sys->default_black,
+    };
+    Qs_Texture *actual = tex ? tex : fallbacks[slot];
+    qs_gpu_write_image_descriptor(mat->gpu, mat->descriptor_set, slot,
+                                   qs_texture_sampler(actual),
+                                   qs_texture_image_view(actual));
+
+    /* Update has_*_tex flags in PBR params */
+    uint32_t *has_flags[] = {
+        &mat->params.has_base_color_tex,
+        &mat->params.has_metallic_roughness_tex,
+        &mat->params.has_normal_tex,
+        &mat->params.has_occlusion_tex,
+        &mat->params.has_emissive_tex,
+    };
+    *has_flags[slot] = (tex != NULL) ? 1 : 0;
+}

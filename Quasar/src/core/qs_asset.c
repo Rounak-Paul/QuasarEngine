@@ -34,7 +34,9 @@
    LIMITS
    ================================================================ */
 
-#define QS_MAX_ASSETS  4096
+#define QS_MAX_ASSETS               4096
+#define QS_DEFAULT_UPLOAD_BUDGET    (16u * 1024u * 1024u)  /* 16 MB per frame */
+#define QS_PBR_TEX_SLOTS            5
 
 /* ================================================================
    INTERNAL TYPES
@@ -51,6 +53,11 @@ typedef struct Qs_ModelData {
     Qs_ImportNode    *nodes;
     uint32_t          node_count;
     uint32_t         *mesh_material_map;  ///< mesh[i] → material index (UINT32_MAX=none).
+
+    /// Per-material mapping of texture slot → import texture index.
+    /// Used during streaming to update material descriptors as textures finish.
+    /// Freed after streaming completes.
+    uint32_t         *material_tex_map;   ///< [material_count * QS_PBR_TEX_SLOTS]
 } Qs_ModelData;
 
 struct Qs_Asset {
@@ -61,6 +68,10 @@ struct Qs_Asset {
 
     /* Staging: filled by importer on worker thread */
     Qs_ImportResult   staging;
+
+    /* Texture streaming state (MODEL assets only) */
+    uint32_t          stream_next_tex;   ///< Next texture index to upload.
+    bool              stream_complete;   ///< All textures uploaded (or no textures).
 
     /* Final GPU resources (filled on main thread) */
     union {
@@ -75,6 +86,8 @@ typedef struct Qs_AssetSystem {
     Qs_Asset   *assets[QS_MAX_ASSETS];
     uint32_t    count;
     Qs_Engine  *engine;
+    uint64_t    upload_budget_bytes;   ///< Max bytes of texture data per frame.
+    uint64_t    frame_bytes_uploaded;  ///< Accumulator reset each frame.
 } Qs_AssetSystem;
 
 static Qs_AssetSystem *g_asset_system;
@@ -141,42 +154,46 @@ static void import_job_fn(void *raw)
 }
 
 /* ================================================================
-   GPU UPLOAD (main thread)
+   GPU UPLOAD — PHASE 1: Meshes + Materials (main thread)
+   ================================================================
+
+   Uploads all meshes and creates materials with fallback textures.
+   After this the model is renderable (meshes drawn with default
+   white/normal/black textures).  Texture staging data is kept alive
+   for progressive streaming in Phase 2.
    ================================================================ */
 
-static void upload_model(Qs_Asset *a, Qs_Engine *engine)
+static uint64_t estimate_texture_bytes(const Qs_ImportTexture *it)
+{
+    uint32_t bpp;
+    switch ((Qs_TextureFormat)it->format) {
+    case QS_TEXTURE_FORMAT_RG8_UNORM:     bpp = 2; break;
+    case QS_TEXTURE_FORMAT_R8_UNORM:      bpp = 1; break;
+    case QS_TEXTURE_FORMAT_RGBA16_SFLOAT: bpp = 8; break;
+    default:                              bpp = 4; break;
+    }
+    return (uint64_t)it->width * it->height * bpp;
+}
+
+static void upload_model_begin(Qs_Asset *a, Qs_Engine *engine)
 {
     Qs_ImportResult *r = &a->staging;
     Qs_ModelData *m = &a->data.model;
     memset(m, 0, sizeof(*m));
 
-    /* --- Textures --- */
+    /* --- Allocate texture array (NULLs — filled during streaming) --- */
     if (r->texture_count > 0) {
         m->textures = (Qs_Texture **)calloc(r->texture_count, sizeof(Qs_Texture *));
         m->texture_count = r->texture_count;
-        for (uint32_t i = 0; i < r->texture_count; i++) {
-            Qs_ImportTexture *it = &r->textures[i];
-            if (!it->pixels) continue;
-            Qs_TextureDesc td = {
-                .name          = it->name,
-                .width         = it->width,
-                .height        = it->height,
-                .format        = (Qs_TextureFormat)it->format,
-                .pixels        = it->pixels,
-                .generate_mips = it->generate_mips,
-                .min_filter    = (Qs_TextureFilter)it->min_filter,
-                .mag_filter    = (Qs_TextureFilter)it->mag_filter,
-                .wrap_u        = (Qs_TextureWrap)it->wrap_u,
-                .wrap_v        = (Qs_TextureWrap)it->wrap_v,
-            };
-            m->textures[i] = qs_texture_create(engine, &td);
-        }
     }
 
-    /* --- Materials --- */
+    /* --- Materials (created with NULL textures → fallback descriptors) --- */
     if (r->material_count > 0) {
         m->materials = (Qs_NamedMaterial *)calloc(r->material_count, sizeof(Qs_NamedMaterial));
+        m->material_tex_map = (uint32_t *)malloc(
+            r->material_count * QS_PBR_TEX_SLOTS * sizeof(uint32_t));
         m->material_count = r->material_count;
+
         for (uint32_t i = 0; i < r->material_count; i++) {
             Qs_ImportMaterial *im = &r->materials[i];
             Qs_MaterialDesc md = qs_material_desc_defaults();
@@ -195,15 +212,15 @@ static void upload_model(Qs_Asset *a, Qs_Engine *engine)
             md.alpha_mode           = (Qs_AlphaMode)im->alpha_mode;
             md.alpha_cutoff         = im->alpha_cutoff;
             md.double_sided         = im->double_sided;
+            /* All texture pointers left NULL — material system uses fallbacks */
 
-            /* Resolve texture indices */
-            #define TEX(idx) ((idx) < m->texture_count ? m->textures[(idx)] : NULL)
-            md.base_color_texture         = TEX(im->base_color_tex);
-            md.metallic_roughness_texture = TEX(im->metallic_roughness_tex);
-            md.normal_texture             = TEX(im->normal_tex);
-            md.occlusion_texture          = TEX(im->occlusion_tex);
-            md.emissive_texture           = TEX(im->emissive_tex);
-            #undef TEX
+            /* Store texture index mapping for streaming Phase 2 */
+            uint32_t *tm = &m->material_tex_map[i * QS_PBR_TEX_SLOTS];
+            tm[0] = im->base_color_tex;
+            tm[1] = im->metallic_roughness_tex;
+            tm[2] = im->normal_tex;
+            tm[3] = im->occlusion_tex;
+            tm[4] = im->emissive_tex;
 
             Qs_Material *mat = qs_material_create(engine, &md);
             if (mat) {
@@ -247,6 +264,93 @@ static void upload_model(Qs_Asset *a, Qs_Engine *engine)
         memcpy(m->nodes, r->nodes, r->node_count * sizeof(Qs_ImportNode));
         m->node_count = r->node_count;
     }
+
+    /* --- Free consumed staging data (mesh/material/node) --- */
+    for (uint32_t i = 0; i < r->mesh_count; i++) {
+        free(r->meshes[i].vertices); r->meshes[i].vertices = NULL;
+        free(r->meshes[i].indices);  r->meshes[i].indices  = NULL;
+    }
+    free(r->meshes);     r->meshes     = NULL;  r->mesh_count     = 0;
+    free(r->materials);  r->materials  = NULL;  r->material_count = 0;
+    free(r->nodes);      r->nodes      = NULL;  r->node_count     = 0;
+
+    /* Texture staging kept alive for streaming */
+    a->stream_next_tex = 0;
+    a->stream_complete = (r->texture_count == 0);
+}
+
+/* ================================================================
+   GPU UPLOAD — PHASE 2: Stream one texture (main thread)
+   ================================================================
+
+   Uploads a single texture from staging, then updates every material
+   that references it via qs_material_set_texture().  Returns the
+   approximate bytes uploaded (0 when the texture had no pixel data).
+   ================================================================ */
+
+static uint64_t stream_model_texture(Qs_Asset *a, Qs_Engine *engine)
+{
+    Qs_ImportResult *r = &a->staging;
+    Qs_ModelData *m = &a->data.model;
+
+    uint32_t idx = a->stream_next_tex++;
+    if (idx >= r->texture_count) {
+        a->stream_complete = true;
+        return 0;
+    }
+
+    Qs_ImportTexture *it = &r->textures[idx];
+    uint64_t bytes = 0;
+
+    if (it->pixels) {
+        Qs_TextureDesc td = {
+            .name          = it->name,
+            .width         = it->width,
+            .height        = it->height,
+            .format        = (Qs_TextureFormat)it->format,
+            .pixels        = it->pixels,
+            .generate_mips = it->generate_mips,
+            .min_filter    = (Qs_TextureFilter)it->min_filter,
+            .mag_filter    = (Qs_TextureFilter)it->mag_filter,
+            .wrap_u        = (Qs_TextureWrap)it->wrap_u,
+            .wrap_v        = (Qs_TextureWrap)it->wrap_v,
+        };
+        m->textures[idx] = qs_texture_create(engine, &td);
+        bytes = estimate_texture_bytes(it);
+
+        free(it->pixels);
+        it->pixels = NULL;
+
+        /* Update all materials that reference this texture */
+        if (m->textures[idx] && m->material_tex_map) {
+            for (uint32_t mi = 0; mi < m->material_count; mi++) {
+                if (!m->materials[mi].material) continue;
+                const uint32_t *tm = &m->material_tex_map[mi * QS_PBR_TEX_SLOTS];
+                for (uint32_t slot = 0; slot < QS_PBR_TEX_SLOTS; slot++) {
+                    if (tm[slot] == idx)
+                        qs_material_set_texture(m->materials[mi].material,
+                                                slot, m->textures[idx]);
+                }
+            }
+        }
+    }
+
+    /* Check completion */
+    if (a->stream_next_tex >= r->texture_count) {
+        a->stream_complete = true;
+        /* Free the staging texture array (pixel data already freed per-entry) */
+        free(r->textures);
+        r->textures      = NULL;
+        r->texture_count = 0;
+        /* Material-texture map no longer needed */
+        free(m->material_tex_map);
+        m->material_tex_map = NULL;
+
+        QS_LOG_INFO("Asset streaming complete: %s (%u textures)",
+                    a->path, m->texture_count);
+    }
+
+    return bytes;
 }
 
 static void finalise_asset(Qs_Asset *a, Qs_Engine *engine)
@@ -255,18 +359,20 @@ static void finalise_asset(Qs_Asset *a, Qs_Engine *engine)
     if (state != QS_ASSET_UPLOADING) return;
 
     if (a->type == QS_ASSET_TYPE_MODEL) {
-        upload_model(a, engine);
+        upload_model_begin(a, engine);
+        /* Texture staging kept for streaming — do NOT call qs_import_result_free */
+    } else {
+        qs_import_result_free(&a->staging);
     }
 
-    /* Free staging data */
-    qs_import_result_free(&a->staging);
-
     atomic_store(&a->state, (int)QS_ASSET_READY);
-    QS_LOG_INFO("Asset ready: %s (%u meshes, %u materials, %u textures)",
+    QS_LOG_INFO("Asset ready: %s (%u meshes, %u materials, %u textures %s)",
                 a->path,
                 a->type == QS_ASSET_TYPE_MODEL ? a->data.model.mesh_count : 0,
                 a->type == QS_ASSET_TYPE_MODEL ? a->data.model.material_count : 0,
-                a->type == QS_ASSET_TYPE_MODEL ? a->data.model.texture_count : 0);
+                a->type == QS_ASSET_TYPE_MODEL ? a->data.model.texture_count : 0,
+                (a->type == QS_ASSET_TYPE_MODEL && !a->stream_complete)
+                    ? "streaming" : "");
 }
 
 /* ================================================================
@@ -441,6 +547,7 @@ static void free_model_data(Qs_ModelData *m)
     free(m->textures);
     free(m->nodes);
     free(m->mesh_material_map);
+    free(m->material_tex_map);
 }
 
 static void destroy_asset(Qs_Asset *a)
@@ -448,8 +555,17 @@ static void destroy_asset(Qs_Asset *a)
     Qs_AssetState state = (Qs_AssetState)atomic_load(&a->state);
 
     if (state == QS_ASSET_READY) {
-        if (a->type == QS_ASSET_TYPE_MODEL)
+        if (a->type == QS_ASSET_TYPE_MODEL) {
+            /* Free any remaining texture staging data from incomplete streaming */
+            if (!a->stream_complete && a->staging.textures) {
+                for (uint32_t i = a->stream_next_tex; i < a->staging.texture_count; i++)
+                    free(a->staging.textures[i].pixels);
+                free(a->staging.textures);
+                a->staging.textures      = NULL;
+                a->staging.texture_count = 0;
+            }
             free_model_data(&a->data.model);
+        }
         else if (a->type == QS_ASSET_TYPE_TEXTURE && a->data.texture)
             qs_texture_destroy(a->data.texture);
         else if (a->type == QS_ASSET_TYPE_MESH && a->data.mesh)
@@ -592,7 +708,9 @@ static bool asset_system_init(Qs_System *system, Qs_Engine *engine)
     Qs_AssetSystem *data = (Qs_AssetSystem *)qs_system_data(system);
     g_asset_system = data;
     data->engine = engine;
-    QS_LOG_INFO("Asset system initialized");
+    data->upload_budget_bytes = QS_DEFAULT_UPLOAD_BUDGET;
+    QS_LOG_INFO("Asset system initialized (upload budget: %llu bytes/frame)",
+                (unsigned long long)data->upload_budget_bytes);
     return true;
 }
 
@@ -606,14 +724,24 @@ static void asset_system_shutdown(Qs_System *system, Qs_Engine *engine)
         Qs_Asset *a = data->assets[i];
         if (!a) continue;
         Qs_AssetState state = (Qs_AssetState)atomic_load(&a->state);
-        if (state == QS_ASSET_READY && a->type == QS_ASSET_TYPE_MODEL)
-            free_model_data(&a->data.model);
-        else if (state == QS_ASSET_READY && a->type == QS_ASSET_TYPE_TEXTURE && a->data.texture)
-            qs_texture_destroy(a->data.texture);
-        else if (state == QS_ASSET_READY && a->type == QS_ASSET_TYPE_MESH && a->data.mesh)
-            qs_mesh_destroy(a->data.mesh);
-        else if (state == QS_ASSET_READY && a->type == QS_ASSET_TYPE_MATERIAL && a->data.material)
-            qs_material_destroy(a->data.material);
+        if (state == QS_ASSET_READY) {
+            if (a->type == QS_ASSET_TYPE_MODEL) {
+                /* Free remaining texture staging from incomplete streaming */
+                if (!a->stream_complete && a->staging.textures) {
+                    for (uint32_t j = a->stream_next_tex;
+                         j < a->staging.texture_count; j++)
+                        free(a->staging.textures[j].pixels);
+                    free(a->staging.textures);
+                }
+                free_model_data(&a->data.model);
+            }
+            else if (a->type == QS_ASSET_TYPE_TEXTURE && a->data.texture)
+                qs_texture_destroy(a->data.texture);
+            else if (a->type == QS_ASSET_TYPE_MESH && a->data.mesh)
+                qs_mesh_destroy(a->data.mesh);
+            else if (a->type == QS_ASSET_TYPE_MATERIAL && a->data.material)
+                qs_material_destroy(a->data.material);
+        }
         free(a);
         data->assets[i] = NULL;
     }
@@ -627,13 +755,67 @@ static void asset_system_update(Qs_System *system, Qs_Engine *engine, float dt)
     (void)dt;
     Qs_AssetSystem *data = (Qs_AssetSystem *)qs_system_data(system);
 
-    /* Finalise any assets that have finished importing */
+    data->frame_bytes_uploaded = 0;
+
     for (uint32_t i = 0; i < data->count; i++) {
         Qs_Asset *a = data->assets[i];
         if (!a) continue;
-        if ((Qs_AssetState)atomic_load(&a->state) == QS_ASSET_UPLOADING)
+
+        Qs_AssetState state = (Qs_AssetState)atomic_load(&a->state);
+
+        /* Phase 1: Import finished → upload meshes + create materials → READY */
+        if (state == QS_ASSET_UPLOADING) {
             finalise_asset(a, engine);
+            state = (Qs_AssetState)atomic_load(&a->state);
+        }
+
+        /* Phase 2: Stream textures within per-frame budget */
+        if (state == QS_ASSET_READY &&
+            a->type == QS_ASSET_TYPE_MODEL && !a->stream_complete)
+        {
+            /* Always upload at least one texture (guarantee forward progress) */
+            uint64_t bytes = stream_model_texture(a, engine);
+            data->frame_bytes_uploaded += bytes;
+
+            /* Continue while within budget */
+            while (!a->stream_complete &&
+                   (data->upload_budget_bytes == 0 ||
+                    data->frame_bytes_uploaded < data->upload_budget_bytes))
+            {
+                bytes = stream_model_texture(a, engine);
+                data->frame_bytes_uploaded += bytes;
+            }
+        }
     }
+}
+
+/* ================================================================
+   UPLOAD BUDGET & STREAMING PROGRESS
+   ================================================================ */
+
+void qs_asset_set_upload_budget(Qs_Engine *engine, uint64_t bytes_per_frame)
+{
+    (void)engine;
+    if (g_asset_system)
+        g_asset_system->upload_budget_bytes = bytes_per_frame;
+}
+
+uint64_t qs_asset_upload_budget(Qs_Engine *engine)
+{
+    (void)engine;
+    return g_asset_system ? g_asset_system->upload_budget_bytes : 0;
+}
+
+float qs_asset_stream_progress(const Qs_Asset *asset)
+{
+    if (!asset) return 0.0f;
+    Qs_AssetState state = (Qs_AssetState)atomic_load(&asset->state);
+    if (state != QS_ASSET_READY) return 0.0f;
+    if (asset->type != QS_ASSET_TYPE_MODEL) return 1.0f;
+    if (asset->stream_complete) return 1.0f;
+    uint32_t total = asset->data.model.texture_count;
+    if (total == 0) return 1.0f;
+    return (float)asset->stream_next_tex / (float)total;
 }
 
 Qs_SystemDesc qs_asset_system_desc(void)

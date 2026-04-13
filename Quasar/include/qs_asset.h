@@ -146,6 +146,29 @@ void qs_asset_model_submit(const Qs_Asset *asset, Qs_Renderer *renderer,
                            const float world[16], Qs_Entity entity);
 
 /* ----------------------------------------------------------------
+   ASSET STREAMING
+   ----------------------------------------------------------------
+
+   Model assets become renderable immediately after meshes and materials
+   are uploaded.  Textures stream in progressively over subsequent frames
+   within a configurable per-frame byte budget.  Materials initially use
+   engine-default fallback textures (white, normal-up, black) and are
+   updated in-place as each texture finishes uploading.
+   ---------------------------------------------------------------- */
+
+/// Set the maximum bytes of GPU texture data uploaded per frame.
+/// Default: 16 MB.  A budget of 0 disables throttling (upload all at once).
+void qs_asset_set_upload_budget(Qs_Engine *engine, uint64_t bytes_per_frame);
+
+/// Returns the current per-frame upload budget in bytes.
+uint64_t qs_asset_upload_budget(Qs_Engine *engine);
+
+/// Returns the texture streaming progress for a model asset.
+/// 0.0 = no textures uploaded yet, 1.0 = all textures uploaded.
+/// Non-model or non-READY assets return 0.0; assets with no textures return 1.0.
+float qs_asset_stream_progress(const Qs_Asset *asset);
+
+/* ----------------------------------------------------------------
    ASSET IMPORTER EXTENSION POINT
    ================================================================
 

@@ -121,4 +121,11 @@ Qs_AlphaMode qs_material_alpha_mode(const Qs_Material *material);
 /// Returns true if the material is double-sided.
 bool qs_material_double_sided(const Qs_Material *material);
 
+/// Updates a texture slot on an existing material and rewrites the
+/// corresponding descriptor set binding.  Slot indices:
+///   0 = base_color, 1 = metallic_roughness, 2 = normal,
+///   3 = occlusion, 4 = emissive.
+/// Pass NULL to revert the slot to its default fallback texture.
+void qs_material_set_texture(Qs_Material *mat, uint32_t slot, Qs_Texture *tex);
+
 #endif
