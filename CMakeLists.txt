@@ -15,6 +15,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 if(MSVC)
     set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
     add_compile_definitions(_CRT_SECURE_NO_WARNINGS)
+    add_compile_options($<$<COMPILE_LANGUAGE:C>:/experimental:c11atomics>)
 endif()
 
 # Output directories
@@ -38,6 +39,16 @@ endif()
 # Engine library (brings in causality and all vendors)
 add_subdirectory(Quasar)
 
+# causality is SHARED; redirect its DLL output to our bin/ alongside other targets
+set_target_properties(causality PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/bin"
+    ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/bin"
+)
+
 # Applications
 add_subdirectory(Editor)
 add_subdirectory(Runtime)
+
+# Plugins
+add_subdirectory(plugins/BuiltinRendererPBR)
+add_subdirectory(plugins/GltfImporter)

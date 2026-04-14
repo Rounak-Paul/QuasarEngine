@@ -1,10 +1,16 @@
 #include "editor.h"
+#include "ui/ed_project_launcher.h"
 
 int main(void) {
+    char project_path[1024];
+    if (!ed_project_launcher_run(project_path, sizeof(project_path)))
+        return 0;
+
     Editor *editor = editor_create(&(EditorDesc){
-        .title  = "Quasar Editor",
-        .width  = 1280,
-        .height = 720,
+        .title        = "Quasar Editor",
+        .project_path = project_path,
+        .width        = 600,
+        .height       = 400,
     });
     if (!editor) return 1;
 

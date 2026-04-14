@@ -1,14 +1,12 @@
-#ifndef QS_TEXTURE_H
+﻿#ifndef QS_TEXTURE_H
 #define QS_TEXTURE_H
 
-#include <vulkan/vulkan.h>
+#include "qs_gpu.h"
 #include <stdbool.h>
 #include <stdint.h>
 
-typedef struct Qs_SystemDesc   Qs_SystemDesc;
 typedef struct Qs_Engine       Qs_Engine;
-typedef struct Ca_Instance     Ca_Instance;
-typedef struct Qs_Texture      Qs_Texture;
+typedef struct Qs_Texture      Qs_Texture;     ///< Opaque — defined by the texture backend.
 
 /* ================================================================
    TEXTURE FORMAT
@@ -55,10 +53,10 @@ typedef struct Qs_TextureDesc {
 } Qs_TextureDesc;
 
 /* ================================================================
-   TEXTURE API
+   PUBLIC TEXTURE API
    ================================================================ */
 
-/// Creates a GPU texture from pixel data. Returns NULL on failure.
+/// Creates a GPU texture.  Destroy with qs_texture_destroy.
 Qs_Texture *qs_texture_create(Qs_Engine *engine, const Qs_TextureDesc *desc);
 
 /// Destroys a texture and frees its GPU resources.
@@ -67,11 +65,11 @@ void qs_texture_destroy(Qs_Texture *texture);
 /// Returns the debug name.
 const char *qs_texture_name(const Qs_Texture *texture);
 
-/// Returns the VkImageView for shader binding.
-VkImageView qs_texture_image_view(const Qs_Texture *texture);
+/// Returns the image view for shader binding.
+Qs_GpuImageView *qs_texture_image_view(const Qs_Texture *texture);
 
-/// Returns the VkSampler for shader binding.
-VkSampler qs_texture_sampler(const Qs_Texture *texture);
+/// Returns the sampler for shader binding.
+Qs_GpuSampler *qs_texture_sampler(const Qs_Texture *texture);
 
 /// Returns the texture dimensions.
 void qs_texture_extents(const Qs_Texture *texture,
@@ -79,12 +77,5 @@ void qs_texture_extents(const Qs_Texture *texture,
 
 /// Returns the mip level count.
 uint32_t qs_texture_mip_levels(const Qs_Texture *texture);
-
-/* ================================================================
-   TEXTURE SYSTEM
-   ================================================================ */
-
-/// Returns the system descriptor for registration with the engine.
-Qs_SystemDesc qs_texture_system_desc(Ca_Instance *ca_instance);
 
 #endif

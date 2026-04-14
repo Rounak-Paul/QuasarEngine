@@ -5,20 +5,25 @@
 #include <stdint.h>
 #include <stddef.h>
 
-typedef struct Qs_SystemDesc     Qs_SystemDesc;
+#include "qs_light.h"
+
 typedef struct Qs_Engine         Qs_Engine;
 typedef struct Qs_Scene          Qs_Scene;
 typedef struct Qs_ComponentType  Qs_ComponentType;
+typedef struct Qs_TypeInfo       Qs_TypeInfo;
 typedef struct Qs_Mesh           Qs_Mesh;
 typedef struct Qs_Material       Qs_Material;
-typedef struct Qs_Light          Qs_Light;
+struct cJSON;
 
 /* ================================================================
    ENTITY — lightweight index handle
    ================================================================ */
 
+#ifndef QS_ENTITY_DEFINED
+#define QS_ENTITY_DEFINED
 typedef uint32_t Qs_Entity;
 #define QS_ENTITY_INVALID UINT32_MAX
+#endif
 
 /* ================================================================
    COMPONENT TYPE REGISTRATION
@@ -29,6 +34,9 @@ typedef uint32_t Qs_Entity;
 typedef struct Qs_ComponentTypeDesc {
     const char *name;           ///< Unique type name (e.g. "RigidBody", "AudioSource").
     size_t      data_size;      ///< Size in bytes of one component instance.
+
+    /// Reflection metadata for auto-serialization.  May be NULL.
+    const Qs_TypeInfo *type_info;
 
     /// Called when a component is added to an entity.  May be NULL.
     void (*init)(void *component, Qs_Scene *scene, Qs_Entity entity);
@@ -48,6 +56,19 @@ Qs_ComponentType *qs_component_register(Qs_Engine *engine,
 /// Finds a registered component type by name.  Returns NULL if not found.
 Qs_ComponentType *qs_component_find(const char *name);
 
+/// Returns the reflection type info linked to a component type, or NULL.
+const Qs_TypeInfo *qs_component_type_info(const Qs_ComponentType *type);
+
+/// Returns the name of a component type.
+const char *qs_component_type_name(const Qs_ComponentType *type);
+
+/// Returns the number of registered component types.
+uint32_t qs_component_type_count(void);
+
+/// Returns the i-th registered component type (0-based dense index).
+/// Returns NULL if index >= count.
+Qs_ComponentType *qs_component_type_at(uint32_t index);
+
 /* ================================================================
    BUILT-IN COMPONENT TYPES
    ================================================================ */
@@ -63,13 +84,46 @@ typedef struct Qs_Transform {
 typedef struct Qs_MeshComp {
     Qs_Mesh     *mesh;
     Qs_Material *material;
-    bool         visible;   ///< Default: true.
+    bool         visible;          ///< Default: true.
+    char         mesh_name[64];    ///< Resource name for serialization.
+    char         material_name[64];///< Resource name for serialization.
 } Qs_MeshComp;
 
-/// Light reference.
+/// Light component — all parameters stored inline for reflection, serialization,
+/// and inspector editing.  No opaque pointer; data is packed directly to GPU at
+/// submission time via qs_renderer_submit_light_comp().
 typedef struct Qs_LightComp {
-    Qs_Light *light;
+    Qs_LightType type;            ///< Default: QS_LIGHT_DIRECTIONAL.
+    float        direction[3];    ///< Normalised direction (directional / spot).
+    float        color[3];        ///< Linear RGB. Default: {1, 1, 1}.
+    float        intensity;       ///< Luminous intensity. Default: 1.0.
+    float        range;           ///< Max influence radius (0 = infinite).
+    float        inner_cone_deg;  ///< Inner cone angle for spot lights.
+    float        outer_cone_deg;  ///< Outer cone angle for spot lights.
+    bool         cast_shadows;
+    bool         enabled;
 } Qs_LightComp;
+
+/// Persistent entity ID (auto-assigned on creation, survives serialization).
+typedef struct Qs_IdComp {
+    uint32_t id;
+} Qs_IdComp;
+
+/// Entity tag for categorization / grouping.
+typedef struct Qs_TagComp {
+    char tag[64];
+} Qs_TagComp;
+
+/// References a prototype file (.qproto) — a reusable entity template
+/// analogous to a Unity prefab.  Prototypes are scenes that can be nested
+/// inside other scenes or other prototypes.  Imported models (e.g. glTF)
+/// are automatically converted to prototypes.
+typedef struct Qs_PrototypeComp {
+    char            path[256];           ///< Path to the .qproto file (serialized).
+    /* ---- runtime fields (not serialized) ---- */
+    struct Qs_Asset *asset;              ///< Loaded asset handle.
+    float            base_transform[16]; ///< Normalization matrix from .qproto.
+} Qs_PrototypeComp;
 
 /// Returns the built-in Transform component type handle.
 Qs_ComponentType *qs_transform_type(void);
@@ -79,6 +133,15 @@ Qs_ComponentType *qs_mesh_comp_type(void);
 
 /// Returns the built-in LightComp component type handle.
 Qs_ComponentType *qs_light_comp_type(void);
+
+/// Returns the built-in IdComp component type handle.
+Qs_ComponentType *qs_id_comp_type(void);
+
+/// Returns the built-in TagComp component type handle.
+Qs_ComponentType *qs_tag_comp_type(void);
+
+/// Returns the built-in PrototypeComp component type handle.
+Qs_ComponentType *qs_prototype_comp_type(void);
 
 /* ================================================================
    SCENE
@@ -126,11 +189,20 @@ bool qs_entity_valid(const Qs_Scene *scene, Qs_Entity entity);
 /// Returns the entity's name.
 const char *qs_entity_name(const Qs_Scene *scene, Qs_Entity entity);
 
+/// Sets the entity's display name.
+void qs_entity_set_name(Qs_Scene *scene, Qs_Entity entity, const char *name);
+
 /// Enables or disables an entity.  Disabled entities skip component updates.
 void qs_entity_set_enabled(Qs_Scene *scene, Qs_Entity entity, bool enabled);
 
 /// Returns true if the entity is enabled.
 bool qs_entity_enabled(const Qs_Scene *scene, Qs_Entity entity);
+
+/// Sets the parent of an entity.  Pass QS_ENTITY_INVALID to make it a root entity.
+void qs_entity_set_parent(Qs_Scene *scene, Qs_Entity entity, Qs_Entity parent);
+
+/// Returns the parent entity, or QS_ENTITY_INVALID if the entity is a root.
+Qs_Entity qs_entity_get_parent(const Qs_Scene *scene, Qs_Entity entity);
 
 /// Returns the number of alive entities in the scene.
 uint32_t qs_scene_entity_count(const Qs_Scene *scene);
@@ -172,10 +244,33 @@ Qs_Entity qs_scene_next(const Qs_Scene *scene,
                          Qs_Entity after);
 
 /* ================================================================
-   SCENE SYSTEM
+   SCENE SERIALIZATION
    ================================================================ */
 
-/// Returns the system descriptor for registration with the engine.
-Qs_SystemDesc qs_scene_system_desc(void);
+/// Serializes the entire scene to a cJSON object.  Caller owns the result.
+/// Components with reflection type_info are auto-serialized.
+struct cJSON *qs_scene_to_json(const Qs_Scene *scene);
+
+/// Deserializes a cJSON object into a scene, creating entities and components.
+/// The scene should be empty or newly created.  Returns true on success.
+bool qs_scene_from_json(Qs_Scene *scene, Qs_Engine *engine,
+                        const struct cJSON *json);
+
+/// Saves the scene to a .qscene JSON file at the given path.
+/// Returns true on success.
+bool qs_scene_save(const Qs_Scene *scene, const char *path);
+
+/// Loads a scene from a .qscene JSON file.  Creates entities and components
+/// inside the given (empty/new) scene.  Returns true on success.
+bool qs_scene_load(Qs_Scene *scene, Qs_Engine *engine, const char *path);
+
+/* ================================================================
+   WORLD TRANSFORM
+   ================================================================ */
+
+/// Computes the world-space model matrix for an entity by composing
+/// local transforms up the parent chain.  Result is column-major 4×4.
+void qs_scene_world_matrix(const Qs_Scene *scene, Qs_Entity entity,
+                           float out[16]);
 
 #endif

@@ -1,14 +1,12 @@
-#ifndef QS_MATERIAL_H
+﻿#ifndef QS_MATERIAL_H
 #define QS_MATERIAL_H
 
-#include <vulkan/vulkan.h>
+#include "qs_gpu.h"
 #include <stdbool.h>
 #include <stdint.h>
 
-typedef struct Qs_SystemDesc Qs_SystemDesc;
 typedef struct Qs_Engine     Qs_Engine;
-typedef struct Ca_Instance   Ca_Instance;
-typedef struct Qs_Material   Qs_Material;
+typedef struct Qs_Material   Qs_Material;  ///< Opaque — defined by the material backend.
 typedef struct Qs_Texture    Qs_Texture;
 
 /* ================================================================
@@ -37,7 +35,7 @@ typedef struct Qs_MaterialDesc {
     /* Metallic-roughness */
     float         metallic_factor;        ///< 0.0 = dielectric, 1.0 = metal (default: 1.0).
     float         roughness_factor;       ///< 0.0 = smooth, 1.0 = rough (default: 1.0).
-    Qs_Texture   *metallic_roughness_texture; ///< Green = roughness, Blue = metallic (glTF).
+    Qs_Texture   *metallic_roughness_texture;
 
     /* Normal map */
     float         normal_scale;           ///< Normal map strength (default: 1.0).
@@ -45,7 +43,7 @@ typedef struct Qs_MaterialDesc {
 
     /* Ambient occlusion */
     float         occlusion_strength;     ///< AO strength (default: 1.0).
-    Qs_Texture   *occlusion_texture;      ///< R-channel occlusion.
+    Qs_Texture   *occlusion_texture;
 
     /* Emissive */
     float         emissive_factor[3];     ///< RGB emissive multiplier (default: {0,0,0}).
@@ -58,28 +56,23 @@ typedef struct Qs_MaterialDesc {
     bool          double_sided;
 } Qs_MaterialDesc;
 
+/// Returns a Qs_MaterialDesc with PBR-sane defaults pre-filled.
+/// Callers should modify individual fields after calling this.
+static inline Qs_MaterialDesc qs_material_desc_defaults(void)
+{
+    return (Qs_MaterialDesc){
+        .base_color_factor  = {1.0f, 1.0f, 1.0f, 1.0f},
+        .roughness_factor   = 1.0f,
+        .normal_scale       = 1.0f,
+        .occlusion_strength = 1.0f,
+        .alpha_cutoff       = 0.5f,
+    };
+}
+
 /* ================================================================
-   MATERIAL API
+   PBR PARAMS - GPU-ready parameter block
    ================================================================ */
 
-/// Creates a PBR material. Returns NULL on failure.
-Qs_Material *qs_material_create(Qs_Engine *engine, const Qs_MaterialDesc *desc);
-
-/// Destroys a material and frees its GPU resources.
-void qs_material_destroy(Qs_Material *material);
-
-/// Returns the debug name.
-const char *qs_material_name(const Qs_Material *material);
-
-/// Returns the descriptor set containing all PBR texture bindings.
-/// Layout: binding 0 = base_color, 1 = metallic_roughness, 2 = normal,
-///         3 = occlusion, 4 = emissive.
-VkDescriptorSet qs_material_descriptor_set(const Qs_Material *material);
-
-/// Returns the descriptor set layout shared by all materials.
-VkDescriptorSetLayout qs_material_set_layout(void);
-
-/// Returns a pointer to the material's PBR parameters (GPU-ready struct).
 typedef struct Qs_PBRParams {
     float base_color_factor[4];
     float metallic_factor;
@@ -98,7 +91,28 @@ typedef struct Qs_PBRParams {
     uint32_t _pad[2];
 } Qs_PBRParams;
 
-/// Returns the material's PBR parameters for upload to a uniform buffer.
+/* ================================================================
+   PUBLIC MATERIAL API
+   ================================================================ */
+
+/// Creates a PBR material.  Destroy with qs_material_destroy.
+Qs_Material *qs_material_create(Qs_Engine *engine, const Qs_MaterialDesc *desc);
+
+/// Destroys a material and frees its GPU resources.
+void qs_material_destroy(Qs_Material *material);
+
+/// Returns the debug name.
+const char *qs_material_name(const Qs_Material *material);
+
+/// Returns the descriptor set containing all PBR texture bindings.
+/// Layout: binding 0 = base_color, 1 = metallic_roughness, 2 = normal,
+///         3 = occlusion, 4 = emissive.
+Qs_GpuDescriptorSet *qs_material_descriptor_set(const Qs_Material *material);
+
+/// Returns the descriptor set layout shared by all materials.
+Qs_GpuDescriptorSetLayout *qs_material_set_layout(void);
+
+/// Returns the materialâ€™s PBR parameters for GPU upload.
 const Qs_PBRParams *qs_material_params(const Qs_Material *material);
 
 /// Returns the alpha mode of the material.
@@ -107,11 +121,11 @@ Qs_AlphaMode qs_material_alpha_mode(const Qs_Material *material);
 /// Returns true if the material is double-sided.
 bool qs_material_double_sided(const Qs_Material *material);
 
-/* ================================================================
-   MATERIAL SYSTEM
-   ================================================================ */
-
-/// Returns the system descriptor for registration with the engine.
-Qs_SystemDesc qs_material_system_desc(Ca_Instance *ca_instance);
+/// Updates a texture slot on an existing material and rewrites the
+/// corresponding descriptor set binding.  Slot indices:
+///   0 = base_color, 1 = metallic_roughness, 2 = normal,
+///   3 = occlusion, 4 = emissive.
+/// Pass NULL to revert the slot to its default fallback texture.
+void qs_material_set_texture(Qs_Material *mat, uint32_t slot, Qs_Texture *tex);
 
 #endif

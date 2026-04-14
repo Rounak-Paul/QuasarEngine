@@ -1,71 +1,142 @@
 #include "editor.h"
+#include "ed_camera.h"
+#include "ed_gizmo.h"
+#include "ed_pick.h"
+#include "qs_math.h"
 #include "ui/ed_menu_bar.h"
 #include "ui/ed_toolbar.h"
 #include "ui/ed_layout.h"
 #include "ui/ed_status_bar.h"
+#include "ui/ed_inspector.h"
+#include "ui/ed_hierarchy.h"
+#include "ui/ed_plugin_manager.h"
 
+#include "ui/ed_file_browser.h"
+
+#include "quasar.h"
+#include "cJSON.h"
+#include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
+
+#define MAX_LOADED_RESOURCES 32
+
+typedef struct {
+    Qs_Asset  *asset;
+    Qs_Entity  entity;
+} PendingEntity;
 
 struct Editor {
     Qs_Engine     *engine;
-    Ca_Instance   *instance;
-    Ca_Window     *window;
-    Ca_Stylesheet *stylesheet;
+    Qs_Project    *project;
     Qs_Renderer   *scene_renderer;
+    Ca_Viewport   *scene_viewport;
+    Qs_Entity      selected_entity;
+    EditorCamera   cam;
+
+    /* Asset handles for the active scene */
+    Qs_Asset     *loaded_assets[MAX_LOADED_RESOURCES];
+    uint32_t      loaded_asset_count;
+
+    /* Prototype entities waiting for background loading to finish */
+    PendingEntity pending_entities[MAX_LOADED_RESOURCES];
+    uint32_t      pending_entity_count;
+
+    /* ---- Prototype editor mode ---- */
+    EditorMode    mode;
+    char          proto_path[1024];       ///< Path to the .qproto being edited.
+    char          proto_model_path[1024]; ///< Resolved model asset path.
+    Qs_Scene     *scene_backup;           ///< Saved scene while editing prototype.
+    Qs_Asset     *proto_asset;            ///< Model asset loaded for prototype preview.
+    Qs_Entity     proto_entity;           ///< Root entity in the prototype scene.
+    EditorCamera  cam_backup;             ///< Saved camera state.
 };
 
-/* ---- Editor CSS theme ---- */
+/* ---- Editor CSS theme (Quasar Dark) ---- */
+/*
+ * Color palette — professional dark game engine aesthetic
+ *
+ * Background hierarchy (darkest → lightest):
+ *   #0d0d0f  void        (deepest inset, inputs, viewport bg)
+ *   #111114  base        (primary panel background)
+ *   #16161a  elevated    (panel chrome, toolbars)
+ *   #1c1c22  surface     (tab bars, headers, section dividers)
+ *   #242430  overlay     (hover states, selected items)
+ *   #2e2e3e  border      (dividers, input borders)
+ *
+ * Accent colors:
+ *   #6e8aff  primary     (active tabs, primary buttons — blue-violet)
+ *   #c8d0ff  text-bright (labels, interactive text)
+ *   #8890b0  text-muted  (secondary labels, hints)
+ *   #4a4e6a  text-dim    (disabled, placeholder)
+ *   #ff6b6b  danger      (errors, destructive)
+ *   #6bffb8  success     (play, confirm)
+ *   #ffd166  warning     (warnings)
+ *   #ff8c42  orange      (scene objects, mesh icons)
+ *
+ * Axis colors (XYZ):
+ *   #ff5370  x-axis      (red)
+ *   #80ff80  y-axis      (green)
+ *   #5b9cff  z-axis      (blue)
+ *   #bf80ff  w-axis      (purple)
+ */
 
 static const char *g_editor_css =
 
-    /* Root — dark indigo background */
+    /* Root */
     ".editor-root {"
-    "  background: #1a1a2e;"
+    "  background: #111114;"
     "  gap: 0px;"
     "  overflow: hidden;"
     "}"
 
-    /* Menu bar — slim, dark */
-    ".menu-bar {"
-    "  background: #16162a;"
-    "  width: 100%;"
-    "  height: 22px;"
-    "}"
-
-    /* Menu bar header items */
-    ".menu-bar-item {"
-    "  padding-left: 8px;"
-    "  padding-right: 8px;"
-    "  align-items: center;"
-    "}"
-
-    /* Toolbar — icon row */
+    /* ---- Toolbar ---- */
     ".toolbar {"
-    "  background: #16162a;"
+    "  background: #16161a;"
     "  width: 100%;"
-    "  height: 18px;"
+    "  height: 20px;"
     "  align-items: center;"
     "  padding-left: 4px;"
     "  padding-right: 4px;"
-    "  border-width: 1px;"
-    "  border-color: #12122a;"
+    "  gap: 2px;"
     "}"
 
-    /* Panels */
+    ".toolbar-icon-btn {"
+    "  width: 20px;"
+    "  height: 20px;"
+    "  align-items: center;"
+    "  text-align: center;"
+    "  font-size: 14px;"
+    "  color: #8890b0;"
+    "  corner-radius: 3px;"
+    "  background: transparent;"
+    "}"
+
+    ".toolbar-icon-btn.active {"
+    "  color: #6e8aff;"
+    "}"
+
+    ".toolbar-separator {"
+    "  width: 1px;"
+    "  height: 14px;"
+    "  background: #2e2e3e;"
+    "}"
+
+    /* ---- Panels ---- */
     ".panel {"
-    "  background: #16162a;"
+    "  background: #111114;"
     "  overflow: hidden;"
     "}"
 
     ".panel-viewport {"
-    "  background: #1a1a2e;"
+    "  background: #0d0d0f;"
     "}"
 
     ".panel-bottom {"
-    "  background: #16162a;"
+    "  background: #111114;"
     "}"
 
-    /* Console */
+    /* ---- Console ---- */
     ".console-scroll {"
     "  overflow-y: scroll;"
     "  padding: 4px;"
@@ -74,62 +145,751 @@ static const char *g_editor_css =
     "}"
 
     ".console-line {"
-    "  font-size: 11px;"
-    "  height: 14px;"
+    "  font-size: 12px;"
+    "  height: 16px;"
     "  width: 100%;"
     "  text-align: left;"
+    "  color: #8890b0;"
     "}"
 
-    /* Panel tab bars (row of tabs at top of each panel) */
+    /* ---- Panel tab bars ---- */
     ".panel-tab-bar {"
-    "  background: #12122a;"
-    "  height: 24px;"
+    "  background: #1c1c22;"
+    "  height: 22px;"
     "  width: 100%;"
-    "  align-items: center;"
     "  padding-left: 4px;"
     "  gap: 2px;"
+    "  font-size: 12px;"
     "}"
 
-    /* Panel tabs (individual tab labels) */
     ".panel-tab {"
-    "  color: #555566;"
-    "  font-size: 11px;"
+    "  color: #4a4e6a;"
+    "  font-size: 12px;"
+    "  height: 22px;"
     "  padding-left: 8px;"
     "  padding-right: 8px;"
     "}"
 
     ".active {"
-    "  color: #b0b0cc;"
+    "  color: #6e8aff;"
     "}"
 
-    /* Status bar */
+    /* ---- Status bar ---- */
     ".status-bar {"
-    "  background: #12122a;"
+    "  background: #0d0d0f;"
     "  width: 100%;"
     "  height: 20px;"
     "  align-items: center;"
-    "  padding-left: 8px;"
+    "  padding-left: 10px;"
     "}"
 
     ".status-text {"
-    "  color: #6a6a88;"
+    "  color: #4a4e6a;"
+    "  font-size: 12px;"
+    "}"
+
+    /* ---- File browser ---- */
+    ".fb-root {"
+    "  width: 100%;"
+    "  overflow: hidden;"
+    "}"
+
+    ".fb-title-bar {"
+    "  background: #1c1c22;"
+    "  height: 36px;"
+    "  width: 100%;"
+    "  padding-left: 14px;"
+    "  padding-right: 6px;"
+    "  align-items: center;"
+    "}"
+
+    ".fb-title {"
+    "  color: #c8d0ff;"
+    "  font-size: 12px;"
+    "  font-weight: bold;"
+    "  flex-grow: 1;"
+    "}"
+
+    ".fb-spacer-grow {"
+    "  flex-grow: 1;"
+    "}"
+
+    ".fb-close-btn {"
+    "  width: 26px;"
+    "  height: 26px;"
+    "  background: transparent;"
+    "  color: #4a4e6a;"
+    "  font-size: 12px;"
+    "  corner-radius: 4px;"
+    "}"
+
+    ".fb-nav-bar {"
+    "  background: #111114;"
+    "  height: 38px;"
+    "  width: 100%;"
+    "  flex-shrink: 0;"
+    "  padding-left: 8px;"
+    "  padding-right: 8px;"
+    "  align-items: center;"
+    "  gap: 4px;"
+    "}"
+
+    ".fb-nav-btn {"
+    "  width: 28px;"
+    "  height: 24px;"
+    "  background: #1c1c22;"
+    "  color: #8890b0;"
+    "  font-size: 12px;"
+    "  corner-radius: 4px;"
+    "}"
+
+    ".fb-path-input {"
+    "  flex-grow: 1;"
+    "  height: 26px;"
+    "  background: #0d0d0f;"
+    "  color: #c8d0ff;"
+    "  font-size: 12px;"
+    "  padding-left: 8px;"
+    "  corner-radius: 4px;"
+    "}"
+
+    ".fb-col-header {"
+    "  width: 100%;"
+    "  height: 22px;"
+    "  flex-shrink: 0;"
+    "  padding-left: 14px;"
+    "  padding-right: 14px;"
+    "  align-items: center;"
+    "  background: #1c1c22;"
+    "}"
+
+    ".fb-col-name {"
+    "  color: #4a4e6a;"
+    "  font-size: 12px;"
+    "  flex-grow: 1;"
+    "  text-align: left;"
+    "}"
+
+    ".fb-col-size {"
+    "  color: #4a4e6a;"
+    "  font-size: 12px;"
+    "  width: 80px;"
+    "  text-align: right;"
+    "}"
+
+    ".fb-file-list {"
+    "  flex-grow: 1;"
+    "  overflow-y: scroll;"
+    "  padding: 4px;"
+    "  gap: 2px;"
+    "  align-items: flex-start;"
+    "  background: #111114;"
+    "}"
+
+    ".fb-entry {"
+    "  width: 100%;"
+    "  height: 26px;"
+    "  background: transparent;"
+    "  color: #8890b0;"
+    "  font-size: 12px;"
+    "  text-align: left;"
+    "  padding-left: 8px;"
+    "  corner-radius: 3px;"
+    "}"
+
+    ".fb-entry-selected {"
+    "  background: #242430;"
+    "}"
+
+    ".fb-entry-dir {"
+    "  color: #6e8aff;"
+    "}"
+
+    ".fb-empty {"
+    "  color: #4a4e6a;"
+    "  font-size: 12px;"
+    "  padding: 14px;"
+    "}"
+
+    ".fb-bottom {"
+    "  background: #1c1c22;"
+    "  width: 100%;"
+    "  min-height: 70px;"
+    "  flex-shrink: 0;"
+    "  padding: 6px 10px;"
+    "  gap: 6px;"
+    "}"
+
+    ".fb-bottom-row {"
+    "  width: 100%;"
+    "  height: 26px;"
+    "  align-items: center;"
+    "  gap: 8px;"
+    "}"
+
+    ".fb-label {"
+    "  color: #4a4e6a;"
+    "  font-size: 12px;"
+    "  width: 50px;"
+    "  text-align: right;"
+    "}"
+
+    ".fb-selected-name {"
+    "  color: #c8d0ff;"
+    "  font-size: 12px;"
+    "  flex-grow: 1;"
+    "  text-align: left;"
+    "}"
+
+    ".fb-filter-select {"
+    "  width: 200px;"
+    "}"
+
+    ".fb-btn {"
+    "  width: 80px;"
+    "  height: 26px;"
+    "  background: #242430;"
+    "  color: #8890b0;"
+    "  font-size: 12px;"
+    "  corner-radius: 4px;"
+    "}"
+
+    ".fb-btn-primary {"
+    "  background: #6e8aff;"
+    "  color: #0d0d0f;"
+    "}"
+
+    /* ---- Hierarchy panel ---- */
+
+    ".hierarchy-tree {"
+    "  overflow-y: scroll;"
+    "  padding-left: 6px;"
+    "  padding-right: 4px;"
+    "  padding-top: 2px;"
+    "  gap: 0px;"
+    "  flex-grow: 1;"
+    "  align-items: flex-start;"
+    "}"
+
+    ".hierarchy-scene {"
+    "  color: #6e8aff;"
+    "  font-size: 12px;"
+    "  height: 16px;"
+    "}"
+
+    ".hierarchy-entity {"
+    "  color: #8890b0;"
+    "  font-size: 12px;"
+    "  height: 16px;"
+    "}"
+
+    ".hierarchy-component {"
+    "  color: #4a4e6a;"
+    "  font-size: 12px;"
+    "  height: 16px;"
+    "}"
+
+    ".hierarchy-add-btn {"
+    "  width: 100%;"
+    "  height: 24px;"
+    "  background: transparent;"
+    "  color: #4a4e6a;"
+    "  font-size: 12px;"
+    "}"
+
+    /* ---- Inspector panel ---- */
+
+    ".inspector-scroll {"
+    "  overflow-y: scroll;"
+    "  padding: 4px 0px;"
+    "  gap: 1px;"
+    "  flex-grow: 1;"
+    "  width: 100%;"
+    "  align-items: flex-start;"
+    "}"
+
+    ".inspector-placeholder {"
+    "  color: #4a4e6a;"
+    "  font-size: 12px;"
+    "  padding: 14px 0px 0px 8px;"
+    "  width: 100%;"
+    "  text-align: left;"
+    "}"
+
+    ".inspector-header {"
+    "  width: 100%;"
+    "  gap: 4px;"
+    "  padding: 6px 8px;"
+    "  align-items: flex-start;"
+    "}"
+
+    ".inspector-entity-input {"
+    "  width: 100%;"
+    "  height: 22px;"
+    "  background: #0d0d0f;"
+    "  color: #c8d0ff;"
+    "  font-size: 12px;"
+    "  font-weight: bold;"
+    "  padding-left: 6px;"
+    "  corner-radius: 3px;"
+    "}"
+
+    ".inspector-meta-row {"
+    "  width: 100%;"
+    "  height: 18px;"
+    "  gap: 4px;"
+    "  align-items: center;"
+    "  padding-left: 0px;"
+    "}"
+
+    ".inspector-tag-input {"
+    "  height: 18px;"
+    "  flex-grow: 1;"
+    "  background: #0d0d0f;"
+    "  color: #8890b0;"
+    "  font-size: 12px;"
+    "  padding-left: 4px;"
+    "  corner-radius: 3px;"
+    "}"
+
+    ".inspector-section-header {"
+    "  background: #1c1c22;"
+    "  width: 100%;"
+    "  height: 20px;"
+    "  padding: 0px 8px;"
+    "  margin-top: 4px;"
+    "  align-items: center;"
+    "}"
+
+    ".inspector-section-label {"
+    "  font-size: 12px;"
+    "  font-weight: bold;"
+    "  color: #8890b0;"
+    "  width: 100%;"
+    "  text-align: left;"
+    "}"
+
+    ".inspector-field-row {"
+    "  width: 100%;"
+    "  padding: 2px 6px;"
+    "  gap: 2px;"
+    "  align-items: flex-start;"
+    "}"
+
+    ".inspector-field-name {"
+    "  color: #4a4e6a;"
+    "  font-size: 12px;"
+    "  text-align: left;"
+    "  width: 100%;"
+    "}"
+
+    ".inspector-vec-row {"
+    "  width: 100%;"
+    "  gap: 0px;"
+    "  align-items: center;"
+    "  flex-wrap: wrap;"
+    "}"
+
+    ".inspector-axis-x { color: #ff5370; font-size: 12px; font-weight: bold; width: 10px; }"
+    ".inspector-axis-y { color: #80ff80; font-size: 12px; font-weight: bold; width: 10px; }"
+    ".inspector-axis-z { color: #5b9cff; font-size: 12px; font-weight: bold; width: 10px; }"
+    ".inspector-axis-w { color: #bf80ff; font-size: 12px; font-weight: bold; width: 10px; }"
+
+    ".inspector-axis-group {"
+    "  width: 68px;"
+    "  padding-left: 4px;"
+    "  gap: 2px;"
+    "  align-items: center;"
+    "}"
+
+    ".inspector-vec-input {"
+    "  width: 50px;"
+    "  height: 17px;"
+    "  background: #0d0d0f;"
+    "  color: #c8d0ff;"
+    "  font-size: 12px;"
+    "  padding-left: 4px;"
+    "  corner-radius: 3px;"
+    "}"
+
+    ".inspector-scalar-input {"
+    "  width: 100%;"
+    "  height: 17px;"
+    "  background: #0d0d0f;"
+    "  color: #c8d0ff;"
+    "  font-size: 12px;"
+    "  padding-left: 4px;"
+    "  corner-radius: 3px;"
+    "}"
+
+    ".inspector-field-value {"
+    "  color: #8890b0;"
+    "  font-size: 12px;"
+    "}"
+
+    ".inspector-id-label {"
+    "  color: #4a4e6a;"
+    "  font-size: 12px;"
+    "  width: 100%;"
+    "  text-align: left;"
+    "  padding-left: 2px;"
+    "}"
+
+    ".inspector-tag-icon {"
+    "  color: #6bffb8;"
+    "  font-size: 12px;"
+    "  width: 16px;"
+    "  flex-shrink: 0;"
+    "}"
+
+    ".hierarchy-selected {"
+    "  background: #242430;"
+    "}"
+
+
+    /* ---- Plugin Manager window ---- */
+    ".pm-root {"
+    "  width: 100%;"
+    "  height: 100%;"
+    "  background: #111114;"
+    "}"
+
+    ".pm-spacer { flex-grow: 1; }"
+
+    ".pm-header {"
+    "  width: 100%;"
+    "  height: 32px;"
+    "  background: #16161c;"
+    "  align-items: center;"
+    "  padding: 0px 14px;"
+    "  gap: 0px;"
+    "}"
+
+    ".pm-hdr {"
+    "  color: #5a5e7a;"
+    "  font-size: 10px;"
+    "  font-weight: bold;"
+    "}"
+
+    ".pm-col-status  { width: 64px; }"
+    ".pm-col-name    { width: 140px; }"
+    ".pm-col-version { width: 60px; }"
+    ".pm-col-author  { width: 100px; }"
+    ".pm-col-actions { width: 80px; }"
+
+    ".pm-separator {"
+    "  width: 100%;"
+    "  height: 1px;"
+    "  background: #1e2030;"
+    "}"
+
+    ".pm-body {"
+    "  width: 100%;"
+    "  flex-grow: 1;"
+    "  overflow-y: scroll;"
+    "  gap: 0px;"
+    "}"
+
+    ".pm-empty {"
+    "  color: #4a4e6a;"
+    "  font-size: 12px;"
+    "  text-align: center;"
+    "  padding: 32px;"
+    "}"
+
+    ".pm-row {"
+    "  width: 100%;"
+    "  height: 28px;"
+    "  align-items: center;"
+    "  padding: 0px 14px;"
+    "  gap: 0px;"
+    "}"
+
+    ".pm-row-alt {"
+    "  background: #13131a;"
+    "}"
+
+    ".pm-status {"
+    "  width: 64px;"
+    "  font-size: 10px;"
+    "  font-weight: bold;"
+    "}"
+
+    ".pm-status-active   { color: #6bffb8; }"
+    ".pm-status-loading  { color: #ffd166; }"
+    ".pm-status-disabled { color: #4a4e6a; }"
+
+    ".pm-cell-name {"
+    "  width: 140px;"
+    "  color: #e0e4ff;"
+    "  font-size: 12px;"
+    "}"
+
+    ".pm-cell-version {"
+    "  width: 60px;"
+    "  color: #5a5e7a;"
     "  font-size: 11px;"
+    "}"
+
+    ".pm-cell-author {"
+    "  width: 100px;"
+    "  color: #5a5e7a;"
+    "  font-size: 11px;"
+    "}"
+
+    ".pm-cell-actions {"
+    "  width: 80px;"
+    "  align-items: center;"
+    "  gap: 6px;"
+    "}"
+
+    ".pm-reload-btn {"
+    "  background: transparent;"
+    "  color: #6e8aff;"
+    "  font-size: 12px;"
+    "  width: 20px;"
+    "  height: 20px;"
+    "  align-items: center;"
+    "  text-align: center;"
+    "}"
+
+    ".pm-toggle {"
+    "  width: 30px;"
+    "  height: 16px;"
+    "}"
+
+    /* ---- Renderer Settings modal ---- */
+    ".renderer-settings-modal {"
+    "  width: 340px;"
+    "  height: auto;"
+    "  background: #16161a;"
+    "  corner-radius: 8px;"
+    "  padding: 0px;"
+    "  gap: 0px;"
+    "}"
+
+    ".renderer-settings-panel {"
+    "  width: 100%;"
+    "  padding: 0px;"
+    "}"
+
+    ".renderer-setting-row {"
+    "  width: 100%;"
+    "  padding: 8px 12px 4px 12px;"
+    "  gap: 4px;"
+    "}"
+
+    ".renderer-setting-label {"
+    "  color: #8890b0;"
+    "  font-size: 12px;"
+    "}"
+
+    ".renderer-section-label {"
+    "  color: #a0a8c8;"
+    "  font-size: 11px;"
+    "  padding: 8px 12px 2px 12px;"
+    "}"
+
+    /* ---- Renderer Stats modal ---- */
+    ".renderer-stats-modal {"
+    "  width: 260px;"
+    "  height: auto;"
+    "  background: #16161a;"
+    "  corner-radius: 8px;"
+    "  padding: 0px;"
+    "  gap: 0px;"
+    "}"
+
+    ".renderer-stats-panel {"
+    "  width: 100%;"
+    "  padding: 0px;"
+    "}"
+
+    ".renderer-stat-row {"
+    "  color: #c8d0ff;"
+    "  font-size: 12px;"
+    "  padding: 4px 12px;"
+    "  font-family: monospace;"
+    "}"
+
+    /* ---- Breadcrumb navigation bar ---- */
+    ".breadcrumb-bar {"
+    "  background: #16161a;"
+    "  width: 100%;"
+    "  height: 24px;"
+    "  align-items: center;"
+    "  padding-left: 8px;"
+    "  padding-right: 8px;"
+    "  gap: 6px;"
+    "}"
+
+    ".breadcrumb-back {"
+    "  height: 20px;"
+    "  background: transparent;"
+    "  color: #6e8aff;"
+    "  font-size: 12px;"
+    "  corner-radius: 3px;"
+    "  padding-left: 6px;"
+    "  padding-right: 6px;"
+    "}"
+
+    ".breadcrumb-text {"
+    "  color: #8890b0;"
+    "  font-size: 12px;"
+    "}"
+
+    ".breadcrumb-separator {"
+    "  color: #4a4e6a;"
+    "  font-size: 10px;"
+    "}"
+
+    ".breadcrumb-active {"
+    "  color: #c8d0ff;"
+    "  font-size: 12px;"
+    "  font-weight: bold;"
+    "}"
+
+    /* ---- Inspector edit button ---- */
+    ".inspector-edit-btn {"
+    "  height: 18px;"
+    "  background: #242430;"
+    "  color: #6e8aff;"
+    "  font-size: 11px;"
+    "  corner-radius: 3px;"
+    "  padding-left: 8px;"
+    "  padding-right: 8px;"
     "}"
 ;
 
+/* ---- Breadcrumb bar for prototype editor mode ---- */
+static Ca_Div   *s_breadcrumb_bar;
+static Ca_Label *s_breadcrumb_scene_label;
+static Ca_Label *s_breadcrumb_proto_label;
+
+static void on_breadcrumb_back(Ca_Button *btn, void *data)
+{
+    (void)btn;
+    Editor *ed = (Editor *)data;
+    editor_close_prototype(ed);
+}
+
 static void editor_build_ui(Editor *ed)
 {
-    ca_ui_begin(ed->window, &(Ca_DivDesc){
+    Ca_Window *window = qs_engine_window(ed->engine);
+
+    ca_ui_begin(window, &(Ca_DivDesc){
         .direction = CA_VERTICAL,
         .style     = "editor-root",
     });
 
-    ed_menu_bar(ed->window, ed);
-    ed_toolbar(ed->window, ed);
-    ed_layout(ed->window, ed);
-    ed_status_bar(ed->window, ed);
+    ed_toolbar(window, ed);
+
+    /* Breadcrumb bar — visible only in prototype editor mode */
+    s_breadcrumb_bar = ca_div_begin(&(Ca_DivDesc){
+        .direction = CA_HORIZONTAL,
+        .style     = "breadcrumb-bar",
+        .id        = "breadcrumb-bar",
+        .hidden    = true,
+    });
+    {
+        ca_btn(&(Ca_BtnDesc){
+            .text       = "\xEF\x81\x88 Back",  /* U+F048 step-backward */
+            .id         = "breadcrumb-back",
+            .style      = "breadcrumb-back",
+            .on_click   = on_breadcrumb_back,
+            .click_data = ed,
+        });
+        s_breadcrumb_scene_label = ca_text(&(Ca_TextDesc){
+            .text  = "",
+            .id    = "breadcrumb-scene",
+            .style = "breadcrumb-text",
+        });
+        ca_text(&(Ca_TextDesc){
+            .text  = ">",
+            .id    = "breadcrumb-sep",
+            .style = "breadcrumb-separator",
+        });
+        s_breadcrumb_proto_label = ca_text(&(Ca_TextDesc){
+            .text  = "",
+            .id    = "breadcrumb-proto",
+            .style = "breadcrumb-active",
+        });
+    }
+    ca_div_end();
+
+    ed_layout(window, ed);
+    ed_status_bar(window, ed);
 
     ca_ui_end();
+}
+
+static void on_mouse_button(const Ca_Event *event, void *userdata)
+{
+    (void)userdata;
+    qs_input_mouse_button_event((Qs_MouseButton)event->mouse_button.button,
+                                event->mouse_button.action);
+}
+
+/* Fires synchronously before the plugin library is unloaded.
+   Destroy any scene renderer that references the plugin's backend so
+   the backend and its Vulkan context can be cleanly shut down. */
+static bool on_plugin_reload_begin(const Qs_Event *e, void *userdata)
+{
+    (void)e;
+    Editor *ed = (Editor *)userdata;
+    if (ed->scene_renderer) {
+        qs_renderer_destroy(ed->scene_renderer);
+        ed->scene_renderer = NULL;
+    }
+    return false;
+}
+
+/* Fires synchronously after the plugin has been successfully reloaded
+   or enabled.  Recreate the scene renderer and rebuild the toolbar. */
+static bool on_plugin_reload_end(const Qs_Event *e, void *userdata)
+{
+    (void)e;
+    Editor *ed = (Editor *)userdata;
+    if (!ed->scene_renderer) {
+        ed->scene_renderer = qs_renderer_create(ed->engine, &(Qs_RendererDesc){
+            .name        = "scene",
+            .clear_color = { 0.0f, 0.0f, 0.0f, 1.0f },
+            .depth_test  = true,
+        });
+        if (ed->scene_renderer && ed->scene_viewport) {
+            qs_renderer_bind(ed->scene_renderer, (Qs_Viewport *)ed->scene_viewport);
+        }
+        if (ed->scene_renderer) {
+            ed_pick_attach(ed->scene_renderer);
+            ed_gizmo_attach(ed->scene_renderer);
+        }
+    }
+    ed_toolbar_rebuild();
+    ed_menu_bar_invalidate();
+    return false;
+}
+
+/* Fires after a plugin is fully disabled and unloaded.
+   Only rebuild the toolbar and menu — do NOT recreate the renderer since
+   the backend that provides it may be the one being disabled. */
+static bool on_plugin_disable_end(const Qs_Event *e, void *userdata)
+{
+    (void)e; (void)userdata;
+    ed_toolbar_rebuild();
+    ed_menu_bar_invalidate();
+    return false;
+}
+
+static void on_mouse_move(const Ca_Event *event, void *userdata)
+{
+    (void)userdata;
+    qs_input_mouse_pos_event(event->mouse_pos.x, event->mouse_pos.y);
+}
+
+static void on_mouse_scroll(const Ca_Event *event, void *userdata)
+{
+    (void)userdata;
+    qs_input_mouse_scroll_event(event->mouse_scroll.dx, event->mouse_scroll.dy);
 }
 
 static void on_key_event(const Ca_Event *event, void *userdata)
@@ -140,243 +900,400 @@ static void on_key_event(const Ca_Event *event, void *userdata)
                        event->key.mods);
 }
 
-static void on_frame(void *userdata)
+static void on_frame(Qs_Engine *engine, void *userdata)
 {
-    ed_console_update(userdata);
+    (void)engine;
+    Editor *ed = userdata;
+    if (ed->scene_viewport)
+        ca_viewport_request_redraw(ed->scene_viewport);
+    ed_camera_update(&ed->cam, ed->scene_renderer, qs_engine_dt(ed->engine));
+    ed_gizmo_update(ed, qs_engine_dt(ed->engine));
+
+    /* Poll pending Prototype assets — store on component when READY */
+    {
+        Qs_Scene *s = qs_scene_active();
+        uint32_t i = 0;
+        while (s && i < ed->pending_entity_count) {
+            Qs_AssetState state = qs_asset_state(ed->pending_entities[i].asset);
+            if (state == QS_ASSET_READY) {
+                Qs_PrototypeComp *pc = (Qs_PrototypeComp *)qs_entity_get(
+                    s, ed->pending_entities[i].entity, qs_prototype_comp_type());
+                if (pc)
+                    pc->asset = ed->pending_entities[i].asset;
+                ed->pending_entities[i] = ed->pending_entities[--ed->pending_entity_count];
+            } else if (state == QS_ASSET_ERROR) {
+                QS_LOG_ERROR("Prototype asset failed: entity %u",
+                             ed->pending_entities[i].entity);
+                ed->pending_entities[i] = ed->pending_entities[--ed->pending_entity_count];
+            } else {
+                i++;
+            }
+        }
+    }
+
+    /* Submit scene renderables and lights for this frame */
+    Qs_Scene *scene = qs_scene_active();
+    if (scene && ed->scene_renderer) {
+        qs_renderer_clear_renderables(ed->scene_renderer);
+        qs_renderer_clear_lights(ed->scene_renderer);
+
+        if (ed->mode == ED_MODE_PROTOTYPE) {
+            /* ---- Prototype editor: render the prototype model ---- */
+            if (ed->proto_asset &&
+                qs_asset_state(ed->proto_asset) == QS_ASSET_READY)
+            {
+                float world[16];
+                qs_scene_world_matrix(scene, ed->proto_entity, world);
+                qs_asset_model_submit(ed->proto_asset, ed->scene_renderer,
+                                      world, ed->proto_entity);
+            }
+
+            /* Submit lights from prototype scene */
+            for (Qs_Entity e = qs_scene_first(scene, qs_light_comp_type());
+                 e != QS_ENTITY_INVALID;
+                 e = qs_scene_next(scene, qs_light_comp_type(), e))
+            {
+                Qs_LightComp *lc = qs_entity_get(scene, e, qs_light_comp_type());
+                if (!lc || !lc->enabled) continue;
+                qs_renderer_submit_light_comp(ed->scene_renderer, lc);
+            }
+        } else {
+            /* ---- Scene mode: normal rendering ---- */
+
+            /* Submit MeshComp entities (inline geometry) */
+            for (Qs_Entity e = qs_scene_first(scene, qs_mesh_comp_type());
+                 e != QS_ENTITY_INVALID;
+                 e = qs_scene_next(scene, qs_mesh_comp_type(), e))
+            {
+                Qs_MeshComp  *mc = qs_entity_get(scene, e, qs_mesh_comp_type());
+                if (!mc || !mc->visible || !mc->mesh || !mc->material) continue;
+                Qs_RenderableDesc r;
+                r.mesh            = mc->mesh;
+                r.material        = mc->material;
+                r.entity          = e;
+                r.cast_shadows    = true;
+                r.receive_shadows = true;
+                r.bounds.min[0] = r.bounds.min[1] = r.bounds.min[2] = -100.0f;
+                r.bounds.max[0] = r.bounds.max[1] = r.bounds.max[2] =  100.0f;
+                qs_scene_world_matrix(scene, e, r.transform);
+                qs_renderer_submit_renderable(ed->scene_renderer, &r);
+            }
+
+            /* Submit Prototype entities (model assets rendered directly) */
+            for (Qs_Entity e = qs_scene_first(scene, qs_prototype_comp_type());
+                 e != QS_ENTITY_INVALID;
+                 e = qs_scene_next(scene, qs_prototype_comp_type(), e))
+            {
+                Qs_PrototypeComp *pc = qs_entity_get(scene, e, qs_prototype_comp_type());
+                if (!pc || !pc->asset) continue;
+
+                /* Compose: entity world × .qproto base transform */
+                float entity_world[16], composed[16];
+                qs_scene_world_matrix(scene, e, entity_world);
+                qs_m4_mul(entity_world, pc->base_transform, composed);
+
+                qs_asset_model_submit(pc->asset, ed->scene_renderer, composed, e);
+            }
+
+            for (Qs_Entity e = qs_scene_first(scene, qs_light_comp_type());
+                 e != QS_ENTITY_INVALID;
+                 e = qs_scene_next(scene, qs_light_comp_type(), e))
+            {
+                Qs_LightComp *lc = qs_entity_get(scene, e, qs_light_comp_type());
+                if (!lc || !lc->enabled) continue;
+                qs_renderer_submit_light_comp(ed->scene_renderer, lc);
+            }
+        }
+    }
+
+    ed_menu_bar_sync();
+    ed_hierarchy_update(ed);
+    ed_console_update(ed);
+    ed_inspector_update(ed);
+    ed_file_browser_update();
 }
 
 static void on_log(void *userdata)
 {
     (void)userdata;
-    ca_instance_wake();
+    qs_engine_wake();
+}
+
+/* ---- Scene file loading ---- */
+
+/* Resolve the base directory of the scene file for relative asset paths. */
+static void scene_dir(const char *scene_path, char *out, size_t out_size)
+{
+    const char *last = NULL;
+    for (const char *p = scene_path; *p; p++)
+        if (*p == '/' || *p == '\\') last = p;
+    if (!last) {
+        snprintf(out, out_size, ".");
+    } else {
+        size_t len = (size_t)(last - scene_path);
+        if (len >= out_size) len = out_size - 1;
+        memcpy(out, scene_path, len);
+        out[len] = '\0';
+    }
+}
+
+static bool editor_load_scene(Editor *ed, const char *path)
+{
+    FILE *f = fopen(path, "r");
+    if (!f) {
+        QS_LOG_ERROR("Failed to open scene: %s", path);
+        return false;
+    }
+    fseek(f, 0, SEEK_END);
+    long len = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    if (len <= 0) { fclose(f); return false; }
+
+    char *buf = malloc((size_t)len + 1);
+    if (!buf) { fclose(f); return false; }
+    size_t nread = fread(buf, 1, (size_t)len, f);
+    buf[nread] = '\0';
+    fclose(f);
+
+    cJSON *root = cJSON_Parse(buf);
+    free(buf);
+    if (!root) {
+        QS_LOG_ERROR("Failed to parse scene: %s", path);
+        return false;
+    }
+
+    /* Scene name */
+    const cJSON *name_val = cJSON_GetObjectItemCaseSensitive(root, "name");
+    const char *scene_name = cJSON_IsString(name_val)
+                           ? name_val->valuestring : "Untitled";
+
+    Qs_Scene *scene = qs_scene_create(ed->engine, &(Qs_SceneDesc){
+        .name = scene_name,
+    });
+    qs_scene_set_active(scene);
+
+    /* Directory of the scene file — used for resolving relative asset paths */
+    char dir[1024];
+    scene_dir(path, dir, sizeof(dir));
+
+    /* ---- Load entities ---- */
+    qs_scene_from_json(scene, ed->engine, root);
+
+    /* ---- Dispatch async loading for Prototype entities ----
+       Each entity with a PrototypeComp references a .qproto file which
+       describes the model asset and its base (normalization) transform.
+       The on_frame callback stores the loaded asset on the component
+       when ready, and the render loop submits model meshes directly. */
+    for (Qs_Entity e = qs_scene_first(scene, qs_prototype_comp_type());
+         e != QS_ENTITY_INVALID;
+         e = qs_scene_next(scene, qs_prototype_comp_type(), e))
+    {
+        Qs_PrototypeComp *pc = (Qs_PrototypeComp *)qs_entity_get(
+                                    scene, e, qs_prototype_comp_type());
+        if (!pc || !pc->path[0]) continue;
+
+        /* Resolve .qproto path relative to scene dir */
+        char proto_path[1024];
+        if (pc->path[0] == '/' || pc->path[0] == '\\' ||
+            (pc->path[0] && pc->path[1] == ':'))
+            snprintf(proto_path, sizeof(proto_path), "%s", pc->path);
+        else
+            snprintf(proto_path, sizeof(proto_path), "%s/%s", dir, pc->path);
+
+        /* Read and parse the .qproto file */
+        FILE *ef = fopen(proto_path, "r");
+        if (!ef) {
+            QS_LOG_ERROR("Scene '%s': cannot open prototype file '%s'", path, proto_path);
+            continue;
+        }
+        fseek(ef, 0, SEEK_END);
+        long elen = ftell(ef);
+        fseek(ef, 0, SEEK_SET);
+        if (elen <= 0) { fclose(ef); continue; }
+        char *ebuf = malloc((size_t)elen + 1);
+        if (!ebuf) { fclose(ef); continue; }
+        size_t enread = fread(ebuf, 1, (size_t)elen, ef);
+        ebuf[enread] = '\0';
+        fclose(ef);
+
+        cJSON *proto_def = cJSON_Parse(ebuf);
+        free(ebuf);
+        if (!proto_def) {
+            QS_LOG_ERROR("Scene '%s': failed to parse prototype file '%s'", path, proto_path);
+            continue;
+        }
+
+        /* Build the base (normalization) transform from the .qproto
+           "components" block using the same reflection-based serialization
+           as scene entities.  Fields absent from JSON keep their defaults. */
+        qs_m4_identity(pc->base_transform);
+        const cJSON *comps = cJSON_GetObjectItemCaseSensitive(proto_def, "components");
+        const cJSON *tr_json = comps ? cJSON_GetObjectItemCaseSensitive(comps, "Transform") : NULL;
+        if (cJSON_IsObject(tr_json)) {
+            Qs_Transform base_tr = {
+                .position = {0, 0, 0},
+                .rotation = {0, 0, 0, 1},
+                .scale    = {1, 1, 1},
+            };
+            const Qs_TypeInfo *tr_type = qs_type_find("Transform");
+            if (tr_type)
+                qs_reflect_from_json(&base_tr, tr_type, tr_json);
+            qs_m4_from_trs(pc->base_transform,
+                           base_tr.position, base_tr.rotation, base_tr.scale);
+        }
+
+        /* Extract model path and resolve relative to .qproto location */
+        const cJSON *model_val = cJSON_GetObjectItemCaseSensitive(proto_def, "model");
+        if (!cJSON_IsString(model_val) || !model_val->valuestring[0]) {
+            cJSON_Delete(proto_def);
+            continue;
+        }
+
+        char proto_dir[1024];
+        scene_dir(proto_path, proto_dir, sizeof(proto_dir));
+
+        char model_path[1024];
+        const char *mstr = model_val->valuestring;
+        if (mstr[0] == '/' || mstr[0] == '\\' || (mstr[0] && mstr[1] == ':'))
+            snprintf(model_path, sizeof(model_path), "%s", mstr);
+        else
+            snprintf(model_path, sizeof(model_path), "%s/%s", proto_dir, mstr);
+
+        cJSON_Delete(proto_def);
+
+        Qs_Asset *asset = qs_asset_load(ed->engine, model_path);
+        if (!asset) {
+            QS_LOG_ERROR("Scene '%s': failed to start loading model '%s'", path, model_path);
+            continue;
+        }
+
+        if (ed->loaded_asset_count < MAX_LOADED_RESOURCES)
+            ed->loaded_assets[ed->loaded_asset_count++] = asset;
+
+        if (ed->pending_entity_count < MAX_LOADED_RESOURCES) {
+            ed->pending_entities[ed->pending_entity_count++] =
+                (PendingEntity){ .asset = asset, .entity = e };
+        }
+    }
+
+    /* Add a default directional sun light if the scene has no lights */
+    if (qs_scene_first(scene, qs_light_comp_type()) == QS_ENTITY_INVALID) {
+        Qs_Entity sun = qs_entity_create(scene, "Sun");
+        Qs_LightComp *lc = qs_entity_add(scene, sun, qs_light_comp_type());
+        if (lc) {
+            lc->color[0]     = 1.0f;
+            lc->color[1]     = 0.95f;
+            lc->color[2]     = 0.9f;
+            lc->intensity    = 3.0f;
+        }
+    }
+
+    cJSON_Delete(root);
+    QS_LOG_INFO("Scene loaded: %s", path);
+    return true;
 }
 
 Editor *editor_create(const EditorDesc *desc)
 {
     Editor *ed = calloc(1, sizeof(Editor));
     if (!ed) return NULL;
+    ed->selected_entity = QS_ENTITY_INVALID;
+
+    /* Open project */
+    if (desc->project_path) {
+        ed->project = qs_project_open(desc->project_path);
+        if (!ed->project) {
+            free(ed);
+            return NULL;
+        }
+    }
+
+    /* Build window title: "Quasar Editor — ProjectName" */
+    char title[256];
+    if (ed->project)
+        snprintf(title, sizeof(title), "%s \xE2\x80\x94 %s",
+                 desc->title ? desc->title : "Quasar Editor",
+                 qs_project_name(ed->project));
+    else
+        snprintf(title, sizeof(title), "%s",
+                 desc->title ? desc->title : "Quasar Editor");
 
     ed->engine = qs_engine_create(&(Qs_EngineDesc){
-        .app_name      = desc->title ? desc->title : "Quasar Editor",
+        .app_name      = title,
         .version_major = 0,
         .version_minor = 1,
         .version_patch = 0,
+        .window_width  = desc->width,
+        .window_height = desc->height,
     });
     if (!ed->engine) {
         free(ed);
         return NULL;
     }
 
-    ed->instance = ca_instance_create(&(Ca_InstanceDesc){
-        .app_name     = desc->title ? desc->title : "Quasar Editor",
-        .font_size_px = 14.0f,
-    });
-    if (!ed->instance) {
-        qs_engine_destroy(ed->engine);
-        free(ed);
-        return NULL;
-    }
+    qs_engine_set_stylesheet(ed->engine, g_editor_css);
 
-    ed->stylesheet = ca_css_parse(g_editor_css);
-    if (ed->stylesheet)
-        ca_instance_set_stylesheet(ed->instance, ed->stylesheet);
-
-    ed->window = ca_window_create(ed->instance, &(Ca_WindowDesc){
-        .title  = desc->title ? desc->title : "Quasar Editor",
-        .width  = desc->width  > 0 ? desc->width  : 1280,
-        .height = desc->height > 0 ? desc->height : 720,
-    });
-    if (!ed->window) {
-        if (ed->stylesheet) ca_css_destroy(ed->stylesheet);
-        ca_instance_destroy(ed->instance);
-        qs_engine_destroy(ed->engine);
-        free(ed);
-        return NULL;
-    }
-
-    Qs_SystemDesc render_desc = qs_render_system_desc(ed->instance);
-    if (!qs_system_register(qs_engine_systems(ed->engine), &render_desc)) {
-        ca_window_destroy(ed->window);
-        if (ed->stylesheet) ca_css_destroy(ed->stylesheet);
-        ca_instance_destroy(ed->instance);
-        qs_engine_destroy(ed->engine);
-        free(ed);
-        return NULL;
-    }
-
-    Qs_SystemDesc tex_desc = qs_texture_system_desc(ed->instance);
-    qs_system_register(qs_engine_systems(ed->engine), &tex_desc);
-
-    Qs_SystemDesc mesh_desc = qs_mesh_system_desc(ed->instance);
-    qs_system_register(qs_engine_systems(ed->engine), &mesh_desc);
-
-    Qs_SystemDesc mat_desc = qs_material_system_desc(ed->instance);
-    qs_system_register(qs_engine_systems(ed->engine), &mat_desc);
-
-    Qs_SystemDesc light_desc = qs_light_system_desc();
-    qs_system_register(qs_engine_systems(ed->engine), &light_desc);
-
-    Qs_SystemDesc scene_desc = qs_scene_system_desc();
-    qs_system_register(qs_engine_systems(ed->engine), &scene_desc);
+    ed_gizmo_init(ed->engine);
+    ed_pick_init(ed->engine);
 
     ed->scene_renderer = qs_renderer_create(ed->engine, &(Qs_RendererDesc){
         .name        = "scene",
-        .clear_color = {{ 0.06f, 0.06f, 0.12f, 1.0f }},
+        .clear_color = { 0.0f, 0.0f, 0.0f, 1.0f },
         .depth_test  = true,
     });
 
+    if (ed->scene_renderer) {
+        ed_pick_attach(ed->scene_renderer);
+        ed_gizmo_attach(ed->scene_renderer);
+    }
+
     /* Position camera for a good view of the test scene */
-    Qs_Camera *cam = qs_renderer_camera(ed->scene_renderer);
-    cam->position[0] =  5.0f;
-    cam->position[1] =  4.0f;
-    cam->position[2] =  8.0f;
-    cam->target[0]   =  0.0f;
-    cam->target[1]   =  0.5f;
-    cam->target[2]   =  0.0f;
-
-    /* Initialize forward rendering pipeline */
-    qs_forward_init(ed->engine, ed->scene_renderer);
-
-    /* ---- Test scene ---- */
-    Qs_Scene *scene = qs_scene_create(ed->engine, &(Qs_SceneDesc){
-        .name = "TestScene",
-    });
-    qs_scene_set_active(scene);
-
-    /* Create shared primitive meshes */
-    Qs_Mesh *plane_mesh  = qs_primitive_plane(ed->engine, 12.0f, 1);
-    Qs_Mesh *cube_mesh   = qs_primitive_cube(ed->engine, 1.0f);
-    Qs_Mesh *sphere_mesh = qs_primitive_sphere(ed->engine, 0.5f, 24, 16);
-
-    /* Create some materials with different colors */
-    Qs_Material *mat_floor = qs_material_create(ed->engine, &(Qs_MaterialDesc){
-        .name              = "floor",
-        .base_color_factor = { 0.3f, 0.3f, 0.35f, 1.0f },
-        .roughness_factor  = 0.9f,
-        .metallic_factor   = 0.0f,
-    });
-    Qs_Material *mat_red = qs_material_create(ed->engine, &(Qs_MaterialDesc){
-        .name              = "red",
-        .base_color_factor = { 0.8f, 0.15f, 0.1f, 1.0f },
-        .roughness_factor  = 0.5f,
-        .metallic_factor   = 0.1f,
-    });
-    Qs_Material *mat_blue = qs_material_create(ed->engine, &(Qs_MaterialDesc){
-        .name              = "blue",
-        .base_color_factor = { 0.1f, 0.3f, 0.85f, 1.0f },
-        .roughness_factor  = 0.4f,
-        .metallic_factor   = 0.2f,
-    });
-    Qs_Material *mat_green = qs_material_create(ed->engine, &(Qs_MaterialDesc){
-        .name              = "green",
-        .base_color_factor = { 0.15f, 0.7f, 0.2f, 1.0f },
-        .roughness_factor  = 0.6f,
-        .metallic_factor   = 0.0f,
-    });
-    Qs_Material *mat_gold = qs_material_create(ed->engine, &(Qs_MaterialDesc){
-        .name              = "gold",
-        .base_color_factor = { 0.9f, 0.75f, 0.2f, 1.0f },
-        .roughness_factor  = 0.3f,
-        .metallic_factor   = 0.9f,
-    });
-
-    /* Floor platform */
-    {
-        Qs_Entity e = qs_entity_create(scene, "Floor");
-        Qs_MeshComp *mc = (Qs_MeshComp *)qs_entity_add(scene, e, qs_mesh_comp_type());
-        mc->mesh     = plane_mesh;
-        mc->material = mat_floor;
+    if (ed->scene_renderer) {
+        Qs_Camera *cam = qs_renderer_camera(ed->scene_renderer);
+        if (cam) {
+            cam->position[0] =  5.0f;
+            cam->position[1] =  4.0f;
+            cam->position[2] =  8.0f;
+            cam->target[0]   =  0.0f;
+            cam->target[1]   =  0.5f;
+            cam->target[2]   =  0.0f;
+        }
     }
 
-    /* Red cube — left */
-    {
-        Qs_Entity e = qs_entity_create(scene, "RedCube");
-        Qs_Transform *tf = (Qs_Transform *)qs_entity_get(scene, e, qs_transform_type());
-        tf->position[0] = -2.0f;
-        tf->position[1] =  0.5f;
-        tf->position[2] =  0.0f;
-        Qs_MeshComp *mc = (Qs_MeshComp *)qs_entity_add(scene, e, qs_mesh_comp_type());
-        mc->mesh     = cube_mesh;
-        mc->material = mat_red;
+    /* ---- Load scene from project ---- */
+    if (ed->project) {
+        char scene_path[512];
+        snprintf(scene_path, sizeof(scene_path), "%s/scenes/default.qscene",
+                 qs_project_path(ed->project));
+        editor_load_scene(ed, scene_path);
     }
 
-    /* Blue cube — right */
-    {
-        Qs_Entity e = qs_entity_create(scene, "BlueCube");
-        Qs_Transform *tf = (Qs_Transform *)qs_entity_get(scene, e, qs_transform_type());
-        tf->position[0] =  2.0f;
-        tf->position[1] =  0.5f;
-        tf->position[2] =  0.0f;
-        Qs_MeshComp *mc = (Qs_MeshComp *)qs_entity_add(scene, e, qs_mesh_comp_type());
-        mc->mesh     = cube_mesh;
-        mc->material = mat_blue;
-    }
-
-    /* Green sphere — center back */
-    {
-        Qs_Entity e = qs_entity_create(scene, "GreenSphere");
-        Qs_Transform *tf = (Qs_Transform *)qs_entity_get(scene, e, qs_transform_type());
-        tf->position[0] =  0.0f;
-        tf->position[1] =  0.5f;
-        tf->position[2] = -2.0f;
-        Qs_MeshComp *mc = (Qs_MeshComp *)qs_entity_add(scene, e, qs_mesh_comp_type());
-        mc->mesh     = sphere_mesh;
-        mc->material = mat_green;
-    }
-
-    /* Gold sphere — center front */
-    {
-        Qs_Entity e = qs_entity_create(scene, "GoldSphere");
-        Qs_Transform *tf = (Qs_Transform *)qs_entity_get(scene, e, qs_transform_type());
-        tf->position[0] =  0.0f;
-        tf->position[1] =  0.8f;
-        tf->position[2] =  2.0f;
-        tf->scale[0]    =  1.5f;
-        tf->scale[1]    =  1.5f;
-        tf->scale[2]    =  1.5f;
-        Qs_MeshComp *mc = (Qs_MeshComp *)qs_entity_add(scene, e, qs_mesh_comp_type());
-        mc->mesh     = sphere_mesh;
-        mc->material = mat_gold;
-    }
-
-    /* Small stacked cubes — right-back */
-    {
-        Qs_Entity e = qs_entity_create(scene, "SmallCube1");
-        Qs_Transform *tf = (Qs_Transform *)qs_entity_get(scene, e, qs_transform_type());
-        tf->position[0] =  3.0f;
-        tf->position[1] =  0.3f;
-        tf->position[2] = -2.5f;
-        tf->scale[0]    =  0.6f;
-        tf->scale[1]    =  0.6f;
-        tf->scale[2]    =  0.6f;
-        Qs_MeshComp *mc = (Qs_MeshComp *)qs_entity_add(scene, e, qs_mesh_comp_type());
-        mc->mesh     = cube_mesh;
-        mc->material = mat_gold;
-    }
-    {
-        Qs_Entity e = qs_entity_create(scene, "SmallCube2");
-        Qs_Transform *tf = (Qs_Transform *)qs_entity_get(scene, e, qs_transform_type());
-        tf->position[0] =  3.0f;
-        tf->position[1] =  0.9f;
-        tf->position[2] = -2.5f;
-        tf->scale[0]    =  0.4f;
-        tf->scale[1]    =  0.4f;
-        tf->scale[2]    =  0.4f;
-        Qs_MeshComp *mc = (Qs_MeshComp *)qs_entity_add(scene, e, qs_mesh_comp_type());
-        mc->mesh     = cube_mesh;
-        mc->material = mat_red;
-    }
+    ed_plugin_manager_init(ed);
+    ed_toolbar_init(ed);
 
     editor_build_ui(ed);
 
-    /* Feed keyboard events from Causality into the engine input system */
-    ca_event_set_handler(ed->instance, CA_EVENT_KEY, on_key_event, ed);
+    ca_window_set_title(qs_engine_window(ed->engine), "Quasar Editor");
+    ed_menu_bar_init(qs_engine_window(ed->engine), ed);
 
-    /* Per-frame callback updates the console */
-    ca_window_set_on_frame(ed->window, on_frame, ed);
+    ed_file_browser_init(ca_window_instance(qs_engine_window(ed->engine)));
 
-    /* Wake the event loop when new log entries arrive from background threads */
+    qs_engine_set_event_handler(ed->engine, CA_EVENT_KEY,          on_key_event,    ed);
+    qs_engine_set_event_handler(ed->engine, CA_EVENT_MOUSE_BUTTON, on_mouse_button, ed);
+    qs_engine_set_event_handler(ed->engine, CA_EVENT_MOUSE_MOVE,   on_mouse_move,   ed);
+    qs_engine_set_event_handler(ed->engine, CA_EVENT_MOUSE_SCROLL, on_mouse_scroll, ed);
+    qs_engine_set_on_frame(ed->engine, on_frame, ed);
     qs_log_set_listener(on_log, ed);
+
+    /* Subscribe to plugin reload events to refresh the scene renderer */
+    Qs_EventBus *bus = qs_engine_event_bus(ed->engine);
+    qs_event_subscribe(bus, QS_EVENT_PLUGIN_RELOAD_BEGIN,  on_plugin_reload_begin, ed);
+    qs_event_subscribe(bus, QS_EVENT_PLUGIN_RELOAD_END,    on_plugin_reload_end,   ed);
+    qs_event_subscribe(bus, QS_EVENT_PLUGIN_DISABLE_BEGIN, on_plugin_reload_begin, ed);
+    qs_event_subscribe(bus, QS_EVENT_PLUGIN_DISABLE_END,   on_plugin_disable_end,  ed);
+    qs_event_subscribe(bus, QS_EVENT_PLUGIN_ENABLE_END,    on_plugin_reload_end,   ed);
+
+    ed_camera_init(&ed->cam);
 
     return ed;
 }
@@ -384,14 +1301,12 @@ Editor *editor_create(const EditorDesc *desc)
 int editor_run(Editor *ed)
 {
     if (!ed) return 1;
-    while (ca_instance_tick(ed->instance)) { }
-    return 0;
+    return qs_engine_run(ed->engine);
 }
 
 void editor_request_exit(Editor *ed)
 {
-    if (ed && ed->window)
-        ca_window_close(ed->window);
+    if (ed) qs_engine_request_exit(ed->engine);
 }
 
 Qs_Renderer *editor_scene_renderer(Editor *ed)
@@ -399,17 +1314,295 @@ Qs_Renderer *editor_scene_renderer(Editor *ed)
     return ed ? ed->scene_renderer : NULL;
 }
 
+void editor_set_scene_viewport(Editor *ed, Ca_Viewport *viewport)
+{
+    if (ed) ed->scene_viewport = viewport;
+}
+
 Qs_Engine *editor_engine(Editor *ed)
 {
     return ed ? ed->engine : NULL;
 }
 
+Qs_Project *editor_project(const Editor *ed)
+{
+    return ed ? ed->project : NULL;
+}
+
+Ca_Viewport *editor_scene_viewport(const Editor *ed)
+{
+    return ed ? ed->scene_viewport : NULL;
+}
+
+Qs_Entity editor_selected_entity(const Editor *ed)
+{
+    return ed ? ed->selected_entity : QS_ENTITY_INVALID;
+}
+
+void editor_set_selected_entity(Editor *ed, Qs_Entity entity)
+{
+    if (!ed) return;
+    ed->selected_entity = entity;
+}
+
+EditorMode editor_mode(const Editor *editor)
+{
+    return editor ? editor->mode : ED_MODE_SCENE;
+}
+
+bool editor_open_prototype(Editor *editor, const char *proto_path)
+{
+    if (!editor || !proto_path || editor->mode == ED_MODE_PROTOTYPE)
+        return false;
+
+    /* Read and parse the .qproto file */
+    FILE *f = fopen(proto_path, "r");
+    if (!f) {
+        QS_LOG_ERROR("Cannot open prototype: %s", proto_path);
+        return false;
+    }
+    fseek(f, 0, SEEK_END);
+    long len = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    if (len <= 0) { fclose(f); return false; }
+    char *buf = malloc((size_t)len + 1);
+    if (!buf) { fclose(f); return false; }
+    size_t nread = fread(buf, 1, (size_t)len, f);
+    buf[nread] = '\0';
+    fclose(f);
+
+    cJSON *root = cJSON_Parse(buf);
+    free(buf);
+    if (!root) {
+        QS_LOG_ERROR("Failed to parse prototype: %s", proto_path);
+        return false;
+    }
+
+    /* Extract prototype name and model path */
+    const cJSON *name_val  = cJSON_GetObjectItemCaseSensitive(root, "name");
+    const cJSON *model_val = cJSON_GetObjectItemCaseSensitive(root, "model");
+    const char  *proto_name = cJSON_IsString(name_val)
+                            ? name_val->valuestring : "Prototype";
+
+    if (!cJSON_IsString(model_val) || !model_val->valuestring[0]) {
+        QS_LOG_ERROR("Prototype '%s' has no model field", proto_path);
+        cJSON_Delete(root);
+        return false;
+    }
+
+    /* Store path and resolve model path relative to .qproto location */
+    snprintf(editor->proto_path, sizeof(editor->proto_path), "%s", proto_path);
+
+    char proto_dir[1024];
+    scene_dir(proto_path, proto_dir, sizeof(proto_dir));
+
+    const char *mstr = model_val->valuestring;
+    if (mstr[0] == '/' || mstr[0] == '\\' || (mstr[0] && mstr[1] == ':'))
+        snprintf(editor->proto_model_path, sizeof(editor->proto_model_path),
+                 "%s", mstr);
+    else
+        snprintf(editor->proto_model_path, sizeof(editor->proto_model_path),
+                 "%s/%s", proto_dir, mstr);
+
+    /* Save current state */
+    editor->scene_backup = qs_scene_active();
+    editor->cam_backup   = editor->cam;
+    editor->selected_entity = QS_ENTITY_INVALID;
+
+    /* Create a temporary scene for the prototype */
+    char scene_name[256];
+    snprintf(scene_name, sizeof(scene_name), "Prototype: %s", proto_name);
+    Qs_Scene *proto_scene = qs_scene_create(editor->engine, &(Qs_SceneDesc){
+        .name = scene_name,
+    });
+    qs_scene_set_active(proto_scene);
+
+    /* Create root entity with the prototype's components */
+    Qs_Entity root_entity = qs_entity_create(proto_scene, proto_name);
+    editor->proto_entity = root_entity;
+
+    /* Deserialize components from the .qproto file */
+    const cJSON *comps = cJSON_GetObjectItemCaseSensitive(root, "components");
+    if (comps) {
+        const cJSON *item = NULL;
+        cJSON_ArrayForEach(item, comps) {
+            const char *comp_name = item->string;
+            if (!comp_name) continue;
+
+            /* Find the component type by name */
+            Qs_ComponentType *ct = NULL;
+            uint32_t type_count = qs_component_type_count();
+            for (uint32_t i = 0; i < type_count; i++) {
+                Qs_ComponentType *t = qs_component_type_at(i);
+                if (t && strcmp(qs_component_type_name(t), comp_name) == 0) {
+                    ct = t;
+                    break;
+                }
+            }
+            if (!ct) continue;
+
+            /* Add the component and deserialize from JSON */
+            void *comp = qs_entity_add(proto_scene, root_entity, ct);
+            if (comp) {
+                const Qs_TypeInfo *type_info = qs_component_type_info(ct);
+                if (type_info)
+                    qs_reflect_from_json(comp, type_info, item);
+            }
+        }
+    }
+
+    cJSON_Delete(root);
+
+    /* Add a default light so the prototype is visible */
+    Qs_Entity sun = qs_entity_create(proto_scene, "Sun");
+    Qs_LightComp *lc = qs_entity_add(proto_scene, sun, qs_light_comp_type());
+    if (lc) {
+        lc->color[0]  = 1.0f;
+        lc->color[1]  = 0.95f;
+        lc->color[2]  = 0.9f;
+        lc->intensity = 3.0f;
+    }
+
+    /* Load the model asset */
+    editor->proto_asset = qs_asset_load(editor->engine,
+                                        editor->proto_model_path);
+
+    /* Reset camera for prototype view */
+    ed_camera_init(&editor->cam);
+    if (editor->scene_renderer) {
+        Qs_Camera *cam = qs_renderer_camera(editor->scene_renderer);
+        if (cam) {
+            cam->position[0] =  5.0f;
+            cam->position[1] =  4.0f;
+            cam->position[2] =  8.0f;
+            cam->target[0]   =  0.0f;
+            cam->target[1]   =  0.5f;
+            cam->target[2]   =  0.0f;
+        }
+    }
+
+    /* Update breadcrumb bar */
+    if (s_breadcrumb_bar) {
+        const char *scene_name_str = editor->scene_backup
+            ? qs_scene_name(editor->scene_backup) : "Scene";
+        ca_set_text(s_breadcrumb_scene_label, scene_name_str);
+        ca_set_text(s_breadcrumb_proto_label, proto_name);
+        ca_set_hidden(s_breadcrumb_bar, false);
+    }
+
+    editor->mode = ED_MODE_PROTOTYPE;
+    QS_LOG_INFO("Editing prototype: %s", proto_name);
+    return true;
+}
+
+void editor_close_prototype(Editor *editor)
+{
+    if (!editor || editor->mode != ED_MODE_PROTOTYPE)
+        return;
+
+    /* Save the prototype before closing */
+    Qs_Scene *proto_scene = qs_scene_active();
+    if (proto_scene && editor->proto_entity != QS_ENTITY_INVALID) {
+        /* Build updated .qproto JSON */
+        cJSON *root = cJSON_CreateObject();
+
+        /* Extract prototype name from the entity */
+        const char *name = qs_entity_name(proto_scene, editor->proto_entity);
+        if (name && name[0])
+            cJSON_AddStringToObject(root, "name", name);
+
+        /* Re-extract the model filename from the stored path */
+        const char *slash = strrchr(editor->proto_model_path, '/');
+        const char *bslash = strrchr(editor->proto_model_path, '\\');
+        const char *model_name = slash ? slash + 1 : editor->proto_model_path;
+        if (bslash && bslash > model_name - 1) model_name = bslash + 1;
+        cJSON_AddStringToObject(root, "model", model_name);
+
+        /* Serialize components */
+        cJSON *comps_json = cJSON_CreateObject();
+        uint32_t type_count = qs_component_type_count();
+        for (uint32_t t = 0; t < type_count; t++) {
+            Qs_ComponentType *ct = qs_component_type_at(t);
+            if (!ct) continue;
+            if (!qs_entity_has(proto_scene, editor->proto_entity, ct))
+                continue;
+
+            const char *comp_name = qs_component_type_name(ct);
+            /* Skip internal components */
+            if (strcmp(comp_name, "IdComp") == 0 ||
+                strcmp(comp_name, "TagComp") == 0)
+                continue;
+
+            const Qs_TypeInfo *info = qs_component_type_info(ct);
+            void *data = qs_entity_get(proto_scene, editor->proto_entity, ct);
+            if (info && data) {
+                cJSON *comp_json = qs_reflect_to_json(data, info);
+                if (comp_json)
+                    cJSON_AddItemToObject(comps_json, comp_name, comp_json);
+            }
+        }
+        cJSON_AddItemToObject(root, "components", comps_json);
+
+        /* Write to disk */
+        char *json_str = cJSON_Print(root);
+        if (json_str) {
+            FILE *f = fopen(editor->proto_path, "w");
+            if (f) {
+                fputs(json_str, f);
+                fclose(f);
+                QS_LOG_INFO("Saved prototype: %s", editor->proto_path);
+            }
+            free(json_str);
+        }
+        cJSON_Delete(root);
+    }
+
+    /* Release prototype asset */
+    if (editor->proto_asset) {
+        qs_asset_release(editor->proto_asset);
+        editor->proto_asset = NULL;
+    }
+
+    /* Destroy the temporary scene and restore the saved one */
+    if (proto_scene)
+        qs_scene_destroy(proto_scene);
+
+    qs_scene_set_active(editor->scene_backup);
+    editor->scene_backup = NULL;
+
+    /* Restore camera and selection */
+    editor->cam = editor->cam_backup;
+    editor->selected_entity = QS_ENTITY_INVALID;
+    editor->proto_entity = QS_ENTITY_INVALID;
+    editor->proto_path[0] = '\0';
+    editor->proto_model_path[0] = '\0';
+
+    /* Hide breadcrumb */
+    if (s_breadcrumb_bar)
+        ca_set_hidden(s_breadcrumb_bar, true);
+
+    editor->mode = ED_MODE_SCENE;
+    QS_LOG_INFO("Returned to scene editing");
+}
+
 void editor_destroy(Editor *ed)
 {
     if (!ed) return;
-    qs_forward_shutdown();
+    /* Close prototype editing if active */
+    if (ed->mode == ED_MODE_PROTOTYPE) {
+        if (ed->proto_asset) {
+            qs_asset_release(ed->proto_asset);
+            ed->proto_asset = NULL;
+        }
+    }
+    /* Release loaded asset handles */
+    for (uint32_t i = 0; i < ed->loaded_asset_count; i++) {
+        if (ed->loaded_assets[i])
+            qs_asset_release(ed->loaded_assets[i]);
+    }
+    ed_pick_shutdown(ed->engine);
+    ed_gizmo_shutdown(ed->engine);
     qs_engine_destroy(ed->engine);
-    if (ed->stylesheet) ca_css_destroy(ed->stylesheet);
-    ca_instance_destroy(ed->instance);
+    qs_project_destroy(ed->project);
     free(ed);
 }

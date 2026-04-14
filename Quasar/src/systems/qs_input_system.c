@@ -5,8 +5,16 @@
 #include <string.h>
 
 typedef struct {
-    bool current[QS_KEY_MAX];
-    bool previous[QS_KEY_MAX];
+    bool  current[QS_KEY_MAX];
+    bool  previous[QS_KEY_MAX];
+
+    /* Mouse state */
+    bool  mouse_current[QS_MOUSE_BUTTON_COUNT];
+    bool  mouse_previous[QS_MOUSE_BUTTON_COUNT];
+    float mouse_x,       mouse_y;        /* current absolute position */
+    float mouse_delta_x, mouse_delta_y;  /* accumulated movement this frame */
+    float scroll_dx,     scroll_dy;      /* accumulated scroll this frame */
+    bool  mouse_initialized;             /* false until first cursor event */
 } Qs_InputState;
 
 static Qs_InputState *g_input = NULL;
@@ -15,8 +23,14 @@ static bool input_system_init(Qs_System *system, Qs_Engine *engine)
 {
     (void)engine;
     g_input = (Qs_InputState *)qs_system_data(system);
-    memset(g_input->current,  0, sizeof(g_input->current));
-    memset(g_input->previous, 0, sizeof(g_input->previous));
+    memset(g_input->current,        0, sizeof(g_input->current));
+    memset(g_input->previous,       0, sizeof(g_input->previous));
+    memset(g_input->mouse_current,  0, sizeof(g_input->mouse_current));
+    memset(g_input->mouse_previous, 0, sizeof(g_input->mouse_previous));
+    g_input->mouse_x = g_input->mouse_y = 0.0f;
+    g_input->mouse_delta_x = g_input->mouse_delta_y = 0.0f;
+    g_input->scroll_dx = g_input->scroll_dy = 0.0f;
+    g_input->mouse_initialized = false;
     return true;
 }
 
@@ -32,8 +46,8 @@ static void input_system_update(Qs_System *system, Qs_Engine *engine, float dt)
     (void)system;
     (void)engine;
     (void)dt;
-    if (!g_input) return;
-    memcpy(g_input->previous, g_input->current, sizeof(g_input->current));
+    /* Snapshot is done in qs_input_end_frame() so that on_frame consumers
+       can read single-frame transitions (pressed / released). */
 }
 
 Qs_SystemDesc qs_input_system_desc(void)
@@ -51,25 +65,12 @@ void qs_input_key_event(Qs_Key key, Qs_KeyAction action, int mods)
 {
     if (!g_input) return;
     if (key < 0 || key >= QS_KEY_MAX) return;
-
-    const char *name = qs_key_name(key);
-    const char *mods_str = "";
-    if (mods & QS_MOD_CONTROL) mods_str = "Ctrl+";
-    else if (mods & QS_MOD_SHIFT) mods_str = "Shift+";
-    else if (mods & QS_MOD_ALT) mods_str = "Alt+";
+    (void)mods;
 
     switch (action) {
-    case QS_KEY_PRESS:
-        g_input->current[key] = true;
-        qs_log(QS_LOG_DEBUG, "Key Press: %s%s", mods_str, name);
-        break;
-    case QS_KEY_RELEASE:
-        g_input->current[key] = false;
-        qs_log(QS_LOG_DEBUG, "Key Release: %s%s", mods_str, name);
-        break;
-    case QS_KEY_REPEAT:
-        qs_log(QS_LOG_TRACE, "Key Hold: %s%s", mods_str, name);
-        break;
+    case QS_KEY_PRESS:   g_input->current[key] = true;  break;
+    case QS_KEY_RELEASE: g_input->current[key] = false; break;
+    case QS_KEY_REPEAT:  break;
     }
 }
 
@@ -89,6 +90,88 @@ bool qs_input_key_released(Qs_Key key)
 {
     if (!g_input || key < 0 || key >= QS_KEY_MAX) return false;
     return !g_input->current[key] && g_input->previous[key];
+}
+
+/* ================================================================
+   MOUSE IMPLEMENTATION
+   ================================================================ */
+
+void qs_input_mouse_button_event(Qs_MouseButton button, int action)
+{
+    if (!g_input || button < 0 || (int)button >= QS_MOUSE_BUTTON_COUNT) return;
+    g_input->mouse_current[button] = (action != 0);
+}
+
+void qs_input_mouse_pos_event(double x, double y)
+{
+    if (!g_input) return;
+    if (!g_input->mouse_initialized) {
+        /* First event: initialise position without producing a spurious delta. */
+        g_input->mouse_x = (float)x;
+        g_input->mouse_y = (float)y;
+        g_input->mouse_initialized = true;
+        return;
+    }
+    g_input->mouse_delta_x += (float)x - g_input->mouse_x;
+    g_input->mouse_delta_y += (float)y - g_input->mouse_y;
+    g_input->mouse_x = (float)x;
+    g_input->mouse_y = (float)y;
+}
+
+void qs_input_mouse_scroll_event(double dx, double dy)
+{
+    if (!g_input) return;
+    g_input->scroll_dx += (float)dx;
+    g_input->scroll_dy += (float)dy;
+}
+
+bool qs_input_mouse_down(Qs_MouseButton button)
+{
+    if (!g_input || button < 0 || (int)button >= QS_MOUSE_BUTTON_COUNT) return false;
+    return g_input->mouse_current[button];
+}
+
+bool qs_input_mouse_pressed(Qs_MouseButton button)
+{
+    if (!g_input || button < 0 || (int)button >= QS_MOUSE_BUTTON_COUNT) return false;
+    return g_input->mouse_current[button] && !g_input->mouse_previous[button];
+}
+
+bool qs_input_mouse_released(Qs_MouseButton button)
+{
+    if (!g_input || button < 0 || (int)button >= QS_MOUSE_BUTTON_COUNT) return false;
+    return !g_input->mouse_current[button] && g_input->mouse_previous[button];
+}
+
+void qs_input_mouse_pos(float *out_x, float *out_y)
+{
+    if (out_x) *out_x = g_input ? g_input->mouse_x : 0.0f;
+    if (out_y) *out_y = g_input ? g_input->mouse_y : 0.0f;
+}
+
+void qs_input_mouse_delta(float *out_dx, float *out_dy)
+{
+    if (out_dx) *out_dx = g_input ? g_input->mouse_delta_x : 0.0f;
+    if (out_dy) *out_dy = g_input ? g_input->mouse_delta_y : 0.0f;
+}
+
+void qs_input_end_frame(void)
+{
+    if (!g_input) return;
+    /* Snapshot key and mouse-button states so that key_pressed / key_released
+       detect single-frame transitions on the NEXT frame. */
+    memcpy(g_input->previous,       g_input->current,       sizeof(g_input->current));
+    memcpy(g_input->mouse_previous, g_input->mouse_current, sizeof(g_input->mouse_current));
+    g_input->mouse_delta_x = 0.0f;
+    g_input->mouse_delta_y = 0.0f;
+    g_input->scroll_dx     = 0.0f;
+    g_input->scroll_dy     = 0.0f;
+}
+
+void qs_input_mouse_scroll(float *out_dx, float *out_dy)
+{
+    if (out_dx) *out_dx = g_input ? g_input->scroll_dx : 0.0f;
+    if (out_dy) *out_dy = g_input ? g_input->scroll_dy : 0.0f;
 }
 
 const char *qs_key_name(Qs_Key key)

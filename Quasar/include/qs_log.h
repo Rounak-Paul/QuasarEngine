@@ -4,8 +4,6 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-typedef struct Qs_SystemDesc Qs_SystemDesc;
-
 /// Log severity levels.
 typedef enum Qs_LogLevel {
     QS_LOG_DEBUG = 0,
@@ -23,9 +21,6 @@ typedef struct Qs_LogEntry {
     double      timestamp;      ///< Seconds since engine start.
     const char *message;        ///< Null-terminated log text.
 } Qs_LogEntry;
-
-/// Returns the system descriptor for the log system.
-Qs_SystemDesc qs_log_system_desc(void);
 
 /// Emits a formatted log message at the given severity.
 void qs_log(Qs_LogLevel level, const char *fmt, ...);

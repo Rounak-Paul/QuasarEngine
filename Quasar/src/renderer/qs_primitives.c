@@ -1,13 +1,10 @@
 #include "qs_primitives.h"
+#include "qs_math.h"
 #include "qs_mesh.h"
 
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
-
-#ifndef M_PI
-#define M_PI 3.14159265358979323846
-#endif
 
 /* ================================================================
    PLANE  (XZ, Y-up normal)
@@ -156,11 +153,11 @@ Qs_Mesh *qs_primitive_sphere(Qs_Engine *engine, float radius,
 
     uint32_t vi = 0;
     for (uint32_t st = 0; st <= stacks; st++) {
-        float phi = (float)M_PI * (float)st / (float)stacks;
+        float phi = QS_PI * (float)st / (float)stacks;
         float sp  = sinf(phi), cp = cosf(phi);
 
         for (uint32_t sl = 0; sl <= slices; sl++) {
-            float theta = 2.0f * (float)M_PI * (float)sl / (float)slices;
+            float theta = 2.0f * QS_PI * (float)sl / (float)slices;
             float st2   = sinf(theta), ct = cosf(theta);
 
             float nx = sp * ct;
@@ -189,12 +186,14 @@ Qs_Mesh *qs_primitive_sphere(Qs_Engine *engine, float radius,
         for (uint32_t sl = 0; sl < slices; sl++) {
             uint32_t a = st * (slices + 1) + sl;
             uint32_t b = a + slices + 1;
+            /* Reversed winding vs natural UV order so outer faces are
+               CCW in clip space — consistent with cube/plane primitives. */
+            indices[ii++] = a + 1;
+            indices[ii++] = b;
             indices[ii++] = a;
-            indices[ii++] = b;
-            indices[ii++] = a + 1;
-            indices[ii++] = a + 1;
-            indices[ii++] = b;
             indices[ii++] = b + 1;
+            indices[ii++] = b;
+            indices[ii++] = a + 1;
         }
     }
 

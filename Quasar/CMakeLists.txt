@@ -13,7 +13,13 @@ set(ALSOFT_INSTALL_HRTF_DATA OFF CACHE BOOL "" FORCE)
 set(ALSOFT_INSTALL_AMBDEC_PRESETS OFF CACHE BOOL "" FORCE)
 set(ALSOFT_INSTALL_EXAMPLES OFF CACHE BOOL "" FORCE)
 set(ALSOFT_INSTALL_UTILS OFF CACHE BOOL "" FORCE)
+set(ALSOFT_ENABLE_MODULES OFF CACHE BOOL "" FORCE)
 add_subdirectory(vendors/openal-soft)
+
+# Suppress -Werror=function-effects from OpenAL's CoreAudio backend (vendor code)
+if(TARGET OpenAL AND NOT MSVC)
+    target_compile_options(OpenAL PRIVATE -Wno-error=function-effects)
+endif()
 
 # meshoptimizer (static)
 set(MESHOPT_BUILD_DEMO OFF CACHE BOOL "" FORCE)
@@ -32,7 +38,12 @@ add_subdirectory(vendors/cjson)
 
 file(GLOB_RECURSE QUASAR_SOURCES CONFIGURE_DEPENDS src/*.c)
 
-add_library(Quasar STATIC ${QUASAR_SOURCES})
+add_library(Quasar SHARED ${QUASAR_SOURCES})
+
+# Automatically export all symbols on Windows (no manual __declspec needed).
+if(WIN32)
+    set_target_properties(Quasar PROPERTIES WINDOWS_EXPORT_ALL_SYMBOLS ON)
+endif()
 
 # Precompiled header
 target_precompile_headers(Quasar PRIVATE src/qs_pch.h)
@@ -40,15 +51,19 @@ target_precompile_headers(Quasar PRIVATE src/qs_pch.h)
 target_include_directories(Quasar
     PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/vendors/causality/causality/include
         ${CMAKE_CURRENT_SOURCE_DIR}/vendors/cgltf
         ${CMAKE_CURRENT_SOURCE_DIR}/vendors/stb
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src
+        ${CMAKE_CURRENT_SOURCE_DIR}/vendors/cjson
 )
 
 target_link_libraries(Quasar
     PUBLIC
+        Vulkan::Vulkan
         causality
+    PRIVATE
         OpenAL::OpenAL
         meshoptimizer
         cjson

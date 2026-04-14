@@ -1,13 +1,11 @@
-#ifndef QS_LIGHT_H
+﻿#ifndef QS_LIGHT_H
 #define QS_LIGHT_H
 
 #include <stdbool.h>
 #include <stdint.h>
 
-typedef struct Qs_SystemDesc Qs_SystemDesc;
 typedef struct Qs_Engine     Qs_Engine;
-typedef struct Qs_Renderer   Qs_Renderer;
-typedef struct Qs_Light      Qs_Light;
+typedef struct Qs_Light      Qs_Light;   ///< Opaque â€” defined by the light backend.
 
 /* ================================================================
    LIGHT TYPES
@@ -29,19 +27,29 @@ typedef struct Qs_LightDesc {
     Qs_LightType  type;
 
     float         position[3];        ///< World-space position (point/spot).
-    float         direction[3];       ///< Normalized direction (directional/spot).
+    float         direction[3];       ///< Normalised direction (directional/spot).
     float         color[3];           ///< Linear RGB color (default: {1,1,1}).
     float         intensity;          ///< Luminous intensity (default: 1.0).
 
-    /* Attenuation (point/spot) */
     float         range;              ///< Maximum influence radius (0 = infinite).
 
-    /* Spot cone */
     float         inner_cone_deg;     ///< Inner cone angle in degrees (full intensity).
     float         outer_cone_deg;     ///< Outer cone angle in degrees (falloff edge).
 
     bool          cast_shadows;
 } Qs_LightDesc;
+
+/// Returns a Qs_LightDesc with sensible defaults pre-filled.
+/// Callers should modify individual fields after calling this.
+static inline Qs_LightDesc qs_light_desc_defaults(void)
+{
+    return (Qs_LightDesc){
+        .color          = {1.0f, 1.0f, 1.0f},
+        .intensity      = 1.0f,
+        .inner_cone_deg = 30.0f,
+        .outer_cone_deg = 45.0f,
+    };
+}
 
 /* ================================================================
    GPU-READY LIGHT DATA
@@ -54,18 +62,18 @@ typedef struct Qs_LightGPU {
     float    direction[3];
     float    intensity;
     float    color[3];
-    float    inner_cone_cos;    ///< cos(inner_cone_deg).
-    float    outer_cone_cos;    ///< cos(outer_cone_deg).
-    uint32_t type;              ///< 0=directional, 1=point, 2=spot.
+    float    inner_cone_cos;
+    float    outer_cone_cos;
+    uint32_t type;
     uint32_t cast_shadows;
     uint32_t _pad;
 } Qs_LightGPU;
 
 /* ================================================================
-   LIGHT API
+   PUBLIC LIGHT API
    ================================================================ */
 
-/// Creates a light. Returns NULL on failure.
+/// Creates a light.  Destroy with qs_light_destroy.
 Qs_Light *qs_light_create(Qs_Engine *engine, const Qs_LightDesc *desc);
 
 /// Destroys a light.
@@ -74,54 +82,26 @@ void qs_light_destroy(Qs_Light *light);
 /// Returns the debug name.
 const char *qs_light_name(const Qs_Light *light);
 
-/// Returns a mutable pointer to the light's position.
+/// Returns a mutable pointer to the lightâ€™s position.
 float *qs_light_position(Qs_Light *light);
 
-/// Returns a mutable pointer to the light's direction.
+/// Returns a mutable pointer to the lightâ€™s direction.
 float *qs_light_direction(Qs_Light *light);
 
-/// Returns a mutable pointer to the light's color.
+/// Returns a mutable pointer to the lightâ€™s color.
 float *qs_light_color(Qs_Light *light);
 
-/// Sets the light intensity.
-void qs_light_set_intensity(Qs_Light *light, float intensity);
-
-/// Returns the light intensity.
+void  qs_light_set_intensity(Qs_Light *light, float intensity);
 float qs_light_intensity(const Qs_Light *light);
+void  qs_light_set_range(Qs_Light *light, float range);
+void  qs_light_set_cone(Qs_Light *light, float inner_deg, float outer_deg);
+void  qs_light_set_enabled(Qs_Light *light, bool enabled);
+bool  qs_light_enabled(const Qs_Light *light);
 
-/// Sets the light range (point/spot).
-void qs_light_set_range(Qs_Light *light, float range);
+/// Returns true if the light is active and should be submitted for rendering.
+bool  qs_light_is_active(const Qs_Light *light);
 
-/// Sets the spot cone angles in degrees.
-void qs_light_set_cone(Qs_Light *light, float inner_deg, float outer_deg);
-
-/// Enables or disables a light.
-void qs_light_set_enabled(Qs_Light *light, bool enabled);
-
-/// Returns true if the light is enabled.
-bool qs_light_enabled(const Qs_Light *light);
-
-/* ================================================================
-   RENDERER LIGHT SUBMISSION
-   ================================================================ */
-
-/// Submits a light to a renderer for the current frame.
-/// Lights must be submitted each frame before the render pass executes.
-void qs_renderer_submit_light(Qs_Renderer *renderer, Qs_Light *light);
-
-/// Clears all submitted lights from a renderer (called automatically each frame).
-void qs_renderer_clear_lights(Qs_Renderer *renderer);
-
-/// Returns the array of GPU-packed lights submitted to this renderer.
-/// The pointer is valid until the next clear_lights call.
-const Qs_LightGPU *qs_renderer_lights(const Qs_Renderer *renderer,
-                                       uint32_t *out_count);
-
-/* ================================================================
-   LIGHT SYSTEM
-   ================================================================ */
-
-/// Returns the system descriptor for registration with the engine.
-Qs_SystemDesc qs_light_system_desc(void);
+/// Packs a light's data into a GPU-ready struct for UBO upload.
+void  qs_light_pack_gpu(const Qs_Light *light, Qs_LightGPU *out);
 
 #endif

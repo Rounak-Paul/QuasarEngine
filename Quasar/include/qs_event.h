@@ -25,6 +25,11 @@ typedef uint32_t Qs_EventId;
 #define QS_EVENT_WINDOW_RESIZE  ((Qs_EventId)10)
 #define QS_EVENT_WINDOW_CLOSE   ((Qs_EventId)11)
 #define QS_EVENT_WINDOW_FOCUS   ((Qs_EventId)12)
+#define QS_EVENT_PLUGIN_RELOAD_BEGIN ((Qs_EventId)13)   /* fired before plugin unload  */
+#define QS_EVENT_PLUGIN_RELOAD_END   ((Qs_EventId)14)   /* fired after plugin reloaded */
+#define QS_EVENT_PLUGIN_DISABLE_BEGIN ((Qs_EventId)15)  /* fired before plugin disable */
+#define QS_EVENT_PLUGIN_DISABLE_END   ((Qs_EventId)16)  /* fired after plugin disabled */
+#define QS_EVENT_PLUGIN_ENABLE_END    ((Qs_EventId)17)  /* fired after plugin enabled  */
 
 /// Opaque event bus handle.
 typedef struct Qs_EventBus Qs_EventBus;
@@ -39,12 +44,6 @@ typedef struct Qs_Event {
 
 /// Listener callback signature. Return true to consume the event.
 typedef bool (*Qs_EventFn)(const Qs_Event* event, void* user_data);
-
-typedef struct Qs_SystemDesc Qs_SystemDesc;
-
-/// Returns the system descriptor for the event system.
-/// Register with qs_system_register() — the engine does this automatically.
-Qs_SystemDesc qs_event_system_desc(void);
 
 /// Subscribes a listener to an event ID. Returns a handle for unsubscribing.
 uint32_t qs_event_subscribe(Qs_EventBus* bus, Qs_EventId id,

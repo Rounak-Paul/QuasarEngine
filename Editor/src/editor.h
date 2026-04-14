@@ -2,12 +2,18 @@
 #define EDITOR_H
 
 #include "quasar.h"
-#include "causality.h"
 
 typedef struct Editor Editor;
 
+/// Editor operating mode.
+typedef enum EditorMode {
+    ED_MODE_SCENE,        ///< Editing the scene.
+    ED_MODE_PROTOTYPE,    ///< Editing a prototype (.qproto) in isolation.
+} EditorMode;
+
 typedef struct EditorDesc {
     const char *title;
+    const char *project_path;  ///< Project directory path (from launcher).
     int         width;
     int         height;
 } EditorDesc;
@@ -24,8 +30,33 @@ void editor_request_exit(Editor *editor);
 /// Returns the editor's scene renderer.
 Qs_Renderer *editor_scene_renderer(Editor *editor);
 
+/// Sets the editor's scene viewport.
+void editor_set_scene_viewport(Editor *editor, Ca_Viewport *viewport);
+
 /// Returns the editor's engine instance.
 Qs_Engine *editor_engine(Editor *editor);
+
+/// Returns the editor's project.
+Qs_Project *editor_project(const Editor *editor);
+
+/// Returns the editor's scene viewport.
+Ca_Viewport *editor_scene_viewport(const Editor *editor);
+
+/// Returns the currently selected entity, or QS_ENTITY_INVALID.
+Qs_Entity editor_selected_entity(const Editor *editor);
+
+/// Sets the selected entity.
+void editor_set_selected_entity(Editor *editor, Qs_Entity entity);
+
+/// Returns the current editor mode.
+EditorMode editor_mode(const Editor *editor);
+
+/// Opens a prototype for isolated editing.  Saves the current scene context
+/// and creates a temporary scene for the prototype.
+bool editor_open_prototype(Editor *editor, const char *proto_path);
+
+/// Closes the prototype editor and restores the previous scene.
+void editor_close_prototype(Editor *editor);
 
 /// Destroys the editor and all owned resources.
 void editor_destroy(Editor *editor);
