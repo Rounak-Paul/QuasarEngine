@@ -68,3 +68,9 @@ target_link_libraries(Quasar
         meshoptimizer
         cjson
 )
+
+# Visual Studio generator does not propagate COMPILE_LANGUAGE generator expressions
+# from add_compile_options. Apply /experimental:c11atomics directly on this C target.
+if(MSVC)
+    target_compile_options(Quasar PRIVATE /experimental:c11atomics)
+endif()
