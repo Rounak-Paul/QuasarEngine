@@ -147,11 +147,12 @@ static void build_hierarchy(Editor *ed, Qs_Scene *scene)
     ca_tree_end();
 
     /* ---- Add Entity button ---- */
-    ca_btn(&(Ca_BtnDesc){
+    ca_btn_begin(&(Ca_BtnDesc){
         .text      = "+  Add Entity",
         .id        = "hierarchy-add-entity",
         .style     = "hierarchy-add-btn",
     });
+    ca_btn_end();
 }
 
 void ed_hierarchy(void *editor)

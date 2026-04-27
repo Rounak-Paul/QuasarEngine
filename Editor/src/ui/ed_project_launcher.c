@@ -826,16 +826,18 @@ static void build_launcher_ui(void)
         ca_div_end();
 
         /* Tab buttons */
-        s_launcher.tab_btns[TAB_PROJECTS] = ca_btn(&(Ca_BtnDesc){
+        s_launcher.tab_btns[TAB_PROJECTS] = ca_btn_begin(&(Ca_BtnDesc){
             .text       = "Projects",
             .on_click   = on_tab_projects,
             .style      = "launcher-tab",
         });
-        s_launcher.tab_btns[TAB_NEW_PROJECT] = ca_btn(&(Ca_BtnDesc){
+        ca_btn_end();
+        s_launcher.tab_btns[TAB_NEW_PROJECT] = ca_btn_begin(&(Ca_BtnDesc){
             .text       = "New Project",
             .on_click   = on_tab_new_project,
             .style      = "launcher-tab",
         });
+        ca_btn_end();
 
         ca_div_end(); /* sidebar */
 
@@ -860,11 +862,12 @@ static void build_launcher_ui(void)
                 .text  = "Recent Projects",
                 .style = "launcher-page-title",
             });
-            ca_btn(&(Ca_BtnDesc){
+            ca_btn_begin(&(Ca_BtnDesc){
                 .text     = "Open Project",
                 .on_click = on_open_project,
                 .style    = "launcher-btn",
             });
+            ca_btn_end();
             ca_div_end();
 
             /* Project list — rebuilt dynamically */
@@ -928,11 +931,12 @@ static void build_launcher_ui(void)
                 .text  = s_launcher.new_project_dir,
                 .style = "launcher-path-display",
             });
-            ca_btn(&(Ca_BtnDesc){
+            ca_btn_begin(&(Ca_BtnDesc){
                 .text     = "Browse",
                 .on_click = on_browse_path,
                 .style    = "launcher-btn-sm",
             });
+            ca_btn_end();
             ca_div_end();
 
             /* Actions */
@@ -940,11 +944,12 @@ static void build_launcher_ui(void)
                 .direction = CA_HORIZONTAL,
                 .style     = "launcher-form-actions",
             });
-            ca_btn(&(Ca_BtnDesc){
+            ca_btn_begin(&(Ca_BtnDesc){
                 .text     = "Create",
                 .on_click = on_create_project,
                 .style    = "launcher-btn launcher-btn-primary",
             });
+            ca_btn_end();
             ca_div_end();
 
             ca_div_end(); /* form */

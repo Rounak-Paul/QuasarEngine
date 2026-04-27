@@ -162,13 +162,14 @@ static void plugin_manager_frame(void *data)
                 snprintf(toggle_id, sizeof(toggle_id), "pm-tgl-%s", pid);
 
                 if (loaded) {
-                    ca_btn(&(Ca_BtnDesc){
+                    ca_btn_begin(&(Ca_BtnDesc){
                         .text       = ICON_RELOAD,
                         .id         = reload_id,
                         .style      = "pm-reload-btn",
                         .on_click   = on_reload,
                         .click_data = &s_reload_ctx[ci],
                     });
+                    ca_btn_end();
                 }
 
                 ca_toggle(&(Ca_ToggleDesc){

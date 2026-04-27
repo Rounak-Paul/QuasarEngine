@@ -476,12 +476,13 @@ static void build_sections(Qs_Scene *scene, Qs_Entity entity)
         if (strcmp(comp_name, "Prototype") == 0 &&
             editor_mode(s_editor) == ED_MODE_SCENE)
         {
-            ca_btn(&(Ca_BtnDesc){
+            ca_btn_begin(&(Ca_BtnDesc){
                 .text     = "Edit",
                 .id       = "ins-proto-edit-btn",
                 .style    = "inspector-edit-btn",
                 .on_click = on_edit_prototype,
             });
+            ca_btn_end();
         }
         ca_div_end();
 

@@ -792,13 +792,14 @@ static void editor_build_ui(Editor *ed)
         .hidden    = true,
     });
     {
-        ca_btn(&(Ca_BtnDesc){
+        ca_btn_begin(&(Ca_BtnDesc){
             .text       = "\xEF\x81\x88 Back",  /* U+F048 step-backward */
             .id         = "breadcrumb-back",
             .style      = "breadcrumb-back",
             .on_click   = on_breadcrumb_back,
             .click_data = ed,
         });
+        ca_btn_end();
         s_breadcrumb_scene_label = ca_text(&(Ca_TextDesc){
             .text  = "",
             .id    = "breadcrumb-scene",
