@@ -3,6 +3,12 @@
 #include "qs_log.h"
 #include "qs_system.h"
 #include "qs_math.h"
+#include "qs_asset_pack.h"
+#include "qs_renderer.h"
+#include "qs_mesh.h"
+#include "qs_material.h"
+#include "qs_project.h"
+#include "quasar.h"
 #include "cJSON.h"
 
 #include <stdlib.h>
@@ -60,6 +66,7 @@ static inline void *store_get(const ComponentStore *store,
 
 struct Qs_Scene {
     char              name[64];
+    char              source_path[512];   /* Absolute path to the .qscene/.qproto this was loaded from. Empty if never loaded. */
     bool              in_use;
 
     /* Entity slots */
@@ -288,7 +295,18 @@ static void prototype_comp_init(void *comp, Qs_Scene *scene, Qs_Entity entity)
 {
     (void)scene; (void)entity;
     Qs_PrototypeComp *pc = (Qs_PrototypeComp *)comp;
-    qs_m4_identity(pc->base_transform);
+    pc->inner       = NULL;
+    pc->load_failed = false;
+}
+
+static void prototype_comp_destroy(void *comp, Qs_Scene *scene, Qs_Entity entity)
+{
+    (void)scene; (void)entity;
+    Qs_PrototypeComp *pc = (Qs_PrototypeComp *)comp;
+    if (pc->inner) {
+        qs_scene_destroy(pc->inner);
+        pc->inner = NULL;
+    }
 }
 
 /* ================================================================
@@ -310,8 +328,8 @@ static const Qs_TypeInfo s_transform_type_info = {
 
 static const Qs_FieldInfo s_mesh_comp_fields[] = {
     QS_FIELD(Qs_MeshComp, visible,       QS_FIELD_BOOL),
-    QS_FIELD(Qs_MeshComp, mesh_name,     QS_FIELD_STRING),
-    QS_FIELD(Qs_MeshComp, material_name, QS_FIELD_STRING),
+    QS_FIELD(Qs_MeshComp, mesh_path,     QS_FIELD_STRING),
+    QS_FIELD(Qs_MeshComp, material_path, QS_FIELD_STRING),
 };
 
 static const Qs_TypeInfo s_mesh_comp_type_info = {
@@ -441,6 +459,7 @@ static void register_builtin_types(Qs_Engine *engine)
         .data_size = sizeof(Qs_PrototypeComp),
         .type_info = &s_prototype_comp_type_info,
         .init      = prototype_comp_init,
+        .destroy   = prototype_comp_destroy,
     });
 }
 
@@ -820,6 +839,17 @@ cJSON *qs_scene_to_json(const Qs_Scene *scene)
     cJSON *entities = cJSON_CreateArray();
     cJSON_AddItemToObject(root, "entities", entities);
 
+    /* Build entity → array-index map for parent indices */
+    int entity_to_index[QS_MAX_ENTITIES];
+    for (int i = 0; i < QS_MAX_ENTITIES; i++) entity_to_index[i] = -1;
+    int idx = 0;
+    for (uint32_t e = bit_next_set(scene->alive, 0);
+         e < QS_MAX_ENTITIES;
+         e = bit_next_set(scene->alive, e + 1))
+    {
+        entity_to_index[e] = idx++;
+    }
+
     for (uint32_t e = bit_next_set(scene->alive, 0);
          e < QS_MAX_ENTITIES;
          e = bit_next_set(scene->alive, e + 1))
@@ -827,6 +857,10 @@ cJSON *qs_scene_to_json(const Qs_Scene *scene)
         cJSON *ent = cJSON_CreateObject();
         cJSON_AddStringToObject(ent, "name", scene->entity_names[e]);
         cJSON_AddBoolToObject(ent, "enabled", bit_test(scene->enabled, e));
+
+        Qs_Entity p = scene->parent_entity[e];
+        int parent_idx = (p < QS_MAX_ENTITIES) ? entity_to_index[p] : -1;
+        cJSON_AddNumberToObject(ent, "parent", (double)parent_idx);
 
         cJSON *comps = cJSON_CreateObject();
         cJSON_AddItemToObject(ent, "components", comps);
@@ -869,6 +903,15 @@ bool qs_scene_from_json(Qs_Scene *scene, Qs_Engine *engine,
     if (cJSON_IsNumber(next_id_json))
         scene->next_entity_id = (uint32_t)next_id_json->valueint;
 
+    /* Pass 1: create all entities and remember array-index → entity map */
+    int total = cJSON_GetArraySize(entities);
+    Qs_Entity *idx_to_entity = NULL;
+    if (total > 0) {
+        idx_to_entity = (Qs_Entity *)malloc(sizeof(Qs_Entity) * (size_t)total);
+        for (int i = 0; i < total; i++) idx_to_entity[i] = QS_ENTITY_INVALID;
+    }
+
+    int i = 0;
     const cJSON *ent_json;
     cJSON_ArrayForEach(ent_json, entities) {
         const cJSON *name_val =
@@ -877,6 +920,8 @@ bool qs_scene_from_json(Qs_Scene *scene, Qs_Engine *engine,
             cJSON_IsString(name_val) ? name_val->valuestring : NULL;
 
         Qs_Entity entity = qs_entity_create(scene, name);
+        if (idx_to_entity) idx_to_entity[i] = entity;
+        i++;
         if (entity == QS_ENTITY_INVALID) continue;
 
         const cJSON *enabled_val =
@@ -907,6 +952,26 @@ bool qs_scene_from_json(Qs_Scene *scene, Qs_Engine *engine,
             if (type->type_info)
                 qs_reflect_from_json(comp, type->type_info, comp_json);
         }
+    }
+
+    /* Pass 2: assign parents from "parent" indices */
+    if (idx_to_entity) {
+        i = 0;
+        cJSON_ArrayForEach(ent_json, entities) {
+            Qs_Entity child = idx_to_entity[i++];
+            if (child == QS_ENTITY_INVALID) continue;
+            const cJSON *parent_val =
+                cJSON_GetObjectItemCaseSensitive(ent_json, "parent");
+            if (cJSON_IsNumber(parent_val)) {
+                int pi = parent_val->valueint;
+                if (pi >= 0 && pi < total &&
+                    idx_to_entity[pi] != QS_ENTITY_INVALID)
+                {
+                    qs_entity_set_parent(scene, child, idx_to_entity[pi]);
+                }
+            }
+        }
+        free(idx_to_entity);
     }
 
     /* Sync next_entity_id past the highest loaded ID */
@@ -1032,6 +1097,10 @@ bool qs_scene_save(const Qs_Scene *scene, const char *path)
     fclose(f);
     free(str);
 
+    /* Record source path so subsequent saves & path resolution work. */
+    snprintf(((Qs_Scene *)scene)->source_path,
+             sizeof(((Qs_Scene *)scene)->source_path), "%s", path);
+
     QS_LOG_INFO("Scene saved: %s", path);
     return true;
 }
@@ -1064,13 +1133,21 @@ bool qs_scene_load(Qs_Scene *scene, Qs_Engine *engine, const char *path)
         return false;
     }
 
+    /* Record source path BEFORE from_json so path resolution can use it. */
+    snprintf(scene->source_path, sizeof(scene->source_path), "%s", path);
+
     bool ok = qs_scene_from_json(scene, engine, json);
     cJSON_Delete(json);
 
-    if (ok)
+    /* Forward declaration: defined later in this file. */
+    void qs_scene_resolve_assets(Qs_Scene *scene, Qs_Engine *engine);
+
+    if (ok) {
+        qs_scene_resolve_assets(scene, engine);
         QS_LOG_INFO("Scene loaded: %s", path);
-    else
+    } else {
         QS_LOG_ERROR("Failed to deserialize scene: %s", path);
+    }
 
     return ok;
 }
@@ -1105,5 +1182,208 @@ void qs_scene_world_matrix(const Qs_Scene *scene, Qs_Entity entity,
         float tmp[16];
         qs_m4_mul(out, local, tmp);
         memcpy(out, tmp, sizeof(float) * 16);
+    }
+}
+
+/* ================================================================
+   ASSET RESOLUTION + RENDERABLE SUBMISSION
+   ================================================================ */
+
+static void scene_dir(const Qs_Scene *scene, char *out, size_t out_size)
+{
+    const char *p = scene->source_path;
+    const char *last = NULL;
+    for (const char *c = p; *c; c++)
+        if (*c == '/' || *c == '\\') last = c;
+    if (!last) {
+        snprintf(out, out_size, ".");
+        return;
+    }
+    size_t len = (size_t)(last - p);
+    if (len >= out_size) len = out_size - 1;
+    memcpy(out, p, len);
+    out[len] = '\0';
+}
+
+static bool path_is_abs_(const char *p)
+{
+    if (!p || !*p) return false;
+    if (p[0] == '/' || p[0] == '\\') return true;
+#ifdef _WIN32
+    if (p[1] == ':') return true;
+#endif
+    return false;
+}
+
+static void resolve_path(const Qs_Scene *scene, const char *rel,
+                         char *abs, size_t abs_size)
+{
+    if (!rel || !*rel) { abs[0] = '\0'; return; }
+    if (path_is_abs_(rel)) {
+        snprintf(abs, abs_size, "%s", rel);
+        return;
+    }
+
+    /* Prefer project-relative resolution: paths registered in the asset
+       DB (e.g. "Assets/Foo/Foo.qproto") are stored relative to the
+       project root.  Fall back to scene-dir for legacy scenes that
+       reference siblings without an Assets/ prefix.  */
+    Qs_Engine *engine = g_scene_system ? g_scene_system->engine : NULL;
+    Qs_Project *project = engine ? qs_engine_project(engine) : NULL;
+    if (project) {
+        const char *proot = qs_project_path(project);
+        if (proot && proot[0]) {
+            char candidate[1024];
+            snprintf(candidate, sizeof(candidate), "%s/%s", proot, rel);
+            FILE *f = fopen(candidate, "rb");
+            if (f) {
+                fclose(f);
+                snprintf(abs, abs_size, "%s", candidate);
+                return;
+            }
+        }
+    }
+
+    char dir[512];
+    scene_dir(scene, dir, sizeof(dir));
+    snprintf(abs, abs_size, "%s/%s", dir, rel);
+}
+
+/// Walk every MeshComp entity in `scene` and resolve mesh_path / material_path
+/// against the scene's source directory through the runtime asset cache.
+/// Called automatically by qs_scene_load.  PrototypeComp entries are
+/// resolved lazily by qs_scene_submit_renderables on first use.
+void qs_scene_resolve_assets(Qs_Scene *scene, Qs_Engine *engine)
+{
+    if (!scene || !engine || !s_mesh_comp_type) return;
+
+    for (Qs_Entity e = qs_scene_first(scene, s_mesh_comp_type);
+         e != QS_ENTITY_INVALID;
+         e = qs_scene_next(scene, s_mesh_comp_type, e))
+    {
+        Qs_MeshComp *mc = (Qs_MeshComp *)qs_entity_get(scene, e, s_mesh_comp_type);
+        if (!mc) continue;
+
+        if (!mc->mesh && mc->mesh_path[0]) {
+            char abs[1024];
+            resolve_path(scene, mc->mesh_path, abs, sizeof(abs));
+            mc->mesh = qs_asset_cache_mesh(engine, abs);
+            if (!mc->mesh)
+                QS_LOG_WARN("Scene: failed to load mesh '%s'", abs);
+        }
+        if (!mc->material && mc->material_path[0]) {
+            char abs[1024];
+            resolve_path(scene, mc->material_path, abs, sizeof(abs));
+            mc->material = qs_asset_cache_material(engine, abs);
+            if (!mc->material)
+                QS_LOG_WARN("Scene: failed to load material '%s'", abs);
+        }
+    }
+}
+
+void qs_scene_submit_renderables(Qs_Scene *scene,
+                                 Qs_Engine *engine,
+                                 Qs_Renderer *renderer,
+                                 const float parent_world[16])
+{
+    if (!scene || !renderer) return;
+
+    float identity[16];
+    if (!parent_world) {
+        qs_m4_identity(identity);
+        parent_world = identity;
+    }
+
+    /* Mesh components */
+    if (s_mesh_comp_type) {
+        for (Qs_Entity e = qs_scene_first(scene, s_mesh_comp_type);
+             e != QS_ENTITY_INVALID;
+             e = qs_scene_next(scene, s_mesh_comp_type, e))
+        {
+            Qs_MeshComp *mc = (Qs_MeshComp *)qs_entity_get(scene, e, s_mesh_comp_type);
+            if (!mc || !mc->visible || !mc->mesh || !mc->material) continue;
+
+            float local_world[16];
+            qs_scene_world_matrix(scene, e, local_world);
+            float world[16];
+            qs_m4_mul(parent_world, local_world, world);
+
+            Qs_RenderableDesc r;
+            r.mesh            = mc->mesh;
+            r.material        = mc->material;
+            r.entity          = e;
+            r.cast_shadows    = true;
+            r.receive_shadows = true;
+            r.bounds.min[0] = r.bounds.min[1] = r.bounds.min[2] = -100.0f;
+            r.bounds.max[0] = r.bounds.max[1] = r.bounds.max[2] =  100.0f;
+            memcpy(r.transform, world, sizeof(world));
+            qs_renderer_submit_renderable(renderer, &r);
+        }
+    }
+
+    /* Light components — only submit at the top level (parent is identity)
+       to avoid duplicating lights from every prototype instance. */
+    if (s_light_comp_type) {
+        bool top_level = true;
+        for (int i = 0; i < 16 && top_level; i++) {
+            float v = parent_world[i];
+            float ref = (i % 5 == 0) ? 1.0f : 0.0f;
+            if (v != ref) top_level = false;
+        }
+        if (top_level) {
+            for (Qs_Entity e = qs_scene_first(scene, s_light_comp_type);
+                 e != QS_ENTITY_INVALID;
+                 e = qs_scene_next(scene, s_light_comp_type, e))
+            {
+                Qs_LightComp *lc = (Qs_LightComp *)qs_entity_get(scene, e, s_light_comp_type);
+                if (lc) qs_renderer_submit_light_comp(renderer, lc);
+            }
+        }
+    }
+
+    /* Prototype components — recurse into nested scenes */
+    if (s_prototype_comp_type && engine) {
+        for (Qs_Entity e = qs_scene_first(scene, s_prototype_comp_type);
+             e != QS_ENTITY_INVALID;
+             e = qs_scene_next(scene, s_prototype_comp_type, e))
+        {
+            Qs_PrototypeComp *pc =
+                (Qs_PrototypeComp *)qs_entity_get(scene, e, s_prototype_comp_type);
+            if (!pc || pc->load_failed || !pc->path[0]) continue;
+
+            /* Lazy-load the inner scene on first use. */
+            if (!pc->inner) {
+                char abs[1024];
+                resolve_path(scene, pc->path, abs, sizeof(abs));
+
+                /* Use the file basename (without extension) as the inner
+                   scene's name so logs read "Scene 'ABeautifulGame'…"
+                   rather than the full project-relative path. */
+                const char *base = strrchr(pc->path, '/');
+                base = base ? base + 1 : pc->path;
+                char inner_name[64];
+                snprintf(inner_name, sizeof(inner_name), "%s", base);
+                char *dot = strrchr(inner_name, '.');
+                if (dot) *dot = '\0';
+
+                Qs_Scene *inner = qs_scene_create(engine, &(Qs_SceneDesc){
+                    .name = inner_name,
+                });
+                if (!inner) { pc->load_failed = true; continue; }
+                if (!qs_scene_load(inner, engine, abs)) {
+                    qs_scene_destroy(inner);
+                    pc->load_failed = true;
+                    continue;
+                }
+                pc->inner = inner;
+            }
+
+            float local_world[16];
+            qs_scene_world_matrix(scene, e, local_world);
+            float world[16];
+            qs_m4_mul(parent_world, local_world, world);
+
+            qs_scene_submit_renderables(pc->inner, engine, renderer, world);
+        }
     }
 }

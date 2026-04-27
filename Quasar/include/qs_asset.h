@@ -138,13 +138,6 @@ Qs_Texture *qs_asset_model_texture(const Qs_Asset *asset, uint32_t index);
 
 typedef struct Qs_Renderer Qs_Renderer;
 
-/// For QS_ASSET_TYPE_MODEL: submit all meshes of the model to the renderer.
-/// Composes each internal node transform with the provided world matrix.
-/// The model's node hierarchy is rendered directly — no child entities are
-/// created.  `entity` is forwarded for GPU picking / selection.
-void qs_asset_model_submit(const Qs_Asset *asset, Qs_Renderer *renderer,
-                           const float world[16], Qs_Entity entity);
-
 /* ----------------------------------------------------------------
    ASSET STREAMING
    ----------------------------------------------------------------

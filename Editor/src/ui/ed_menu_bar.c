@@ -1,5 +1,6 @@
 #include "ed_menu_bar.h"
 #include "ed_file_browser.h"
+#include "ed_import_dialog.h"
 #include "ed_plugin_manager.h"
 #include "editor.h"
 
@@ -44,6 +45,27 @@ static void action_open_folder(void *user_data)
     ed_file_browser_open(&(EdFBDesc){
         .mode  = ED_FB_OPEN_FOLDER,
         .title = "\xEF\x81\xBC  Open Folder",
+    });
+}
+
+static void on_import_path_selected(const char *path, void *user_data)
+{
+    (void)user_data;
+    if (path && *path) ed_import_dialog_open(path);
+}
+
+static void action_import_asset(void *user_data)
+{
+    (void)user_data;
+    static const EdFBFilter filters[] = {
+        { "glTF / GLB (*.gltf, *.glb)", ".gltf,.glb" },
+    };
+    ed_file_browser_open(&(EdFBDesc){
+        .mode         = ED_FB_OPEN_FILE,
+        .title        = "Import Asset",
+        .filters      = filters,
+        .filter_count = 1,
+        .on_confirm   = on_import_path_selected,
     });
 }
 
@@ -134,14 +156,15 @@ static void menu_bar_rebuild(void)
 
     /* ---- Static File menu ---- */
     Ca_MenuItemDesc file_items[] = {
-        { .label = "Open File...",   .action = action_open_file,   .action_data = s_editor },
-        { .label = "Open Folder...", .action = action_open_folder, .action_data = s_editor },
-        { .label = "Exit",           .action = action_exit,        .action_data = s_editor },
+        { .label = "Open File...",     .action = action_open_file,    .action_data = s_editor },
+        { .label = "Open Folder...",   .action = action_open_folder,  .action_data = s_editor },
+        { .label = "Import Asset...",  .action = action_import_asset, .action_data = s_editor },
+        { .label = "Exit",             .action = action_exit,         .action_data = s_editor },
     };
 
     /* ---- Push all menus to the title bar ---- */
     Ca_MenuDesc menus[2] = {
-        { .label = "File",    .items = file_items,     .item_count = 3 },
+        { .label = "File",    .items = file_items,     .item_count = 4 },
         { .label = "Plugins", .items = plugins_items,  .item_count = plugins_item_count },
     };
 

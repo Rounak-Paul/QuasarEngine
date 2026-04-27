@@ -153,6 +153,62 @@ static void on_bool_input(Ca_Checkbox *cb, void *user_data)
     *(bool *)((char *)comp + b->field_offset) = ca_checkbox_get(cb);
 }
 
+/* ---- Prototype path dropdown -------------------------------------- */
+
+/* Cached options buffer: a stable list of C-strings we hand to ca_select.
+   Refreshed on each build_field("Prototype","path"). */
+static const char **s_proto_options;
+static uint32_t     s_proto_option_count;
+static uint32_t     s_proto_option_cap;
+
+static void refresh_proto_options(void)
+{
+    Qs_Project *proj = editor_project(s_editor);
+    s_proto_option_count = 0;
+    if (!proj) return;
+    uint32_t n = qs_project_prototype_count(proj);
+    if (n + 1 > s_proto_option_cap) {
+        uint32_t cap = (n + 1 < 16) ? 16 : (n + 1);
+        const char **tmp = (const char **)realloc(s_proto_options,
+                                                  cap * sizeof(*tmp));
+        if (!tmp) return;
+        s_proto_options    = tmp;
+        s_proto_option_cap = cap;
+    }
+    s_proto_options[s_proto_option_count++] = "(none)";
+    for (uint32_t i = 0; i < n; i++) {
+        const char *p = qs_project_prototype_path(proj, i);
+        if (p) s_proto_options[s_proto_option_count++] = p;
+    }
+}
+
+static void on_proto_path_select(Ca_Select *sel, void *user_data)
+{
+    (void)user_data;
+    if (!s_editor || !sel) return;
+    Qs_Scene *scene = qs_scene_active();
+    Qs_Entity entity = editor_selected_entity(s_editor);
+    if (!scene || entity == QS_ENTITY_INVALID) return;
+
+    Qs_PrototypeComp *pc = (Qs_PrototypeComp *)qs_entity_get(
+        scene, entity, qs_prototype_comp_type());
+    if (!pc) return;
+
+    int idx = ca_select_get(sel);
+    if (idx <= 0) {
+        pc->path[0] = '\0';
+    } else if ((uint32_t)idx < s_proto_option_count) {
+        snprintf(pc->path, sizeof(pc->path), "%s", s_proto_options[idx]);
+    }
+
+    /* Force lazy reload at next render */
+    if (pc->inner) {
+        qs_scene_destroy(pc->inner);
+        pc->inner = NULL;
+    }
+    pc->load_failed = false;
+}
+
 static void on_entity_name_input(Ca_TextInput *input, void *user_data)
 {
     (void)user_data;
@@ -281,6 +337,34 @@ static void build_field(const char *comp_name, Qs_ComponentType *ct,
         .id    = name_id,
         .style = "inspector-field-name",
     });
+
+    /* Special-case: Prototype.path → dropdown of registered prototypes */
+    if (strcmp(comp_name, "Prototype") == 0 &&
+        strcmp(fi->name, "path") == 0 &&
+        fi->type == QS_FIELD_STRING)
+    {
+        refresh_proto_options();
+        const char *cur = (const char *)field_ptr;
+        int selected = 0;
+        for (uint32_t i = 1; i < s_proto_option_count; i++) {
+            if (cur && strcmp(cur, s_proto_options[i]) == 0) {
+                selected = (int)i;
+                break;
+            }
+        }
+        char sel_id[96];
+        snprintf(sel_id, sizeof(sel_id), "ins-proto-path-select");
+        ca_select(&(Ca_SelectDesc){
+            .options      = s_proto_options,
+            .option_count = (int)s_proto_option_count,
+            .selected     = selected,
+            .id           = sel_id,
+            .style        = "inspector-select",
+            .on_change    = on_proto_path_select,
+        });
+        ca_div_end();
+        return;
+    }
 
     switch (fi->type) {
     case QS_FIELD_FLOAT:
@@ -439,10 +523,11 @@ static void on_edit_prototype(Ca_Button *btn, void *user_data)
     editor_open_prototype(s_editor, full_path);
 }
 
+static void build_add_component(Qs_Scene *scene, Qs_Entity entity);
+
 static void build_sections(Qs_Scene *scene, Qs_Entity entity)
 {
     uint32_t type_count = qs_component_type_count();
-
     for (uint32_t t = 0; t < type_count; t++) {
         Qs_ComponentType *ct = qs_component_type_at(t);
         if (!ct) continue;
@@ -495,6 +580,75 @@ static void build_sections(Qs_Scene *scene, Qs_Entity entity)
                 build_field(comp_name, ct, &info->fields[f], data);
         }
     }
+
+    /* Add Component dropdown at the bottom of the section list */
+    build_add_component(scene, entity);
+}
+
+/* ---- Add Component dropdown --------------------------------------- */
+
+#define INS_MAX_ADDABLE_TYPES 64
+static const char       *s_add_comp_options[INS_MAX_ADDABLE_TYPES + 1];
+static Qs_ComponentType *s_add_comp_types  [INS_MAX_ADDABLE_TYPES];
+static uint32_t          s_add_comp_count;
+
+static void on_add_component_select(Ca_Select *sel, void *user_data)
+{
+    (void)user_data;
+    if (!s_editor || !sel) return;
+    int idx = ca_select_get(sel);
+    if (idx <= 0 || (uint32_t)idx > s_add_comp_count) return;
+
+    Qs_Scene *scene = qs_scene_active();
+    Qs_Entity entity = editor_selected_entity(s_editor);
+    if (!scene || entity == QS_ENTITY_INVALID) return;
+
+    Qs_ComponentType *ct = s_add_comp_types[idx - 1];
+    if (!ct) return;
+    if (qs_entity_has(scene, entity, ct)) return;
+    qs_entity_add(scene, entity, ct);
+
+    /* Force rebuild of inspector content next frame */
+    s_displayed_entity = QS_ENTITY_INVALID;
+}
+
+static void build_add_component(Qs_Scene *scene, Qs_Entity entity)
+{
+    s_add_comp_count = 0;
+    s_add_comp_options[s_add_comp_count++] = "Add Component...";
+
+    uint32_t type_count = qs_component_type_count();
+    for (uint32_t t = 0; t < type_count && s_add_comp_count <= INS_MAX_ADDABLE_TYPES; t++) {
+        Qs_ComponentType *ct = qs_component_type_at(t);
+        if (!ct) continue;
+        const char *name = qs_component_type_name(ct);
+        if (!name) continue;
+        /* Hide bookkeeping components and ones already present. */
+        if (strcmp(name, "IdComp")  == 0 || strcmp(name, "TagComp") == 0)
+            continue;
+        if (strcmp(name, "Transform") == 0)
+            continue; /* always present */
+        if (qs_entity_has(scene, entity, ct))
+            continue;
+        s_add_comp_types  [s_add_comp_count - 1] = ct;
+        s_add_comp_options[s_add_comp_count]     = name;
+        s_add_comp_count++;
+    }
+
+    ca_div_begin(&(Ca_DivDesc){
+        .direction = CA_HORIZONTAL,
+        .id        = "inspector-add-comp-row",
+        .style     = "inspector-add-comp-row",
+    });
+    ca_select(&(Ca_SelectDesc){
+        .options      = s_add_comp_options,
+        .option_count = (int)s_add_comp_count,
+        .selected     = 0,
+        .id           = "inspector-add-comp-select",
+        .style        = "inspector-add-comp-select",
+        .on_change    = on_add_component_select,
+    });
+    ca_div_end();
 }
 
 /* ================================================================

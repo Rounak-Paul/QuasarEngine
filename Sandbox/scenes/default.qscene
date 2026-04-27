@@ -4,6 +4,7 @@
         {
             "name": "Sun",
             "enabled": true,
+            "parent": -1,
             "components": {
                 "Transform": {
                     "position": [0.0, 0.0, 0.0],
@@ -20,20 +21,6 @@
                     "outer_cone_deg": 30.0,
                     "cast_shadows": true,
                     "enabled": true
-                }
-            }
-        },
-        {
-            "name": "Sponza",
-            "enabled": true,
-            "components": {
-                "Transform": {
-                    "position": [0.0, 0.0, 0.0],
-                    "rotation": [0.0, 0.0, 0.0, 1.0],
-                    "scale":    [1.0, 1.0, 1.0]
-                },
-                "Prototype": {
-                    "path": "../assets/sponza/Sponza.qproto"
                 }
             }
         }

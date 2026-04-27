@@ -32,6 +32,96 @@ static void on_entity_select(Ca_TreeNode *tn, void *user_data)
         editor_set_selected_entity(ctx->editor, ctx->entity);
 }
 
+/* ---- Add-entity helpers --------------------------------------------- */
+
+static Qs_Entity create_entity_with_parent(const char *name, Qs_Entity parent)
+{
+    Qs_Scene *scene = qs_scene_active();
+    if (!scene) return QS_ENTITY_INVALID;
+    Qs_Entity e = qs_entity_create(scene, name);
+    if (e == QS_ENTITY_INVALID) return e;
+    if (parent != QS_ENTITY_INVALID)
+        qs_entity_set_parent(scene, e, parent);
+    return e;
+}
+
+/* Context-menu item indices (kept in sync with s_root_ctx_items / s_entity_ctx_items). */
+enum {
+    ROOT_CTX_EMPTY  = 0,
+    ROOT_CTX_LIGHT  = 1,
+    ROOT_CTX_PROTO  = 2,
+};
+enum {
+    ENT_CTX_CHILD   = 0,
+    ENT_CTX_DELETE  = 1,
+};
+
+static const char *s_root_ctx_items[] = {
+    "Add Empty Entity",
+    "Add Light",
+    "Add Prototype",
+};
+static const char *s_entity_ctx_items[] = {
+    "Add Child Entity",
+    "Delete",
+};
+
+static void on_root_ctx(int item_index, void *user_data)
+{
+    Editor *ed = (Editor *)user_data;
+    Qs_Scene *scene = qs_scene_active();
+    if (!ed || !scene) return;
+    Qs_Entity e = QS_ENTITY_INVALID;
+    switch (item_index) {
+    case ROOT_CTX_EMPTY:
+        e = create_entity_with_parent("Entity", QS_ENTITY_INVALID);
+        break;
+    case ROOT_CTX_LIGHT:
+        e = create_entity_with_parent("Light", QS_ENTITY_INVALID);
+        if (e != QS_ENTITY_INVALID)
+            qs_entity_add(scene, e, qs_light_comp_type());
+        break;
+    case ROOT_CTX_PROTO:
+        e = create_entity_with_parent("Prototype", QS_ENTITY_INVALID);
+        if (e != QS_ENTITY_INVALID)
+            qs_entity_add(scene, e, qs_prototype_comp_type());
+        break;
+    default: break;
+    }
+    if (e != QS_ENTITY_INVALID) editor_set_selected_entity(ed, e);
+}
+
+static void on_entity_ctx(int item_index, void *user_data)
+{
+    HierarchyClickCtx *ctx = (HierarchyClickCtx *)user_data;
+    Qs_Scene *scene = qs_scene_active();
+    if (!ctx || !ctx->editor || !scene) return;
+    if (!qs_entity_valid(scene, ctx->entity)) return;
+
+    switch (item_index) {
+    case ENT_CTX_CHILD: {
+        Qs_Entity e = create_entity_with_parent("Entity", ctx->entity);
+        if (e != QS_ENTITY_INVALID)
+            editor_set_selected_entity(ctx->editor, e);
+        break;
+    }
+    case ENT_CTX_DELETE:
+        if (editor_selected_entity(ctx->editor) == ctx->entity)
+            editor_set_selected_entity(ctx->editor, QS_ENTITY_INVALID);
+        qs_entity_destroy(scene, ctx->entity);
+        break;
+    default: break;
+    }
+}
+
+static void on_add_entity_click(Ca_Button *btn, void *user_data)
+{
+    (void)btn;
+    Editor *ed = (Editor *)user_data;
+    Qs_Entity e = create_entity_with_parent("Entity", QS_ENTITY_INVALID);
+    if (ed && e != QS_ENTITY_INVALID) editor_set_selected_entity(ed, e);
+}
+
 static void render_entity_node(Editor *ed, Qs_Scene *scene, Qs_Entity entity, Qs_Entity selected);
 
 static void render_entity_children(Editor *ed, Qs_Scene *scene, Qs_Entity parent, Qs_Entity selected)
@@ -103,6 +193,12 @@ static void render_entity_node(Editor *ed, Qs_Scene *scene, Qs_Entity entity, Qs
         .on_toggle   = ctx ? on_entity_select : NULL,
         .toggle_data = ctx,
     });
+    ca_context_menu(&(Ca_CtxMenuDesc){
+        .items       = s_entity_ctx_items,
+        .item_count  = (int)(sizeof(s_entity_ctx_items) / sizeof(*s_entity_ctx_items)),
+        .on_select   = on_entity_ctx,
+        .select_data = ctx,
+    });
 
     if (has_children)
         render_entity_children(ed, scene, entity, selected);
@@ -130,6 +226,12 @@ static void build_hierarchy(Editor *ed, Qs_Scene *scene)
             .icon       = ICON_SCENE,
             .icon_color = CA_THEME_ACCENT,
         });
+        ca_context_menu(&(Ca_CtxMenuDesc){
+            .items       = s_root_ctx_items,
+            .item_count  = (int)(sizeof(s_root_ctx_items) / sizeof(*s_root_ctx_items)),
+            .on_select   = on_root_ctx,
+            .select_data = ed,
+        });
         {
             Qs_Entity selected = editor_selected_entity(ed);
 
@@ -151,6 +253,8 @@ static void build_hierarchy(Editor *ed, Qs_Scene *scene)
         .text      = "+  Add Entity",
         .id        = "hierarchy-add-entity",
         .style     = "hierarchy-add-btn",
+        .on_click  = on_add_entity_click,
+        .click_data = ed,
     });
     ca_btn_end();
 }

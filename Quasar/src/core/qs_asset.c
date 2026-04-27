@@ -13,6 +13,7 @@
  */
 
 #include "qs_asset.h"
+#include "qs_asset_pack.h"
 #include "qs_mesh.h"
 #include "qs_material.h"
 #include "qs_texture.h"
@@ -376,77 +377,6 @@ static void finalise_asset(Qs_Asset *a, Qs_Engine *engine)
 }
 
 /* ================================================================
-   MODEL RENDERING (no child entities — direct renderable submission)
-   ================================================================ */
-
-/// Compute the world matrix for a node by composing parent chain → root.
-static void compute_node_world(const Qs_ImportNode *nodes, uint32_t index,
-                               const float root_world[16], float out[16])
-{
-    /* Walk up the parent chain to collect ancestor indices (leaf → root). */
-    uint32_t chain[64];
-    int depth = 0;
-    for (int32_t i = (int32_t)index;
-         i >= 0 && depth < 64;
-         i = nodes[i].parent_index)
-    {
-        chain[depth++] = (uint32_t)i;
-    }
-
-    /* Start with the root world matrix (entity world × base transform). */
-    memcpy(out, root_world, sizeof(float) * 16);
-
-    /* Multiply from root down to leaf. */
-    for (int i = depth - 1; i >= 0; i--) {
-        const Qs_ImportNode *n = &nodes[chain[i]];
-        float local[16], tmp[16];
-        qs_m4_from_trs(local, n->position, n->rotation, n->scale);
-        qs_m4_mul(out, local, tmp);
-        memcpy(out, tmp, sizeof(float) * 16);
-    }
-}
-
-void qs_asset_model_submit(const Qs_Asset *asset, Qs_Renderer *renderer,
-                           const float world[16], Qs_Entity entity)
-{
-    if (!asset || !renderer) return;
-    if ((Qs_AssetState)atomic_load(&asset->state) != QS_ASSET_READY) return;
-    if (asset->type != QS_ASSET_TYPE_MODEL) return;
-
-    const Qs_ModelData *m = &asset->data.model;
-    if (!m->nodes || m->node_count == 0) return;
-
-    for (uint32_t i = 0; i < m->node_count; i++) {
-        const Qs_ImportNode *n = &m->nodes[i];
-        if (n->mesh_index >= m->mesh_count) continue;
-        if (!m->meshes[n->mesh_index].mesh) continue;
-
-        /* Resolve material */
-        Qs_Material *mat = NULL;
-        if (m->mesh_material_map) {
-            uint32_t mat_idx = m->mesh_material_map[n->mesh_index];
-            if (mat_idx < m->material_count)
-                mat = m->materials[mat_idx].material;
-        }
-
-        /* Compute node world matrix */
-        float node_world[16];
-        compute_node_world(m->nodes, i, world, node_world);
-
-        Qs_RenderableDesc r = {
-            .mesh            = m->meshes[n->mesh_index].mesh,
-            .material        = mat,
-            .entity          = entity,
-            .cast_shadows    = true,
-            .receive_shadows = true,
-            .bounds          = { .min = {-100,-100,-100}, .max = {100,100,100} },
-        };
-        memcpy(r.transform, node_world, sizeof(float) * 16);
-        qs_renderer_submit_renderable(renderer, &r);
-    }
-}
-
-/* ================================================================
    PUBLIC API
    ================================================================ */
 
@@ -709,6 +639,7 @@ static bool asset_system_init(Qs_System *system, Qs_Engine *engine)
     g_asset_system = data;
     data->engine = engine;
     data->upload_budget_bytes = QS_DEFAULT_UPLOAD_BUDGET;
+    qs_pack_set_active_engine(engine);
     QS_LOG_INFO("Asset system initialized (upload budget: %llu bytes/frame)",
                 (unsigned long long)data->upload_budget_bytes);
     return true;
@@ -747,6 +678,8 @@ static void asset_system_shutdown(Qs_System *system, Qs_Engine *engine)
     }
     data->count = 0;
     g_asset_system = NULL;
+    qs_asset_cache_clear();
+    qs_pack_set_active_engine(NULL);
     QS_LOG_INFO("Asset system shut down");
 }
 

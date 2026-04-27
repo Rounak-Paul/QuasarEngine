@@ -1,0 +1,18 @@
+{
+	"name":	"Chessboard",
+	"base_color_factor":	[1, 1, 1, 1],
+	"metallic_factor":	1,
+	"roughness_factor":	1,
+	"normal_scale":	1,
+	"occlusion_strength":	1,
+	"emissive_factor":	[0, 0, 0],
+	"alpha_mode":	0,
+	"alpha_cutoff":	0.5,
+	"double_sided":	false,
+	"textures":	{
+		"base_color":	"../textures/Chessboard_base_color_14.qstex",
+		"metallic_roughness":	"../textures/Chessboard_ORM_13.qstex",
+		"normal":	"../textures/Chessboard_normal_12.qstex",
+		"occlusion":	"../textures/Chessboard_ORM_13.qstex"
+	}
+}

@@ -12,6 +12,7 @@
 #include "ui/ed_plugin_manager.h"
 
 #include "ui/ed_file_browser.h"
+#include "ui/ed_import_dialog.h"
 
 #include "quasar.h"
 #include "cJSON.h"
@@ -19,12 +20,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define MAX_LOADED_RESOURCES 32
-
-typedef struct {
-    Qs_Asset  *asset;
-    Qs_Entity  entity;
-} PendingEntity;
+#define EDITOR_PROTO_STACK_DEPTH 8
 
 struct Editor {
     Qs_Engine     *engine;
@@ -34,22 +30,14 @@ struct Editor {
     Qs_Entity      selected_entity;
     EditorCamera   cam;
 
-    /* Asset handles for the active scene */
-    Qs_Asset     *loaded_assets[MAX_LOADED_RESOURCES];
-    uint32_t      loaded_asset_count;
-
-    /* Prototype entities waiting for background loading to finish */
-    PendingEntity pending_entities[MAX_LOADED_RESOURCES];
-    uint32_t      pending_entity_count;
-
     /* ---- Prototype editor mode ---- */
     EditorMode    mode;
-    char          proto_path[1024];       ///< Path to the .qproto being edited.
-    char          proto_model_path[1024]; ///< Resolved model asset path.
-    Qs_Scene     *scene_backup;           ///< Saved scene while editing prototype.
-    Qs_Asset     *proto_asset;            ///< Model asset loaded for prototype preview.
-    Qs_Entity     proto_entity;           ///< Root entity in the prototype scene.
-    EditorCamera  cam_backup;             ///< Saved camera state.
+    char          proto_path[1024];   ///< Path to the .qproto being edited (top of stack).
+    /* When entering prototype mode, the current active scene + camera are
+       pushed.  Closing the prototype pops and restores. */
+    Qs_Scene     *proto_stack_scene[EDITOR_PROTO_STACK_DEPTH];
+    EditorCamera  proto_stack_cam[EDITOR_PROTO_STACK_DEPTH];
+    uint32_t      proto_stack_depth;
 };
 
 /* ---- Editor CSS theme (Quasar Dark) ---- */
@@ -759,6 +747,145 @@ static const char *g_editor_css =
     "  padding-left: 8px;"
     "  padding-right: 8px;"
     "}"
+
+    /* ---- Inspector: Add Component dropdown row ---- */
+    ".inspector-add-comp-row {"
+    "  width: 100%;"
+    "  padding-top: 8px;"
+    "  padding-bottom: 8px;"
+    "  padding-left: 6px;"
+    "  padding-right: 6px;"
+    "  align-items: stretch;"
+    "}"
+
+    ".inspector-add-comp-select {"
+    "  width: 100%;"
+    "  height: 20px;"
+    "  background: #242430;"
+    "  color: #c8d0ff;"
+    "  font-size: 12px;"
+    "  padding-left: 6px;"
+    "  padding-right: 6px;"
+    "  corner-radius: 3px;"
+    "}"
+
+    ".inspector-select {"
+    "  width: 100%;"
+    "  height: 17px;"
+    "  background: #0d0d0f;"
+    "  color: #c8d0ff;"
+    "  font-size: 12px;"
+    "  padding-left: 4px;"
+    "  padding-right: 4px;"
+    "  corner-radius: 3px;"
+    "}"
+
+    /* ---- Import Asset dialog ---- */
+    ".import-root {"
+    "  background: #16161a;"
+    "  width: 100%;"
+    "  height: 100%;"
+    "}"
+
+    ".import-body {"
+    "  flex-grow: 1;"
+    "  width: 100%;"
+    "  padding: 12px;"
+    "  gap: 10px;"
+    "}"
+
+    ".import-source {"
+    "  color: #c8d0ff;"
+    "  font-size: 12px;"
+    "  font-weight: bold;"
+    "}"
+
+    ".import-cols {"
+    "  flex-grow: 1;"
+    "  width: 100%;"
+    "  gap: 10px;"
+    "  align-items: flex-start;"
+    "}"
+
+    ".import-col {"
+    "  flex-grow: 1;"
+    "  background: #1c1c22;"
+    "  padding: 8px;"
+    "  corner-radius: 3px;"
+    "  gap: 4px;"
+    "  overflow-y: scroll;"
+    "  align-items: flex-start;"
+    "}"
+
+    ".import-col-title {"
+    "  color: #6e8aff;"
+    "  font-size: 12px;"
+    "  font-weight: bold;"
+    "  padding-bottom: 4px;"
+    "}"
+
+    ".import-row {"
+    "  width: 100%;"
+    "  align-items: center;"
+    "  gap: 8px;"
+    "}"
+
+    ".import-item {"
+    "  color: #c8d0ff;"
+    "  font-size: 11px;"
+    "  padding-top: 1px;"
+    "  padding-bottom: 1px;"
+    "}"
+
+    ".import-flags {"
+    "  width: 100%;"
+    "  gap: 18px;"
+    "  align-items: center;"
+    "  padding-top: 4px;"
+    "  padding-bottom: 4px;"
+    "}"
+
+    ".import-cb {"
+    "  color: #c8d0ff;"
+    "  font-size: 12px;"
+    "  flex-grow: 1;"
+    "}"
+
+    ".import-cb-flag {"
+    "  color: #8890b0;"
+    "  font-size: 11px;"
+    "}"
+
+    ".import-footer {"
+    "  width: 100%;"
+    "  height: 36px;"
+    "  align-items: center;"
+    "  justify-content: flex-end;"
+    "  gap: 8px;"
+    "  padding-top: 6px;"
+    "}"
+
+    ".import-btn {"
+    "  height: 24px;"
+    "  background: #242430;"
+    "  color: #c8d0ff;"
+    "  font-size: 12px;"
+    "  corner-radius: 3px;"
+    "  padding-left: 14px;"
+    "  padding-right: 14px;"
+    "}"
+
+    ".import-btn-primary {"
+    "  background: #6e8aff;"
+    "  color: #0d0d0f;"
+    "  font-weight: bold;"
+    "}"
+
+    ".import-progress {"
+    "  color: #c8d0ff;"
+    "  font-size: 14px;"
+    "  padding: 24px;"
+    "}"
 ;
 
 /* ---- Breadcrumb bar for prototype editor mode ---- */
@@ -910,101 +1037,16 @@ static void on_frame(Qs_Engine *engine, void *userdata)
     ed_camera_update(&ed->cam, ed->scene_renderer, qs_engine_dt(ed->engine));
     ed_gizmo_update(ed, qs_engine_dt(ed->engine));
 
-    /* Poll pending Prototype assets — store on component when READY */
-    {
-        Qs_Scene *s = qs_scene_active();
-        uint32_t i = 0;
-        while (s && i < ed->pending_entity_count) {
-            Qs_AssetState state = qs_asset_state(ed->pending_entities[i].asset);
-            if (state == QS_ASSET_READY) {
-                Qs_PrototypeComp *pc = (Qs_PrototypeComp *)qs_entity_get(
-                    s, ed->pending_entities[i].entity, qs_prototype_comp_type());
-                if (pc)
-                    pc->asset = ed->pending_entities[i].asset;
-                ed->pending_entities[i] = ed->pending_entities[--ed->pending_entity_count];
-            } else if (state == QS_ASSET_ERROR) {
-                QS_LOG_ERROR("Prototype asset failed: entity %u",
-                             ed->pending_entities[i].entity);
-                ed->pending_entities[i] = ed->pending_entities[--ed->pending_entity_count];
-            } else {
-                i++;
-            }
-        }
-    }
-
     /* Submit scene renderables and lights for this frame */
     Qs_Scene *scene = qs_scene_active();
     if (scene && ed->scene_renderer) {
         qs_renderer_clear_renderables(ed->scene_renderer);
         qs_renderer_clear_lights(ed->scene_renderer);
 
-        if (ed->mode == ED_MODE_PROTOTYPE) {
-            /* ---- Prototype editor: render the prototype model ---- */
-            if (ed->proto_asset &&
-                qs_asset_state(ed->proto_asset) == QS_ASSET_READY)
-            {
-                float world[16];
-                qs_scene_world_matrix(scene, ed->proto_entity, world);
-                qs_asset_model_submit(ed->proto_asset, ed->scene_renderer,
-                                      world, ed->proto_entity);
-            }
-
-            /* Submit lights from prototype scene */
-            for (Qs_Entity e = qs_scene_first(scene, qs_light_comp_type());
-                 e != QS_ENTITY_INVALID;
-                 e = qs_scene_next(scene, qs_light_comp_type(), e))
-            {
-                Qs_LightComp *lc = qs_entity_get(scene, e, qs_light_comp_type());
-                if (!lc || !lc->enabled) continue;
-                qs_renderer_submit_light_comp(ed->scene_renderer, lc);
-            }
-        } else {
-            /* ---- Scene mode: normal rendering ---- */
-
-            /* Submit MeshComp entities (inline geometry) */
-            for (Qs_Entity e = qs_scene_first(scene, qs_mesh_comp_type());
-                 e != QS_ENTITY_INVALID;
-                 e = qs_scene_next(scene, qs_mesh_comp_type(), e))
-            {
-                Qs_MeshComp  *mc = qs_entity_get(scene, e, qs_mesh_comp_type());
-                if (!mc || !mc->visible || !mc->mesh || !mc->material) continue;
-                Qs_RenderableDesc r;
-                r.mesh            = mc->mesh;
-                r.material        = mc->material;
-                r.entity          = e;
-                r.cast_shadows    = true;
-                r.receive_shadows = true;
-                r.bounds.min[0] = r.bounds.min[1] = r.bounds.min[2] = -100.0f;
-                r.bounds.max[0] = r.bounds.max[1] = r.bounds.max[2] =  100.0f;
-                qs_scene_world_matrix(scene, e, r.transform);
-                qs_renderer_submit_renderable(ed->scene_renderer, &r);
-            }
-
-            /* Submit Prototype entities (model assets rendered directly) */
-            for (Qs_Entity e = qs_scene_first(scene, qs_prototype_comp_type());
-                 e != QS_ENTITY_INVALID;
-                 e = qs_scene_next(scene, qs_prototype_comp_type(), e))
-            {
-                Qs_PrototypeComp *pc = qs_entity_get(scene, e, qs_prototype_comp_type());
-                if (!pc || !pc->asset) continue;
-
-                /* Compose: entity world × .qproto base transform */
-                float entity_world[16], composed[16];
-                qs_scene_world_matrix(scene, e, entity_world);
-                qs_m4_mul(entity_world, pc->base_transform, composed);
-
-                qs_asset_model_submit(pc->asset, ed->scene_renderer, composed, e);
-            }
-
-            for (Qs_Entity e = qs_scene_first(scene, qs_light_comp_type());
-                 e != QS_ENTITY_INVALID;
-                 e = qs_scene_next(scene, qs_light_comp_type(), e))
-            {
-                Qs_LightComp *lc = qs_entity_get(scene, e, qs_light_comp_type());
-                if (!lc || !lc->enabled) continue;
-                qs_renderer_submit_light_comp(ed->scene_renderer, lc);
-            }
-        }
+        /* Recursive submission walks the scene + every PrototypeComp's
+           inner scene, composing world transforms.  Lights are submitted
+           only at the top level. */
+        qs_scene_submit_renderables(scene, ed->engine, ed->scene_renderer, NULL);
     }
 
     ed_menu_bar_sync();
@@ -1040,141 +1082,16 @@ static void scene_dir(const char *scene_path, char *out, size_t out_size)
 
 static bool editor_load_scene(Editor *ed, const char *path)
 {
-    FILE *f = fopen(path, "r");
-    if (!f) {
-        QS_LOG_ERROR("Failed to open scene: %s", path);
-        return false;
-    }
-    fseek(f, 0, SEEK_END);
-    long len = ftell(f);
-    fseek(f, 0, SEEK_SET);
-    if (len <= 0) { fclose(f); return false; }
-
-    char *buf = malloc((size_t)len + 1);
-    if (!buf) { fclose(f); return false; }
-    size_t nread = fread(buf, 1, (size_t)len, f);
-    buf[nread] = '\0';
-    fclose(f);
-
-    cJSON *root = cJSON_Parse(buf);
-    free(buf);
-    if (!root) {
-        QS_LOG_ERROR("Failed to parse scene: %s", path);
-        return false;
-    }
-
-    /* Scene name */
-    const cJSON *name_val = cJSON_GetObjectItemCaseSensitive(root, "name");
-    const char *scene_name = cJSON_IsString(name_val)
-                           ? name_val->valuestring : "Untitled";
-
+    /* Scene name will be populated from the file by qs_scene_load. */
     Qs_Scene *scene = qs_scene_create(ed->engine, &(Qs_SceneDesc){
-        .name = scene_name,
+        .name = "Scene",
     });
+    if (!scene) return false;
     qs_scene_set_active(scene);
 
-    /* Directory of the scene file — used for resolving relative asset paths */
-    char dir[1024];
-    scene_dir(path, dir, sizeof(dir));
-
-    /* ---- Load entities ---- */
-    qs_scene_from_json(scene, ed->engine, root);
-
-    /* ---- Dispatch async loading for Prototype entities ----
-       Each entity with a PrototypeComp references a .qproto file which
-       describes the model asset and its base (normalization) transform.
-       The on_frame callback stores the loaded asset on the component
-       when ready, and the render loop submits model meshes directly. */
-    for (Qs_Entity e = qs_scene_first(scene, qs_prototype_comp_type());
-         e != QS_ENTITY_INVALID;
-         e = qs_scene_next(scene, qs_prototype_comp_type(), e))
-    {
-        Qs_PrototypeComp *pc = (Qs_PrototypeComp *)qs_entity_get(
-                                    scene, e, qs_prototype_comp_type());
-        if (!pc || !pc->path[0]) continue;
-
-        /* Resolve .qproto path relative to scene dir */
-        char proto_path[1024];
-        if (pc->path[0] == '/' || pc->path[0] == '\\' ||
-            (pc->path[0] && pc->path[1] == ':'))
-            snprintf(proto_path, sizeof(proto_path), "%s", pc->path);
-        else
-            snprintf(proto_path, sizeof(proto_path), "%s/%s", dir, pc->path);
-
-        /* Read and parse the .qproto file */
-        FILE *ef = fopen(proto_path, "r");
-        if (!ef) {
-            QS_LOG_ERROR("Scene '%s': cannot open prototype file '%s'", path, proto_path);
-            continue;
-        }
-        fseek(ef, 0, SEEK_END);
-        long elen = ftell(ef);
-        fseek(ef, 0, SEEK_SET);
-        if (elen <= 0) { fclose(ef); continue; }
-        char *ebuf = malloc((size_t)elen + 1);
-        if (!ebuf) { fclose(ef); continue; }
-        size_t enread = fread(ebuf, 1, (size_t)elen, ef);
-        ebuf[enread] = '\0';
-        fclose(ef);
-
-        cJSON *proto_def = cJSON_Parse(ebuf);
-        free(ebuf);
-        if (!proto_def) {
-            QS_LOG_ERROR("Scene '%s': failed to parse prototype file '%s'", path, proto_path);
-            continue;
-        }
-
-        /* Build the base (normalization) transform from the .qproto
-           "components" block using the same reflection-based serialization
-           as scene entities.  Fields absent from JSON keep their defaults. */
-        qs_m4_identity(pc->base_transform);
-        const cJSON *comps = cJSON_GetObjectItemCaseSensitive(proto_def, "components");
-        const cJSON *tr_json = comps ? cJSON_GetObjectItemCaseSensitive(comps, "Transform") : NULL;
-        if (cJSON_IsObject(tr_json)) {
-            Qs_Transform base_tr = {
-                .position = {0, 0, 0},
-                .rotation = {0, 0, 0, 1},
-                .scale    = {1, 1, 1},
-            };
-            const Qs_TypeInfo *tr_type = qs_type_find("Transform");
-            if (tr_type)
-                qs_reflect_from_json(&base_tr, tr_type, tr_json);
-            qs_m4_from_trs(pc->base_transform,
-                           base_tr.position, base_tr.rotation, base_tr.scale);
-        }
-
-        /* Extract model path and resolve relative to .qproto location */
-        const cJSON *model_val = cJSON_GetObjectItemCaseSensitive(proto_def, "model");
-        if (!cJSON_IsString(model_val) || !model_val->valuestring[0]) {
-            cJSON_Delete(proto_def);
-            continue;
-        }
-
-        char proto_dir[1024];
-        scene_dir(proto_path, proto_dir, sizeof(proto_dir));
-
-        char model_path[1024];
-        const char *mstr = model_val->valuestring;
-        if (mstr[0] == '/' || mstr[0] == '\\' || (mstr[0] && mstr[1] == ':'))
-            snprintf(model_path, sizeof(model_path), "%s", mstr);
-        else
-            snprintf(model_path, sizeof(model_path), "%s/%s", proto_dir, mstr);
-
-        cJSON_Delete(proto_def);
-
-        Qs_Asset *asset = qs_asset_load(ed->engine, model_path);
-        if (!asset) {
-            QS_LOG_ERROR("Scene '%s': failed to start loading model '%s'", path, model_path);
-            continue;
-        }
-
-        if (ed->loaded_asset_count < MAX_LOADED_RESOURCES)
-            ed->loaded_assets[ed->loaded_asset_count++] = asset;
-
-        if (ed->pending_entity_count < MAX_LOADED_RESOURCES) {
-            ed->pending_entities[ed->pending_entity_count++] =
-                (PendingEntity){ .asset = asset, .entity = e };
-        }
+    if (!qs_scene_load(scene, ed->engine, path)) {
+        QS_LOG_ERROR("Failed to load scene: %s", path);
+        return false;
     }
 
     /* Add a default directional sun light if the scene has no lights */
@@ -1189,7 +1106,6 @@ static bool editor_load_scene(Editor *ed, const char *path)
         }
     }
 
-    cJSON_Delete(root);
     QS_LOG_INFO("Scene loaded: %s", path);
     return true;
 }
@@ -1233,6 +1149,8 @@ Editor *editor_create(const EditorDesc *desc)
     }
 
     qs_engine_set_stylesheet(ed->engine, g_editor_css);
+    if (ed->project)
+        qs_engine_set_project(ed->engine, ed->project);
 
     ed_gizmo_init(ed->engine);
     ed_pick_init(ed->engine);
@@ -1278,6 +1196,7 @@ Editor *editor_create(const EditorDesc *desc)
     ed_menu_bar_init(qs_engine_window(ed->engine), ed);
 
     ed_file_browser_init(ca_window_instance(qs_engine_window(ed->engine)));
+    ed_import_dialog_init(ed);
 
     qs_engine_set_event_handler(ed->engine, CA_EVENT_KEY,          on_key_event,    ed);
     qs_engine_set_event_handler(ed->engine, CA_EVENT_MOUSE_BUTTON, on_mouse_button, ed);
@@ -1353,120 +1272,35 @@ EditorMode editor_mode(const Editor *editor)
 
 bool editor_open_prototype(Editor *editor, const char *proto_path)
 {
-    if (!editor || !proto_path || editor->mode == ED_MODE_PROTOTYPE)
-        return false;
-
-    /* Read and parse the .qproto file */
-    FILE *f = fopen(proto_path, "r");
-    if (!f) {
-        QS_LOG_ERROR("Cannot open prototype: %s", proto_path);
-        return false;
-    }
-    fseek(f, 0, SEEK_END);
-    long len = ftell(f);
-    fseek(f, 0, SEEK_SET);
-    if (len <= 0) { fclose(f); return false; }
-    char *buf = malloc((size_t)len + 1);
-    if (!buf) { fclose(f); return false; }
-    size_t nread = fread(buf, 1, (size_t)len, f);
-    buf[nread] = '\0';
-    fclose(f);
-
-    cJSON *root = cJSON_Parse(buf);
-    free(buf);
-    if (!root) {
-        QS_LOG_ERROR("Failed to parse prototype: %s", proto_path);
+    if (!editor || !proto_path) return false;
+    if (editor->proto_stack_depth >= EDITOR_PROTO_STACK_DEPTH) {
+        QS_LOG_ERROR("Prototype edit stack full (max depth %d)",
+                     EDITOR_PROTO_STACK_DEPTH);
         return false;
     }
 
-    /* Extract prototype name and model path */
-    const cJSON *name_val  = cJSON_GetObjectItemCaseSensitive(root, "name");
-    const cJSON *model_val = cJSON_GetObjectItemCaseSensitive(root, "model");
-    const char  *proto_name = cJSON_IsString(name_val)
-                            ? name_val->valuestring : "Prototype";
+    /* Push current scene + camera onto the stack */
+    editor->proto_stack_scene[editor->proto_stack_depth] = qs_scene_active();
+    editor->proto_stack_cam  [editor->proto_stack_depth] = editor->cam;
+    editor->proto_stack_depth++;
 
-    if (!cJSON_IsString(model_val) || !model_val->valuestring[0]) {
-        QS_LOG_ERROR("Prototype '%s' has no model field", proto_path);
-        cJSON_Delete(root);
-        return false;
-    }
-
-    /* Store path and resolve model path relative to .qproto location */
-    snprintf(editor->proto_path, sizeof(editor->proto_path), "%s", proto_path);
-
-    char proto_dir[1024];
-    scene_dir(proto_path, proto_dir, sizeof(proto_dir));
-
-    const char *mstr = model_val->valuestring;
-    if (mstr[0] == '/' || mstr[0] == '\\' || (mstr[0] && mstr[1] == ':'))
-        snprintf(editor->proto_model_path, sizeof(editor->proto_model_path),
-                 "%s", mstr);
-    else
-        snprintf(editor->proto_model_path, sizeof(editor->proto_model_path),
-                 "%s/%s", proto_dir, mstr);
-
-    /* Save current state */
-    editor->scene_backup = qs_scene_active();
-    editor->cam_backup   = editor->cam;
-    editor->selected_entity = QS_ENTITY_INVALID;
-
-    /* Create a temporary scene for the prototype */
-    char scene_name[256];
-    snprintf(scene_name, sizeof(scene_name), "Prototype: %s", proto_name);
+    /* Load the .qproto file into a fresh scene and activate it.
+       qs_scene_load handles parent restoration + asset cache resolution. */
     Qs_Scene *proto_scene = qs_scene_create(editor->engine, &(Qs_SceneDesc){
-        .name = scene_name,
+        .name = "Prototype",
     });
+    if (!proto_scene ||
+        !qs_scene_load(proto_scene, editor->engine, proto_path))
+    {
+        if (proto_scene) qs_scene_destroy(proto_scene);
+        editor->proto_stack_depth--;
+        QS_LOG_ERROR("Failed to load prototype: %s", proto_path);
+        return false;
+    }
     qs_scene_set_active(proto_scene);
 
-    /* Create root entity with the prototype's components */
-    Qs_Entity root_entity = qs_entity_create(proto_scene, proto_name);
-    editor->proto_entity = root_entity;
-
-    /* Deserialize components from the .qproto file */
-    const cJSON *comps = cJSON_GetObjectItemCaseSensitive(root, "components");
-    if (comps) {
-        const cJSON *item = NULL;
-        cJSON_ArrayForEach(item, comps) {
-            const char *comp_name = item->string;
-            if (!comp_name) continue;
-
-            /* Find the component type by name */
-            Qs_ComponentType *ct = NULL;
-            uint32_t type_count = qs_component_type_count();
-            for (uint32_t i = 0; i < type_count; i++) {
-                Qs_ComponentType *t = qs_component_type_at(i);
-                if (t && strcmp(qs_component_type_name(t), comp_name) == 0) {
-                    ct = t;
-                    break;
-                }
-            }
-            if (!ct) continue;
-
-            /* Add the component and deserialize from JSON */
-            void *comp = qs_entity_add(proto_scene, root_entity, ct);
-            if (comp) {
-                const Qs_TypeInfo *type_info = qs_component_type_info(ct);
-                if (type_info)
-                    qs_reflect_from_json(comp, type_info, item);
-            }
-        }
-    }
-
-    cJSON_Delete(root);
-
-    /* Add a default light so the prototype is visible */
-    Qs_Entity sun = qs_entity_create(proto_scene, "Sun");
-    Qs_LightComp *lc = qs_entity_add(proto_scene, sun, qs_light_comp_type());
-    if (lc) {
-        lc->color[0]  = 1.0f;
-        lc->color[1]  = 0.95f;
-        lc->color[2]  = 0.9f;
-        lc->intensity = 3.0f;
-    }
-
-    /* Load the model asset */
-    editor->proto_asset = qs_asset_load(editor->engine,
-                                        editor->proto_model_path);
+    snprintf(editor->proto_path, sizeof(editor->proto_path), "%s", proto_path);
+    editor->selected_entity = QS_ENTITY_INVALID;
 
     /* Reset camera for prototype view */
     ed_camera_init(&editor->cam);
@@ -1484,122 +1318,55 @@ bool editor_open_prototype(Editor *editor, const char *proto_path)
 
     /* Update breadcrumb bar */
     if (s_breadcrumb_bar) {
-        const char *scene_name_str = editor->scene_backup
-            ? qs_scene_name(editor->scene_backup) : "Scene";
+        Qs_Scene *prev =
+            editor->proto_stack_scene[editor->proto_stack_depth - 1];
+        const char *scene_name_str = prev ? qs_scene_name(prev) : "Scene";
         ca_set_text(s_breadcrumb_scene_label, scene_name_str);
-        ca_set_text(s_breadcrumb_proto_label, proto_name);
+        ca_set_text(s_breadcrumb_proto_label, qs_scene_name(proto_scene));
         ca_set_hidden(s_breadcrumb_bar, false);
     }
 
     editor->mode = ED_MODE_PROTOTYPE;
-    QS_LOG_INFO("Editing prototype: %s", proto_name);
+    QS_LOG_INFO("Editing prototype: %s", proto_path);
     return true;
 }
 
 void editor_close_prototype(Editor *editor)
 {
-    if (!editor || editor->mode != ED_MODE_PROTOTYPE)
-        return;
+    if (!editor || editor->proto_stack_depth == 0) return;
 
-    /* Save the prototype before closing */
+    /* Save the current prototype scene back to its source path. */
     Qs_Scene *proto_scene = qs_scene_active();
-    if (proto_scene && editor->proto_entity != QS_ENTITY_INVALID) {
-        /* Build updated .qproto JSON */
-        cJSON *root = cJSON_CreateObject();
-
-        /* Extract prototype name from the entity */
-        const char *name = qs_entity_name(proto_scene, editor->proto_entity);
-        if (name && name[0])
-            cJSON_AddStringToObject(root, "name", name);
-
-        /* Re-extract the model filename from the stored path */
-        const char *slash = strrchr(editor->proto_model_path, '/');
-        const char *bslash = strrchr(editor->proto_model_path, '\\');
-        const char *model_name = slash ? slash + 1 : editor->proto_model_path;
-        if (bslash && bslash > model_name - 1) model_name = bslash + 1;
-        cJSON_AddStringToObject(root, "model", model_name);
-
-        /* Serialize components */
-        cJSON *comps_json = cJSON_CreateObject();
-        uint32_t type_count = qs_component_type_count();
-        for (uint32_t t = 0; t < type_count; t++) {
-            Qs_ComponentType *ct = qs_component_type_at(t);
-            if (!ct) continue;
-            if (!qs_entity_has(proto_scene, editor->proto_entity, ct))
-                continue;
-
-            const char *comp_name = qs_component_type_name(ct);
-            /* Skip internal components */
-            if (strcmp(comp_name, "IdComp") == 0 ||
-                strcmp(comp_name, "TagComp") == 0)
-                continue;
-
-            const Qs_TypeInfo *info = qs_component_type_info(ct);
-            void *data = qs_entity_get(proto_scene, editor->proto_entity, ct);
-            if (info && data) {
-                cJSON *comp_json = qs_reflect_to_json(data, info);
-                if (comp_json)
-                    cJSON_AddItemToObject(comps_json, comp_name, comp_json);
-            }
-        }
-        cJSON_AddItemToObject(root, "components", comps_json);
-
-        /* Write to disk */
-        char *json_str = cJSON_Print(root);
-        if (json_str) {
-            FILE *f = fopen(editor->proto_path, "w");
-            if (f) {
-                fputs(json_str, f);
-                fclose(f);
-                QS_LOG_INFO("Saved prototype: %s", editor->proto_path);
-            }
-            free(json_str);
-        }
-        cJSON_Delete(root);
-    }
-
-    /* Release prototype asset */
-    if (editor->proto_asset) {
-        qs_asset_release(editor->proto_asset);
-        editor->proto_asset = NULL;
-    }
-
-    /* Destroy the temporary scene and restore the saved one */
+    if (proto_scene && editor->proto_path[0])
+        qs_scene_save(proto_scene, editor->proto_path);
     if (proto_scene)
         qs_scene_destroy(proto_scene);
 
-    qs_scene_set_active(editor->scene_backup);
-    editor->scene_backup = NULL;
+    /* Pop the previous scene + camera */
+    editor->proto_stack_depth--;
+    Qs_Scene *prev = editor->proto_stack_scene[editor->proto_stack_depth];
+    qs_scene_set_active(prev);
+    editor->cam = editor->proto_stack_cam[editor->proto_stack_depth];
 
-    /* Restore camera and selection */
-    editor->cam = editor->cam_backup;
     editor->selected_entity = QS_ENTITY_INVALID;
-    editor->proto_entity = QS_ENTITY_INVALID;
-    editor->proto_path[0] = '\0';
-    editor->proto_model_path[0] = '\0';
+    editor->proto_path[0]   = '\0';
 
-    /* Hide breadcrumb */
-    if (s_breadcrumb_bar)
-        ca_set_hidden(s_breadcrumb_bar, true);
-
-    editor->mode = ED_MODE_SCENE;
-    QS_LOG_INFO("Returned to scene editing");
+    if (editor->proto_stack_depth == 0) {
+        if (s_breadcrumb_bar) ca_set_hidden(s_breadcrumb_bar, true);
+        editor->mode = ED_MODE_SCENE;
+    }
+    QS_LOG_INFO("Returned to %s", prev ? qs_scene_name(prev) : "(none)");
 }
 
 void editor_destroy(Editor *ed)
 {
     if (!ed) return;
-    /* Close prototype editing if active */
-    if (ed->mode == ED_MODE_PROTOTYPE) {
-        if (ed->proto_asset) {
-            qs_asset_release(ed->proto_asset);
-            ed->proto_asset = NULL;
-        }
-    }
-    /* Release loaded asset handles */
-    for (uint32_t i = 0; i < ed->loaded_asset_count; i++) {
-        if (ed->loaded_assets[i])
-            qs_asset_release(ed->loaded_assets[i]);
+    /* Pop and discard any prototype edit stack (don't auto-save). */
+    while (ed->proto_stack_depth > 0) {
+        Qs_Scene *cur = qs_scene_active();
+        if (cur) qs_scene_destroy(cur);
+        ed->proto_stack_depth--;
+        qs_scene_set_active(ed->proto_stack_scene[ed->proto_stack_depth]);
     }
     ed_pick_shutdown(ed->engine);
     ed_gizmo_shutdown(ed->engine);

@@ -81,12 +81,15 @@ typedef struct Qs_Transform {
 } Qs_Transform;
 
 /// Renderable mesh reference.
+/// Both `mesh_path` and `material_path` are stored relative to the file the
+/// component lives in (a .qscene or .qproto).  Resolution happens at scene
+/// load time via the runtime asset cache.
 typedef struct Qs_MeshComp {
-    Qs_Mesh     *mesh;
-    Qs_Material *material;
+    Qs_Mesh     *mesh;             ///< Resolved at load (runtime-only).
+    Qs_Material *material;         ///< Resolved at load (runtime-only).
     bool         visible;          ///< Default: true.
-    char         mesh_name[64];    ///< Resource name for serialization.
-    char         material_name[64];///< Resource name for serialization.
+    char         mesh_path[256];   ///< Project-relative or scene-relative .qsmesh path.
+    char         material_path[256];///< Project-relative or scene-relative .qsmat path.
 } Qs_MeshComp;
 
 /// Light component — all parameters stored inline for reflection, serialization,
@@ -115,14 +118,16 @@ typedef struct Qs_TagComp {
 } Qs_TagComp;
 
 /// References a prototype file (.qproto) — a reusable entity template
-/// analogous to a Unity prefab.  Prototypes are scenes that can be nested
-/// inside other scenes or other prototypes.  Imported models (e.g. glTF)
-/// are automatically converted to prototypes.
+/// analogous to a Unity prefab.  A prototype is itself a full scene:
+/// it owns its own ECS world (`inner`) and is rendered by recursively
+/// composing its entities' world transforms with the parent entity's
+/// world matrix.  Imported models (e.g. glTF) are automatically
+/// represented as prototypes by the asset import pipeline.
 typedef struct Qs_PrototypeComp {
-    char            path[256];           ///< Path to the .qproto file (serialized).
+    char            path[256];           ///< Project- or scene-relative .qproto path.
     /* ---- runtime fields (not serialized) ---- */
-    struct Qs_Asset *asset;              ///< Loaded asset handle.
-    float            base_transform[16]; ///< Normalization matrix from .qproto.
+    Qs_Scene       *inner;               ///< Inner ECS world (lazy-loaded on first use).
+    bool            load_failed;         ///< Set after a failed lazy load to avoid retries.
 } Qs_PrototypeComp;
 
 /// Returns the built-in Transform component type handle.
@@ -272,5 +277,25 @@ bool qs_scene_load(Qs_Scene *scene, Qs_Engine *engine, const char *path);
 /// local transforms up the parent chain.  Result is column-major 4×4.
 void qs_scene_world_matrix(const Qs_Scene *scene, Qs_Entity entity,
                            float out[16]);
+
+/* ================================================================
+   RENDERING SUBMISSION
+   ================================================================
+   Scenes know how to submit their renderables and lights to a
+   renderer.  PrototypeComp entities recurse into their inner scene,
+   composing the parent's world matrix so nested prototypes render
+   correctly.
+   ================================================================ */
+
+typedef struct Qs_Renderer Qs_Renderer;
+
+/// Submit every visible MeshComp + LightComp entity in `scene` (and
+/// recursively in nested PrototypeComp scenes) to `renderer`.
+/// `parent_world` is the world matrix to compose with each entity's
+/// local transform — pass an identity matrix for top-level scenes.
+void qs_scene_submit_renderables(Qs_Scene *scene,
+                                 Qs_Engine *engine,
+                                 Qs_Renderer *renderer,
+                                 const float parent_world[16]);
 
 #endif

@@ -1,0 +1,18 @@
+{
+	"name":	"Queen_White",
+	"base_color_factor":	[1, 1, 1, 1],
+	"metallic_factor":	1,
+	"roughness_factor":	1,
+	"normal_scale":	1,
+	"occlusion_strength":	1,
+	"emissive_factor":	[0, 0, 0],
+	"alpha_mode":	0,
+	"alpha_cutoff":	0.5,
+	"double_sided":	false,
+	"textures":	{
+		"base_color":	"../textures/Queen_white_base_color_11.qstex",
+		"metallic_roughness":	"../textures/Queen_white_ORM_10.qstex",
+		"normal":	"../textures/Queen_white_normal_9.qstex",
+		"occlusion":	"../textures/Queen_white_ORM_10.qstex"
+	}
+}

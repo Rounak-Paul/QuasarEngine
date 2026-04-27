@@ -44,6 +44,7 @@ struct Qs_Engine {
     Qs_FrameFn        on_frame;
     void*             frame_userdata;
     Qs_ExtRegistry*   extensions;
+    Qs_Project*       project;
 };
 
 static double engine_clock(void)
@@ -282,6 +283,14 @@ Qs_SystemManager* qs_engine_systems(Qs_Engine* engine) {
 
 Qs_PluginManager* qs_engine_plugin_manager(Qs_Engine* engine) {
     return engine ? engine->plugins : NULL;
+}
+
+void qs_engine_set_project(Qs_Engine* engine, Qs_Project* project) {
+    if (engine) engine->project = project;
+}
+
+Qs_Project* qs_engine_project(Qs_Engine* engine) {
+    return engine ? engine->project : NULL;
 }
 
 Qs_ExtRegistry* qs_engine_ext_registry(const Qs_Engine* engine) {
