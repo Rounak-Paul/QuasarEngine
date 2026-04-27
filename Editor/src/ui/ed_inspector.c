@@ -155,30 +155,72 @@ static void on_bool_input(Ca_Checkbox *cb, void *user_data)
 
 /* ---- Prototype path dropdown -------------------------------------- */
 
-/* Cached options buffer: a stable list of C-strings we hand to ca_select.
-   Refreshed on each build_field("Prototype","path"). */
+/* Two parallel option buffers:
+     s_proto_options : pretty display text shown in the dropdown
+                       (basename without extension)
+     s_proto_paths   : the matching project-relative paths, written
+                       into PrototypeComp.path on selection.
+   Index 0 is always "(none)" / "" in both arrays.  Refreshed on each
+   build_field("Prototype","path"). */
 static const char **s_proto_options;
+static const char **s_proto_paths;
+static char        *s_proto_display_pool;   /* backing storage for basenames */
+static uint32_t     s_proto_display_pool_used;
+static uint32_t     s_proto_display_pool_cap;
 static uint32_t     s_proto_option_count;
 static uint32_t     s_proto_option_cap;
+
+static const char *push_basename(const char *path)
+{
+    /* Returns a stable pointer into s_proto_display_pool containing the
+       file basename of `path` with its extension stripped. */
+    const char *base = strrchr(path, '/');
+    base = base ? base + 1 : path;
+    size_t len = strlen(base);
+    /* Trim extension */
+    const char *dot = strrchr(base, '.');
+    if (dot) len = (size_t)(dot - base);
+
+    if (s_proto_display_pool_used + len + 1 > s_proto_display_pool_cap) {
+        uint32_t cap = s_proto_display_pool_cap ? s_proto_display_pool_cap * 2 : 256;
+        while (cap < s_proto_display_pool_used + len + 1) cap *= 2;
+        char *tmp = (char *)realloc(s_proto_display_pool, cap);
+        if (!tmp) return path; /* fallback: use raw path */
+        s_proto_display_pool      = tmp;
+        s_proto_display_pool_cap  = cap;
+    }
+    char *out = s_proto_display_pool + s_proto_display_pool_used;
+    memcpy(out, base, len);
+    out[len] = '\0';
+    s_proto_display_pool_used += (uint32_t)(len + 1);
+    return out;
+}
 
 static void refresh_proto_options(void)
 {
     Qs_Project *proj = editor_project(s_editor);
-    s_proto_option_count = 0;
+    s_proto_option_count       = 0;
+    s_proto_display_pool_used  = 0;
     if (!proj) return;
     uint32_t n = qs_project_prototype_count(proj);
     if (n + 1 > s_proto_option_cap) {
         uint32_t cap = (n + 1 < 16) ? 16 : (n + 1);
-        const char **tmp = (const char **)realloc(s_proto_options,
-                                                  cap * sizeof(*tmp));
-        if (!tmp) return;
-        s_proto_options    = tmp;
+        const char **a = (const char **)realloc(s_proto_options, cap * sizeof(*a));
+        const char **b = (const char **)realloc(s_proto_paths,   cap * sizeof(*b));
+        if (!a || !b) { free(a); free(b); return; }
+        s_proto_options    = a;
+        s_proto_paths      = b;
         s_proto_option_cap = cap;
     }
-    s_proto_options[s_proto_option_count++] = "(none)";
+    s_proto_options[s_proto_option_count] = "(none)";
+    s_proto_paths  [s_proto_option_count] = "";
+    s_proto_option_count++;
     for (uint32_t i = 0; i < n; i++) {
         const char *p = qs_project_prototype_path(proj, i);
-        if (p) s_proto_options[s_proto_option_count++] = p;
+        if (!p) continue;
+        s_proto_options[s_proto_option_count] = push_basename(p);
+        s_proto_paths  [s_proto_option_count] = p;
+        s_proto_option_count++;
     }
 }
 
@@ -198,7 +240,7 @@ static void on_proto_path_select(Ca_Select *sel, void *user_data)
     if (idx <= 0) {
         pc->path[0] = '\0';
     } else if ((uint32_t)idx < s_proto_option_count) {
-        snprintf(pc->path, sizeof(pc->path), "%s", s_proto_options[idx]);
+        snprintf(pc->path, sizeof(pc->path), "%s", s_proto_paths[idx]);
     }
 
     /* Force lazy reload at next render */
@@ -347,7 +389,7 @@ static void build_field(const char *comp_name, Qs_ComponentType *ct,
         const char *cur = (const char *)field_ptr;
         int selected = 0;
         for (uint32_t i = 1; i < s_proto_option_count; i++) {
-            if (cur && strcmp(cur, s_proto_options[i]) == 0) {
+            if (cur && strcmp(cur, s_proto_paths[i]) == 0) {
                 selected = (int)i;
                 break;
             }
@@ -489,6 +531,20 @@ static void build_field(const char *comp_name, Qs_ComponentType *ct,
    BUILD SECTIONS — rebuild dynamic content for selected entity
    ================================================================ */
 
+static void on_remove_component(Ca_Button *btn, void *user_data)
+{
+    (void)btn;
+    if (!s_editor || !user_data) return;
+    Qs_Scene *scene = qs_scene_active();
+    Qs_Entity entity = editor_selected_entity(s_editor);
+    if (!scene || entity == QS_ENTITY_INVALID) return;
+    Qs_ComponentType *ct = (Qs_ComponentType *)user_data;
+    if (!qs_entity_has(scene, entity, ct)) return;
+    qs_entity_remove(scene, entity, ct);
+    /* Force rebuild of inspector content next frame */
+    s_displayed_entity = QS_ENTITY_INVALID;
+}
+
 static void on_edit_prototype(Ca_Button *btn, void *user_data)
 {
     (void)btn; (void)user_data;
@@ -545,6 +601,8 @@ static void build_sections(Qs_Scene *scene, Qs_Entity entity)
 
         char section_id[96];
         snprintf(section_id, sizeof(section_id), "ins-section-%s", comp_name);
+        char label_id[96];
+        snprintf(label_id, sizeof(label_id), "ins-section-label-%s", comp_name);
 
         ca_div_begin(&(Ca_DivDesc){
             .direction = CA_HORIZONTAL,
@@ -553,7 +611,7 @@ static void build_sections(Qs_Scene *scene, Qs_Entity entity)
         });
         ca_text(&(Ca_TextDesc){
             .text  = section_buf,
-            .id    = section_id,
+            .id    = label_id,
             .style = "inspector-section-label",
             .color = component_icon_color(comp_name),
         });
@@ -566,6 +624,19 @@ static void build_sections(Qs_Scene *scene, Qs_Entity entity)
                 .id       = "ins-proto-edit-btn",
                 .style    = "inspector-edit-btn",
                 .on_click = on_edit_prototype,
+            });
+            ca_btn_end();
+        }
+        /* Remove-component button — hidden for required components */
+        if (strcmp(comp_name, "Transform") != 0) {
+            char rm_id[96];
+            snprintf(rm_id, sizeof(rm_id), "ins-section-rm-%s", comp_name);
+            ca_btn_begin(&(Ca_BtnDesc){
+                .text       = ICON_TRASH,
+                .id         = rm_id,
+                .style      = "inspector-remove-btn",
+                .on_click   = on_remove_component,
+                .click_data = ct,
             });
             ca_btn_end();
         }
@@ -615,7 +686,7 @@ static void on_add_component_select(Ca_Select *sel, void *user_data)
 static void build_add_component(Qs_Scene *scene, Qs_Entity entity)
 {
     s_add_comp_count = 0;
-    s_add_comp_options[s_add_comp_count++] = "Add Component...";
+    s_add_comp_options[s_add_comp_count++] = ICON_PLUS "  Add Component";
 
     uint32_t type_count = qs_component_type_count();
     for (uint32_t t = 0; t < type_count && s_add_comp_count <= INS_MAX_ADDABLE_TYPES; t++) {
@@ -634,6 +705,9 @@ static void build_add_component(Qs_Scene *scene, Qs_Entity entity)
         s_add_comp_options[s_add_comp_count]     = name;
         s_add_comp_count++;
     }
+
+    /* When there's nothing left to add, hide the row entirely. */
+    if (s_add_comp_count <= 1) return;
 
     ca_div_begin(&(Ca_DivDesc){
         .direction = CA_HORIZONTAL,

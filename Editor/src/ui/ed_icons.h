@@ -10,5 +10,8 @@
 #define ICON_ID         "\xEF\x8A\x92"   /* U+F292 hashtag   */
 #define ICON_TAG        "\xEF\x81\x84"   /* U+F044 pencil    */
 #define ICON_PROTOTYPE  "\xEF\x86\xB3"   /* U+F1B3 cubes     */
+#define ICON_TRASH      "\xEF\x87\xB8"   /* U+F1F8 trash     */
+#define ICON_PLUS       "\xEF\x81\xA7"   /* U+F067 plus      */
+#define ICON_CHEVRON_D  "\xEF\x81\xB8"   /* U+F078 chevron-down */
 
 #endif /* ED_ICONS_H */
