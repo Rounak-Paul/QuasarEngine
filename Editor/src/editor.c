@@ -2,6 +2,8 @@
 #include "ed_camera.h"
 #include "ed_gizmo.h"
 #include "ed_pick.h"
+#include "ed_keybinds.h"
+#include "ed_undo.h"
 #include "qs_math.h"
 #include "ui/ed_menu_bar.h"
 #include "ui/ed_toolbar.h"
@@ -21,6 +23,12 @@
 #include <string.h>
 
 #define EDITOR_PROTO_STACK_DEPTH 8
+
+/* ---- Forward decls used early in editor_create() ---- */
+static void kb_save_scene(void *u);
+static void kb_save_proj (void *u);
+static void kb_undo      (void *u);
+static void kb_redo      (void *u);
 
 struct Editor {
     Qs_Engine     *engine;
@@ -52,6 +60,9 @@ struct Editor {
        the source .qproto file. */
     Qs_Entity     proto_owner;          ///< QS_ENTITY_INVALID when inactive.
     Qs_Scene     *proto_inner_scene;
+
+    /* ---- Persistence ---- */
+    char          current_scene_path[1024]; ///< Path of the loaded outer scene.
 };
 
 /* ---- Editor CSS theme (Quasar Dark) ---- */
@@ -1087,6 +1098,10 @@ static void on_mouse_scroll(const Ca_Event *event, void *userdata)
 static void on_key_event(const Ca_Event *event, void *userdata)
 {
     (void)userdata;
+    /* Editor shortcuts win over input system polling so e.g. Ctrl+S
+       fires reliably while a viewport-bound key like W is also held. */
+    if (ed_keybinds_dispatch(event->key.key, event->key.action, event->key.mods))
+        return;
     qs_input_key_event((Qs_Key)event->key.key,
                        (Qs_KeyAction)event->key.action,
                        event->key.mods);
@@ -1157,6 +1172,9 @@ static bool editor_load_scene(Editor *ed, const char *path)
         QS_LOG_ERROR("Failed to load scene: %s", path);
         return false;
     }
+
+    /* Track the source path so Save Scene knows where to write. */
+    snprintf(ed->current_scene_path, sizeof(ed->current_scene_path), "%s", path);
 
     /* Add a default directional sun light if the scene has no lights */
     if (qs_scene_first(scene, qs_light_comp_type()) == QS_ENTITY_INVALID) {
@@ -1272,6 +1290,29 @@ Editor *editor_create(const EditorDesc *desc)
     qs_engine_set_on_frame(ed->engine, on_frame, ed);
     qs_log_set_listener(on_log, ed);
 
+    /* ---- Editor command stack + global keybinds ---- */
+    ed_undo_init();
+    ed_keybinds_init();
+#ifdef __APPLE__
+    /* On macOS, both Cmd (SUPER) and Ctrl are common save/undo modifiers. */
+    int primary_mod = QS_MOD_SUPER;
+#else
+    int primary_mod = QS_MOD_CONTROL;
+#endif
+    ed_keybinds_register(QS_KEY_S, primary_mod,                      kb_save_scene, ed, "Ctrl+S");
+    ed_keybinds_register(QS_KEY_S, primary_mod | QS_MOD_SHIFT,       kb_save_proj,  ed, "Ctrl+Shift+S");
+    ed_keybinds_register(QS_KEY_Z, primary_mod,                      kb_undo,       ed, "Ctrl+Z");
+    ed_keybinds_register(QS_KEY_Y, primary_mod,                      kb_redo,       ed, "Ctrl+Y");
+    ed_keybinds_register(QS_KEY_Z, primary_mod | QS_MOD_SHIFT,       kb_redo,       ed, "Ctrl+Shift+Z");
+    /* Cross-platform fallbacks: also accept literal Ctrl on macOS. */
+#ifdef __APPLE__
+    ed_keybinds_register(QS_KEY_S, QS_MOD_CONTROL,                   kb_save_scene, ed, "Ctrl+S");
+    ed_keybinds_register(QS_KEY_S, QS_MOD_CONTROL | QS_MOD_SHIFT,    kb_save_proj,  ed, "Ctrl+Shift+S");
+    ed_keybinds_register(QS_KEY_Z, QS_MOD_CONTROL,                   kb_undo,       ed, "Ctrl+Z");
+    ed_keybinds_register(QS_KEY_Y, QS_MOD_CONTROL,                   kb_redo,       ed, "Ctrl+Y");
+    ed_keybinds_register(QS_KEY_Z, QS_MOD_CONTROL | QS_MOD_SHIFT,    kb_redo,       ed, "Ctrl+Shift+Z");
+#endif
+
     /* Subscribe to plugin reload events to refresh the scene renderer */
     Qs_EventBus *bus = qs_engine_event_bus(ed->engine);
     qs_event_subscribe(bus, QS_EVENT_PLUGIN_RELOAD_BEGIN,  on_plugin_reload_begin, ed);
@@ -1315,6 +1356,72 @@ Qs_Project *editor_project(const Editor *ed)
 {
     return ed ? ed->project : NULL;
 }
+
+const char *editor_current_scene_path(const Editor *ed)
+{
+    return ed ? ed->current_scene_path : "";
+}
+
+bool editor_save_scene(Editor *ed)
+{
+    if (!ed) return false;
+    Qs_Scene *scene = qs_scene_active();
+    if (!scene) {
+        QS_LOG_WARN("Save Scene: no active scene");
+        return false;
+    }
+    /* In prototype mode, the active scene is the loaded .qproto. */
+    const char *path = (ed->mode == ED_MODE_PROTOTYPE && ed->proto_path[0])
+                           ? ed->proto_path
+                           : ed->current_scene_path;
+    if (!path || !*path) {
+        QS_LOG_WARN("Save Scene: no source path known for active scene");
+        return false;
+    }
+    if (!qs_scene_save(scene, path)) {
+        QS_LOG_ERROR("Save Scene failed: %s", path);
+        return false;
+    }
+    QS_LOG_INFO("Saved scene: %s", path);
+    return true;
+}
+
+bool editor_save_project(Editor *ed)
+{
+    if (!ed) return false;
+    bool ok = true;
+    if (ed->project) {
+        if (!qs_project_save(ed->project)) {
+            QS_LOG_ERROR("Save Project failed");
+            ok = false;
+        } else {
+            QS_LOG_INFO("Saved project: %s", qs_project_path(ed->project));
+        }
+    }
+    /* Also flush the active scene so Save Project is a one-step save-all. */
+    if (!editor_save_scene(ed)) ok = false;
+    return ok;
+}
+
+bool editor_undo(Editor *ed)
+{
+    (void)ed;
+    return ed_undo();
+}
+
+bool editor_redo(Editor *ed)
+{
+    (void)ed;
+    return ed_redo();
+}
+
+/* ---- Keybind action thunks ---- */
+
+static void kb_save_scene(void   *u) { editor_save_scene  ((Editor *)u); }
+static void kb_save_proj (void   *u) { editor_save_project((Editor *)u); }
+static void kb_undo      (void   *u) { editor_undo        ((Editor *)u); }
+static void kb_redo      (void   *u) { editor_redo        ((Editor *)u); }
+
 
 Ca_Viewport *editor_scene_viewport(const Editor *ed)
 {
@@ -1496,6 +1603,8 @@ void editor_destroy(Editor *ed)
     }
     ed_pick_shutdown(ed->engine);
     ed_gizmo_shutdown(ed->engine);
+    ed_undo_shutdown();
+    ed_keybinds_shutdown();
     qs_engine_destroy(ed->engine);
     qs_project_destroy(ed->project);
     free(ed);

@@ -1,6 +1,7 @@
 #include "ed_inspector.h"
 #include "editor.h"
 #include "ed_icons.h"
+#include "ed_undo.h"
 #include "ca_theme.h"
 
 #include <stdio.h>
@@ -33,6 +34,15 @@ typedef struct InputBinding {
        through the prototype-override system when proto context is active. */
     const char       *comp_name;
     const char       *field_name;
+    /* ---- Undo focus tracking ----
+       Text edits land via on_change per keystroke, so we don't push an
+       undo entry on every key.  Instead we snapshot the field's bytes
+       on focus-gain into `before_buf`, then on focus-loss compare with
+       the current value and push a single command for the whole edit. */
+    bool              was_focused;
+    bool              proto_had_before; ///< Override existed at focus-gain.
+    uint8_t           before_buf[256];
+    uint8_t           proto_before_buf[256];
 } InputBinding;
 
 /* Resolves the source scene + entity for the inspector to display.  When
@@ -76,6 +86,12 @@ static Qs_Scene     *s_displayed_scene  = NULL;
 static InputBinding *s_bindings;
 static uint32_t      s_binding_count;
 static uint32_t      s_binding_cap;
+
+/* ---- Header text input focus tracking for undo ---- */
+static bool s_name_was_focused;
+static char s_name_before[128];
+static bool s_tag_was_focused;
+static char s_tag_before[128];
 
 /* ---- Axis label text and CSS classes ---- */
 
@@ -195,17 +211,37 @@ static void on_bool_input(Ca_Checkbox *cb, void *user_data)
     if (!comp) return;
 
     bool *dst = (bool *)((char *)comp + b->field_offset);
-    *dst = ca_checkbox_get(cb);
+    bool before = *dst;
+    bool after  = ca_checkbox_get(cb);
+    *dst = after;
 
     Qs_PrototypeComp *pc = active_override_target(s_editor);
     if (pc && b->comp_name && b->field_name) {
         Qs_IdComp *idc = (Qs_IdComp *)qs_entity_get(
             scene, entity, qs_id_comp_type());
         if (idc) {
+            /* Capture pre-edit override state for undo. */
+            const Qs_PrototypeOverride *prev = qs_prototype_find_override(
+                pc, idc->id, b->comp_name, b->field_name);
+            bool had_before = prev != NULL;
+            uint8_t before_buf[256];
+            if (had_before) memcpy(before_buf, &prev->value, sizeof(prev->value));
+
             qs_prototype_set_override(
                 pc, idc->id, b->comp_name, b->field_name,
                 QS_FIELD_BOOL, dst);
+
+            const Qs_PrototypeOverride *now = qs_prototype_find_override(
+                pc, idc->id, b->comp_name, b->field_name);
+            ed_undo_push_override(pc, idc->id, b->comp_name, b->field_name,
+                                  QS_FIELD_BOOL,
+                                  had_before, before_buf,
+                                  now == NULL, now ? &now->value : NULL);
         }
+    } else if (before != after) {
+        ed_undo_push_field(scene, entity, b->comp_type,
+                           b->field_offset, b->field_size,
+                           &before, &after);
     }
 }
 
@@ -869,12 +905,86 @@ void ed_inspector_update(void *editor)
     if (entity == s_displayed_entity && scene == s_displayed_scene) {
         /* Same entity — refresh bound field values (e.g. during gizmo drag) */
         if (!scene) return;
+        Qs_PrototypeComp *pc = active_override_target(ed);
+        Qs_IdComp *idc = (Qs_IdComp *)qs_entity_get(scene, entity, qs_id_comp_type());
+
+        /* ---- Name input focus tracking ---- */
+        if (s_entity_name_input) {
+            bool nf = ca_input_is_focused(s_entity_name_input);
+            if (nf && !s_name_was_focused) {
+                const char *cur = qs_entity_name(scene, entity);
+                snprintf(s_name_before, sizeof(s_name_before), "%s", cur ? cur : "");
+            } else if (!nf && s_name_was_focused) {
+                const char *cur = qs_entity_name(scene, entity);
+                if (cur && strcmp(cur, s_name_before) != 0)
+                    ed_undo_push_name(scene, entity, s_name_before, cur);
+            }
+            s_name_was_focused = nf;
+        }
+        /* ---- Tag input focus tracking ---- */
+        if (s_tag_input) {
+            bool tf = ca_input_is_focused(s_tag_input);
+            Qs_TagComp *tg = (Qs_TagComp *)qs_entity_get(scene, entity, qs_tag_comp_type());
+            if (tf && !s_tag_was_focused && tg) {
+                snprintf(s_tag_before, sizeof(s_tag_before), "%s", tg->tag);
+            } else if (!tf && s_tag_was_focused && tg) {
+                if (strcmp(tg->tag, s_tag_before) != 0)
+                    ed_undo_push_tag(scene, entity, s_tag_before, tg->tag);
+            }
+            s_tag_was_focused = tf;
+        }
+
         for (uint32_t i = 0; i < s_binding_count; i++) {
             InputBinding *b = &s_bindings[i];
             if (!b->widget || !b->comp_type) continue;
             void *comp = qs_entity_get(scene, entity, b->comp_type);
             if (!comp) continue;
-            const void *field_ptr = (const char *)comp + b->field_offset;
+            void *field_ptr = (char *)comp + b->field_offset;
+
+            /* ---- Undo focus tracking ---- */
+            bool focused = ca_input_is_focused(b->widget);
+            if (focused && !b->was_focused) {
+                /* Focus gained: snapshot the live field value. */
+                size_t copy = b->field_size;
+                if (copy > sizeof(b->before_buf)) copy = sizeof(b->before_buf);
+                memcpy(b->before_buf, field_ptr, copy);
+                /* Snapshot prior override value if relevant. */
+                b->proto_had_before = false;
+                if (pc && idc && b->comp_name && b->field_name) {
+                    const Qs_PrototypeOverride *ov = qs_prototype_find_override(
+                        pc, idc->id, b->comp_name, b->field_name);
+                    if (ov) {
+                        b->proto_had_before = true;
+                        memcpy(b->proto_before_buf, &ov->value, sizeof(ov->value));
+                    }
+                }
+            } else if (!focused && b->was_focused) {
+                /* Focus lost: emit one undo command for the whole edit. */
+                size_t copy = b->field_size;
+                if (copy > sizeof(b->before_buf)) copy = sizeof(b->before_buf);
+                if (memcmp(b->before_buf, field_ptr, copy) != 0) {
+                    if (pc && idc && b->comp_name && b->field_name) {
+                        /* Override edit: undo restores prior override (or
+                           clears if there was none); redo writes the
+                           current override value. */
+                        const Qs_PrototypeOverride *cur =
+                            qs_prototype_find_override(pc, idc->id,
+                                                       b->comp_name, b->field_name);
+                        ed_undo_push_override(
+                            pc, idc->id, b->comp_name, b->field_name,
+                            b->field_type,
+                            b->proto_had_before, b->proto_before_buf,
+                            cur == NULL,
+                            cur ? &cur->value : NULL);
+                    } else {
+                        ed_undo_push_field(scene, entity, b->comp_type,
+                                           b->field_offset, b->field_size,
+                                           b->before_buf, field_ptr);
+                    }
+                }
+            }
+            b->was_focused = focused;
+
             char buf[64];
             switch (b->field_type) {
             case QS_FIELD_FLOAT:
@@ -896,7 +1006,7 @@ void ed_inspector_update(void *editor)
                 break;
             default: continue;
             }
-            if (ca_input_is_focused(b->widget)) continue;
+            if (focused) continue;
             const char *cur = ca_get_text(b->widget);
             if (!cur || strcmp(cur, buf) != 0)
                 ca_set_text(b->widget, buf);
@@ -906,6 +1016,8 @@ void ed_inspector_update(void *editor)
 
     s_displayed_entity = entity;
     s_displayed_scene  = scene;
+    s_name_was_focused = false;
+    s_tag_was_focused  = false;
     ca_set_hidden(s_header_div, false);
     ca_set_hidden(s_no_selection, true);
     update_header(scene, entity);

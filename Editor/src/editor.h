@@ -39,6 +39,22 @@ Qs_Engine *editor_engine(Editor *editor);
 /// Returns the editor's project.
 Qs_Project *editor_project(const Editor *editor);
 
+/// Returns the path of the currently loaded scene file, or "" if none.
+const char *editor_current_scene_path(const Editor *editor);
+
+/// Saves the active scene to its source path on disk.  When in prototype
+/// edit mode, saves to the .qproto path instead.
+bool editor_save_scene(Editor *editor);
+
+/// Saves the project file (.quasar) and the active scene.
+bool editor_save_project(Editor *editor);
+
+/// Performs an undo step against the editor's command stack.
+bool editor_undo(Editor *editor);
+
+/// Performs a redo step against the editor's command stack.
+bool editor_redo(Editor *editor);
+
 /// Returns the editor's scene viewport.
 Ca_Viewport *editor_scene_viewport(const Editor *editor);
 
