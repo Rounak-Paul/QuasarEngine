@@ -1,11 +1,17 @@
 {
-	"name":	"ABeautifulGame",
-	"next_entity_id":	51,
+	"name":	"Prototype",
+	"next_entity_id":	102,
 	"entities":	[{
 			"name":	"ABeautifulGame",
 			"enabled":	true,
 			"parent":	-1,
 			"components":	{
+				"IdComp":	{
+					"id":	51
+				},
+				"TagComp":	{
+					"tag":	"Untagged"
+				},
 				"Transform":	{
 					"position":	[0, 0, 0],
 					"rotation":	[0, 0, 0, 1],
@@ -17,6 +23,12 @@
 			"enabled":	true,
 			"parent":	0,
 			"components":	{
+				"IdComp":	{
+					"id":	52
+				},
+				"TagComp":	{
+					"tag":	"Untagged"
+				},
 				"Transform":	{
 					"position":	[-0.031422976404428482, 0.0174538753926754, 0.22009074687957764],
 					"rotation":	[0, 0, 0, 1],
@@ -33,6 +45,12 @@
 			"enabled":	true,
 			"parent":	0,
 			"components":	{
+				"IdComp":	{
+					"id":	53
+				},
+				"TagComp":	{
+					"tag":	"Untagged"
+				},
 				"Transform":	{
 					"position":	[-0.031761869788169861, 0.017453946173191071, -0.220275804400444],
 					"rotation":	[0, 0, 0, 1],
@@ -49,6 +67,12 @@
 			"enabled":	true,
 			"parent":	0,
 			"components":	{
+				"IdComp":	{
+					"id":	54
+				},
+				"TagComp":	{
+					"tag":	"Untagged"
+				},
 				"Transform":	{
 					"position":	[0.0307312086224556, 0.017623394727706909, 0.21983970701694489],
 					"rotation":	[0, 0, 0, 1],
@@ -65,6 +89,12 @@
 			"enabled":	true,
 			"parent":	0,
 			"components":	{
+				"IdComp":	{
+					"id":	55
+				},
+				"TagComp":	{
+					"tag":	"Untagged"
+				},
 				"Transform":	{
 					"position":	[0.030905567109584808, 0.016862321645021439, -0.220275804400444],
 					"rotation":	[0, 0, 0, 1],
@@ -81,6 +111,12 @@
 			"enabled":	true,
 			"parent":	0,
 			"components":	{
+				"IdComp":	{
+					"id":	56
+				},
+				"TagComp":	{
+					"tag":	"Untagged"
+				},
 				"Transform":	{
 					"position":	[0, 0, 0],
 					"rotation":	[0, 0, 0, 1],
@@ -97,6 +133,12 @@
 			"enabled":	true,
 			"parent":	1,
 			"components":	{
+				"IdComp":	{
+					"id":	57
+				},
+				"TagComp":	{
+					"tag":	"Untagged"
+				},
 				"Transform":	{
 					"position":	[-0.03125, -0.014926999807357788, 0.03125],
 					"rotation":	[0, 0, 0, 1],
@@ -113,6 +155,12 @@
 			"enabled":	true,
 			"parent":	0,
 			"components":	{
+				"IdComp":	{
+					"id":	58
+				},
+				"TagComp":	{
+					"tag":	"Untagged"
+				},
 				"Transform":	{
 					"position":	[0.21845926344394684, 0.014926999807357788, -0.15599016845226288],
 					"rotation":	[0, 0, 0, 1],
@@ -129,6 +177,12 @@
 			"enabled":	true,
 			"parent":	1,
 			"components":	{
+				"IdComp":	{
+					"id":	59
+				},
+				"TagComp":	{
+					"tag":	"Untagged"
+				},
 				"Transform":	{
 					"position":	[-0.03125, -0.014926999807357788, 0.03125],
 					"rotation":	[0, 0, 0, 1],
@@ -145,8 +199,14 @@
 			"enabled":	true,
 			"parent":	0,
 			"components":	{
+				"IdComp":	{
+					"id":	60
+				},
+				"TagComp":	{
+					"tag":	"Untagged"
+				},
 				"Transform":	{
-					"position":	[0.15633293986320496, 0.014926999807357788, -0.15608981251716614],
+					"position":	[0.15633293986320496, 0.1966073215007782, -0.15608981251716614],
 					"rotation":	[0, 0, 0, 1],
 					"scale":	[1, 1, 1]
 				},
@@ -161,6 +221,12 @@
 			"enabled":	true,
 			"parent":	1,
 			"components":	{
+				"IdComp":	{
+					"id":	61
+				},
+				"TagComp":	{
+					"tag":	"Untagged"
+				},
 				"Transform":	{
 					"position":	[-0.03125, -0.014926999807357788, 0.03125],
 					"rotation":	[0, 0, 0, 1],
@@ -177,6 +243,12 @@
 			"enabled":	true,
 			"parent":	0,
 			"components":	{
+				"IdComp":	{
+					"id":	62
+				},
+				"TagComp":	{
+					"tag":	"Untagged"
+				},
 				"Transform":	{
 					"position":	[0.093583285808563232, 0.014926999807357788, -0.094149082899093628],
 					"rotation":	[0, 0, 0, 1],
@@ -193,6 +265,12 @@
 			"enabled":	true,
 			"parent":	1,
 			"components":	{
+				"IdComp":	{
+					"id":	63
+				},
+				"TagComp":	{
+					"tag":	"Untagged"
+				},
 				"Transform":	{
 					"position":	[-0.031249998137354851, -0.014926999807357788, 0.031249998137354851],
 					"rotation":	[0, 0, 0, 1],
@@ -209,6 +287,12 @@
 			"enabled":	true,
 			"parent":	0,
 			"components":	{
+				"IdComp":	{
+					"id":	64
+				},
+				"TagComp":	{
+					"tag":	"Untagged"
+				},
 				"Transform":	{
 					"position":	[0.031249998137354851, 0.014926999807357788, -0.031249998137354851],
 					"rotation":	[0, 0, 0, 1],
@@ -225,6 +309,12 @@
 			"enabled":	true,
 			"parent":	1,
 			"components":	{
+				"IdComp":	{
+					"id":	65
+				},
+				"TagComp":	{
+					"tag":	"Untagged"
+				},
 				"Transform":	{
 					"position":	[-0.031249998137354851, -0.014926999807357788, 0.03125],
 					"rotation":	[0, 0, 0, 1],
@@ -241,6 +331,12 @@
 			"enabled":	true,
 			"parent":	0,
 			"components":	{
+				"IdComp":	{
+					"id":	66
+				},
+				"TagComp":	{
+					"tag":	"Untagged"
+				},
 				"Transform":	{
 					"position":	[-0.0311696995049715, 0.014926999807357788, -0.15642610192298889],
 					"rotation":	[0, 0, 0, 1],
@@ -257,6 +353,12 @@
 			"enabled":	true,
 			"parent":	1,
 			"components":	{
+				"IdComp":	{
+					"id":	67
+				},
+				"TagComp":	{
+					"tag":	"Untagged"
+				},
 				"Transform":	{
 					"position":	[-0.03125, -0.014926999807357788, 0.03125],
 					"rotation":	[0, 0, 0, 1],
@@ -273,6 +375,12 @@
 			"enabled":	true,
 			"parent":	0,
 			"components":	{
+				"IdComp":	{
+					"id":	68
+				},
+				"TagComp":	{
+					"tag":	"Untagged"
+				},
 				"Transform":	{
 					"position":	[-0.093790501356124878, 0.014926999807357788, -0.15624342858791351],
 					"rotation":	[0, 0, 0, 1],
@@ -289,6 +397,12 @@
 			"enabled":	true,
 			"parent":	1,
 			"components":	{
+				"IdComp":	{
+					"id":	69
+				},
+				"TagComp":	{
+					"tag":	"Untagged"
+				},
 				"Transform":	{
 					"position":	[-0.03125, -0.014926999807357788, 0.03125],
 					"rotation":	[0, 0, 0, 1],
@@ -305,6 +419,12 @@
 			"enabled":	true,
 			"parent":	0,
 			"components":	{
+				"IdComp":	{
+					"id":	70
+				},
+				"TagComp":	{
+					"tag":	"Untagged"
+				},
 				"Transform":	{
 					"position":	[-0.15642291307449341, 0.014927003532648087, -0.15642169117927551],
 					"rotation":	[0, 0, 0, 1],
@@ -321,6 +441,12 @@
 			"enabled":	true,
 			"parent":	1,
 			"components":	{
+				"IdComp":	{
+					"id":	71
+				},
+				"TagComp":	{
+					"tag":	"Untagged"
+				},
 				"Transform":	{
 					"position":	[-0.03125, -0.014926999807357788, 0.03125],
 					"rotation":	[0, 0, 0, 1],
@@ -337,6 +463,12 @@
 			"enabled":	true,
 			"parent":	0,
 			"components":	{
+				"IdComp":	{
+					"id":	72
+				},
+				"TagComp":	{
+					"tag":	"Untagged"
+				},
 				"Transform":	{
 					"position":	[-0.21923202276229858, 0.014927007257938385, -0.15629565715789795],
 					"rotation":	[0, 0, 0, 1],
@@ -353,6 +485,12 @@
 			"enabled":	true,
 			"parent":	1,
 			"components":	{
+				"IdComp":	{
+					"id":	73
+				},
+				"TagComp":	{
+					"tag":	"Untagged"
+				},
 				"Transform":	{
 					"position":	[-0.03125, -0.014926999807357788, 0.03125],
 					"rotation":	[0, 0, 0, 1],
@@ -369,6 +507,12 @@
 			"enabled":	true,
 			"parent":	0,
 			"components":	{
+				"IdComp":	{
+					"id":	74
+				},
+				"TagComp":	{
+					"tag":	"Untagged"
+				},
 				"Transform":	{
 					"position":	[-0.21923202276229858, 0.014927007257938385, 0.15638446807861328],
 					"rotation":	[0, 0, 0, 1],
@@ -385,6 +529,12 @@
 			"enabled":	true,
 			"parent":	1,
 			"components":	{
+				"IdComp":	{
+					"id":	75
+				},
+				"TagComp":	{
+					"tag":	"Untagged"
+				},
 				"Transform":	{
 					"position":	[-0.03125, -0.014926999807357788, 0.03125],
 					"rotation":	[0, 0, 0, 1],
@@ -401,6 +551,12 @@
 			"enabled":	true,
 			"parent":	0,
 			"components":	{
+				"IdComp":	{
+					"id":	76
+				},
+				"TagComp":	{
+					"tag":	"Untagged"
+				},
 				"Transform":	{
 					"position":	[-0.15673714876174927, 0.014927007257938385, 0.15617261826992035],
 					"rotation":	[0, 0, 0, 1],
@@ -417,6 +573,12 @@
 			"enabled":	true,
 			"parent":	1,
 			"components":	{
+				"IdComp":	{
+					"id":	77
+				},
+				"TagComp":	{
+					"tag":	"Untagged"
+				},
 				"Transform":	{
 					"position":	[-0.03125, -0.014926999807357788, 0.03125],
 					"rotation":	[0, 0, 0, 1],
@@ -433,6 +595,12 @@
 			"enabled":	true,
 			"parent":	0,
 			"components":	{
+				"IdComp":	{
+					"id":	78
+				},
+				"TagComp":	{
+					"tag":	"Untagged"
+				},
 				"Transform":	{
 					"position":	[-0.0938185751438141, 0.014927007257938385, 0.15627855062484741],
 					"rotation":	[0, 0, 0, 1],
@@ -449,6 +617,12 @@
 			"enabled":	true,
 			"parent":	1,
 			"components":	{
+				"IdComp":	{
+					"id":	79
+				},
+				"TagComp":	{
+					"tag":	"Untagged"
+				},
 				"Transform":	{
 					"position":	[-0.03125, -0.014926999807357788, 0.03125],
 					"rotation":	[0, 0, 0, 1],
@@ -465,6 +639,12 @@
 			"enabled":	true,
 			"parent":	0,
 			"components":	{
+				"IdComp":	{
+					"id":	80
+				},
+				"TagComp":	{
+					"tag":	"Untagged"
+				},
 				"Transform":	{
 					"position":	[-0.031323701143264771, 0.014927007257938385, 0.09357181191444397],
 					"rotation":	[0, 0, 0, 1],
@@ -481,6 +661,12 @@
 			"enabled":	true,
 			"parent":	1,
 			"components":	{
+				"IdComp":	{
+					"id":	81
+				},
+				"TagComp":	{
+					"tag":	"Untagged"
+				},
 				"Transform":	{
 					"position":	[-0.031249998137354851, -0.014926999807357788, 0.03125],
 					"rotation":	[0, 0, 0, 1],
@@ -497,6 +683,12 @@
 			"enabled":	true,
 			"parent":	0,
 			"components":	{
+				"IdComp":	{
+					"id":	82
+				},
+				"TagComp":	{
+					"tag":	"Untagged"
+				},
 				"Transform":	{
 					"position":	[0.031245321035385132, 0.014927007257938385, 0.15634210407733917],
 					"rotation":	[0, 0, 0, 1],
@@ -513,6 +705,12 @@
 			"enabled":	true,
 			"parent":	1,
 			"components":	{
+				"IdComp":	{
+					"id":	83
+				},
+				"TagComp":	{
+					"tag":	"Untagged"
+				},
 				"Transform":	{
 					"position":	[-0.03125, -0.014926999807357788, 0.03125],
 					"rotation":	[0, 0, 0, 1],
@@ -529,6 +727,12 @@
 			"enabled":	true,
 			"parent":	0,
 			"components":	{
+				"IdComp":	{
+					"id":	84
+				},
+				"TagComp":	{
+					"tag":	"Untagged"
+				},
 				"Transform":	{
 					"position":	[0.093814343214035034, 0.014927007257938385, 0.15609847009181976],
 					"rotation":	[0, 0, 0, 1],
@@ -545,6 +749,12 @@
 			"enabled":	true,
 			"parent":	1,
 			"components":	{
+				"IdComp":	{
+					"id":	85
+				},
+				"TagComp":	{
+					"tag":	"Untagged"
+				},
 				"Transform":	{
 					"position":	[-0.03125, -0.014926999807357788, 0.03125],
 					"rotation":	[0, 0, 0, 1],
@@ -561,6 +771,12 @@
 			"enabled":	true,
 			"parent":	0,
 			"components":	{
+				"IdComp":	{
+					"id":	86
+				},
+				"TagComp":	{
+					"tag":	"Untagged"
+				},
 				"Transform":	{
 					"position":	[0.15611860156059265, 0.014927007257938385, 0.15625736117362976],
 					"rotation":	[0, 0, 0, 1],
@@ -577,6 +793,12 @@
 			"enabled":	true,
 			"parent":	1,
 			"components":	{
+				"IdComp":	{
+					"id":	87
+				},
+				"TagComp":	{
+					"tag":	"Untagged"
+				},
 				"Transform":	{
 					"position":	[-0.03125, -0.014926999807357788, 0.03125],
 					"rotation":	[0, 0, 0, 1],
@@ -593,6 +815,12 @@
 			"enabled":	true,
 			"parent":	0,
 			"components":	{
+				"IdComp":	{
+					"id":	88
+				},
+				"TagComp":	{
+					"tag":	"Untagged"
+				},
 				"Transform":	{
 					"position":	[0.21876174211502075, 0.014927007257938385, 0.15628913044929504],
 					"rotation":	[0, 0, 0, 1],
@@ -609,6 +837,12 @@
 			"enabled":	true,
 			"parent":	0,
 			"components":	{
+				"IdComp":	{
+					"id":	89
+				},
+				"TagComp":	{
+					"tag":	"Untagged"
+				},
 				"Transform":	{
 					"position":	[-0.218811571598053, 0.018003018572926521, 0.21959251165390015],
 					"rotation":	[0, 0, 0, 1],
@@ -625,6 +859,12 @@
 			"enabled":	true,
 			"parent":	0,
 			"components":	{
+				"IdComp":	{
+					"id":	90
+				},
+				"TagComp":	{
+					"tag":	"Untagged"
+				},
 				"Transform":	{
 					"position":	[0.22001203894615173, 0.018003018572926521, 0.21961420774459839],
 					"rotation":	[0, 0, 0, 1],
@@ -641,6 +881,12 @@
 			"enabled":	true,
 			"parent":	0,
 			"components":	{
+				"IdComp":	{
+					"id":	91
+				},
+				"TagComp":	{
+					"tag":	"Untagged"
+				},
 				"Transform":	{
 					"position":	[0.21969175338745117, 0.016820574179291725, -0.21970760822296143],
 					"rotation":	[0, 0, 0, 1],
@@ -657,6 +903,12 @@
 			"enabled":	true,
 			"parent":	0,
 			"components":	{
+				"IdComp":	{
+					"id":	92
+				},
+				"TagComp":	{
+					"tag":	"Untagged"
+				},
 				"Transform":	{
 					"position":	[-0.21860846877098083, 0.017101030796766281, -0.22002007067203522],
 					"rotation":	[0, 0, 0, 1],
@@ -673,6 +925,12 @@
 			"enabled":	true,
 			"parent":	0,
 			"components":	{
+				"IdComp":	{
+					"id":	93
+				},
+				"TagComp":	{
+					"tag":	"Untagged"
+				},
 				"Transform":	{
 					"position":	[-0.15675804018974304, 0.016979813575744629, 0.22001084685325623],
 					"rotation":	[0, 0, 0, 1],
@@ -689,6 +947,12 @@
 			"enabled":	true,
 			"parent":	0,
 			"components":	{
+				"IdComp":	{
+					"id":	94
+				},
+				"TagComp":	{
+					"tag":	"Untagged"
+				},
 				"Transform":	{
 					"position":	[0.15848672389984131, 0.016979813575744629, 0.21974232792854309],
 					"rotation":	[0, 0, 0, 1],
@@ -705,8 +969,14 @@
 			"enabled":	true,
 			"parent":	0,
 			"components":	{
+				"IdComp":	{
+					"id":	95
+				},
+				"TagComp":	{
+					"tag":	"Untagged"
+				},
 				"Transform":	{
-					"position":	[0.15809699892997742, 0.016979999840259552, -0.22098299860954285],
+					"position":	[0.15809699892997742, 0.2640606164932251, -0.22098299860954285],
 					"rotation":	[0, -1, 0, 4.3711388286737929e-08],
 					"scale":	[1, 1, 1]
 				},
@@ -721,6 +991,12 @@
 			"enabled":	true,
 			"parent":	0,
 			"components":	{
+				"IdComp":	{
+					"id":	96
+				},
+				"TagComp":	{
+					"tag":	"Untagged"
+				},
 				"Transform":	{
 					"position":	[-0.15665100514888763, 0.016979999840259552, -0.22008299827575684],
 					"rotation":	[0, -1, 0, 4.3711388286737929e-08],
@@ -737,6 +1013,12 @@
 			"enabled":	true,
 			"parent":	0,
 			"components":	{
+				"IdComp":	{
+					"id":	97
+				},
+				"TagComp":	{
+					"tag":	"Untagged"
+				},
 				"Transform":	{
 					"position":	[-0.0940324515104294, 0.016979813575744629, 0.21908524632453918],
 					"rotation":	[0, 0, 0, 1],
@@ -753,6 +1035,12 @@
 			"enabled":	true,
 			"parent":	0,
 			"components":	{
+				"IdComp":	{
+					"id":	98
+				},
+				"TagComp":	{
+					"tag":	"Untagged"
+				},
 				"Transform":	{
 					"position":	[0.0895102620124817, 0.016979813575744629, 0.21954728662967682],
 					"rotation":	[0, 0, 0, 1],
@@ -769,6 +1057,12 @@
 			"enabled":	true,
 			"parent":	0,
 			"components":	{
+				"IdComp":	{
+					"id":	99
+				},
+				"TagComp":	{
+					"tag":	"Untagged"
+				},
 				"Transform":	{
 					"position":	[0.090296670794487, 0.016979813575744629, -0.2176361083984375],
 					"rotation":	[0, 0, 0, 1],
@@ -785,6 +1079,12 @@
 			"enabled":	true,
 			"parent":	0,
 			"components":	{
+				"IdComp":	{
+					"id":	100
+				},
+				"TagComp":	{
+					"tag":	"Untagged"
+				},
 				"Transform":	{
 					"position":	[-0.094165533781051636, 0.016979813575744629, -0.22063007950782776],
 					"rotation":	[0, 0, 0, 1],

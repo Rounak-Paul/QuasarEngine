@@ -29,7 +29,36 @@ typedef struct InputBinding {
     uint32_t          vec_index;
     Qs_FieldType      field_type;
     Ca_TextInput     *widget;       /* NULL for checkbox / non-input fields */
+    /* Stable pointers into static reflection tables — used to route edits
+       through the prototype-override system when proto context is active. */
+    const char       *comp_name;
+    const char       *field_name;
 } InputBinding;
+
+/* Resolves the source scene + entity for the inspector to display.  When
+   the editor has an active prototype-instance selection (the user clicked
+   an inner entity in the hierarchy), reads come from the inner scene
+   rather than the outer scene. */
+static Qs_Scene *inspect_source_scene(Editor *ed)
+{
+    if (!ed) return qs_scene_active();
+    Qs_Scene *inner = editor_proto_inner_scene(ed);
+    return inner ? inner : qs_scene_active();
+}
+
+/* Returns the outer-scene PrototypeComp that should receive overrides for
+   the currently selected inner entity, or NULL when not editing into a
+   prototype instance. */
+static Qs_PrototypeComp *active_override_target(Editor *ed)
+{
+    if (!ed) return NULL;
+    Qs_Entity owner = editor_proto_owner(ed);
+    if (owner == QS_ENTITY_INVALID) return NULL;
+    Qs_Scene *outer = qs_scene_active();
+    if (!outer) return NULL;
+    return (Qs_PrototypeComp *)qs_entity_get(
+        outer, owner, qs_prototype_comp_type());
+}
 
 /* ---- Module state ---- */
 
@@ -41,6 +70,7 @@ static Ca_Label     *s_id_value;
 static Ca_TextInput *s_tag_input;
 static Ca_Div       *s_content_div;      /* dynamic section container */
 static Qs_Entity     s_displayed_entity = QS_ENTITY_INVALID;
+static Qs_Scene     *s_displayed_scene  = NULL;
 
 /* Heap-allocated bindings — freed + rebuilt on each entity change */
 static InputBinding *s_bindings;
@@ -108,7 +138,7 @@ static void on_field_input(Ca_TextInput *input, void *user_data)
     InputBinding *b = (InputBinding *)user_data;
     if (!s_editor || !b->comp_type) return;
 
-    Qs_Scene *scene = qs_scene_active();
+    Qs_Scene *scene  = inspect_source_scene(s_editor);
     Qs_Entity entity = editor_selected_entity(s_editor);
     if (!scene || entity == QS_ENTITY_INVALID) return;
 
@@ -136,6 +166,20 @@ static void on_field_input(Ca_TextInput *input, void *user_data)
         break;
     default: break;
     }
+
+    /* If editing into a prototype instance, persist the change as an
+       override on the outer-scene PrototypeComp so it survives reloads
+       without modifying the source .qproto. */
+    Qs_PrototypeComp *pc = active_override_target(s_editor);
+    if (pc && b->comp_name && b->field_name) {
+        Qs_IdComp *idc = (Qs_IdComp *)qs_entity_get(
+            scene, entity, qs_id_comp_type());
+        if (idc) {
+            qs_prototype_set_override(
+                pc, idc->id, b->comp_name, b->field_name,
+                b->field_type, field_ptr);
+        }
+    }
 }
 
 static void on_bool_input(Ca_Checkbox *cb, void *user_data)
@@ -143,14 +187,26 @@ static void on_bool_input(Ca_Checkbox *cb, void *user_data)
     InputBinding *b = (InputBinding *)user_data;
     if (!s_editor || !b->comp_type) return;
 
-    Qs_Scene *scene = qs_scene_active();
+    Qs_Scene *scene  = inspect_source_scene(s_editor);
     Qs_Entity entity = editor_selected_entity(s_editor);
     if (!scene || entity == QS_ENTITY_INVALID) return;
 
     void *comp = qs_entity_get(scene, entity, b->comp_type);
     if (!comp) return;
 
-    *(bool *)((char *)comp + b->field_offset) = ca_checkbox_get(cb);
+    bool *dst = (bool *)((char *)comp + b->field_offset);
+    *dst = ca_checkbox_get(cb);
+
+    Qs_PrototypeComp *pc = active_override_target(s_editor);
+    if (pc && b->comp_name && b->field_name) {
+        Qs_IdComp *idc = (Qs_IdComp *)qs_entity_get(
+            scene, entity, qs_id_comp_type());
+        if (idc) {
+            qs_prototype_set_override(
+                pc, idc->id, b->comp_name, b->field_name,
+                QS_FIELD_BOOL, dst);
+        }
+    }
 }
 
 /* ---- Prototype path dropdown -------------------------------------- */
@@ -256,10 +312,15 @@ static void on_entity_name_input(Ca_TextInput *input, void *user_data)
     (void)user_data;
     if (!s_editor) return;
 
-    Qs_Scene *scene = qs_scene_active();
+    Qs_Scene *scene  = inspect_source_scene(s_editor);
     Qs_Entity entity = editor_selected_entity(s_editor);
     if (!scene || entity == QS_ENTITY_INVALID) return;
 
+    /* Names are not part of the override system — they live in the inner
+       scene's metadata.  Edits while in proto-instance mode therefore
+       mutate the loaded inner scene directly; they do not persist
+       across reloads of the prototype.  This matches how Unity treats
+       prefab-instance hierarchy renames as session-only. */
     const char *text = ca_get_text(input);
     qs_entity_set_name(scene, entity, text ? text : "");
 }
@@ -269,7 +330,7 @@ static void on_tag_input(Ca_TextInput *input, void *user_data)
     (void)user_data;
     if (!s_editor) return;
 
-    Qs_Scene *scene = qs_scene_active();
+    Qs_Scene *scene  = inspect_source_scene(s_editor);
     Qs_Entity entity = editor_selected_entity(s_editor);
     if (!scene || entity == QS_ENTITY_INVALID) return;
 
@@ -374,10 +435,39 @@ static void build_field(const char *comp_name, Qs_ComponentType *ct,
 
     char name_id[96];
     snprintf(name_id, sizeof(name_id), "ins-field-name-%s-%s", comp_name, fi->name);
+
+    /* If we are editing into a prototype instance, mark fields that have
+       an active override with a leading bullet so the user can tell at a
+       glance which values diverge from the source prototype. */
+    bool is_overridden = false;
+    if (s_editor) {
+        Qs_PrototypeComp *pc = active_override_target(s_editor);
+        if (pc) {
+            Qs_Scene *src   = inspect_source_scene(s_editor);
+            Qs_Entity sel_e = editor_selected_entity(s_editor);
+            if (src && sel_e != QS_ENTITY_INVALID) {
+                Qs_IdComp *idc = (Qs_IdComp *)qs_entity_get(
+                    src, sel_e, qs_id_comp_type());
+                if (idc) {
+                    is_overridden = qs_prototype_find_override(
+                        pc, idc->id, comp_name, fi->name) != NULL;
+                }
+            }
+        }
+    }
+
+    char name_buf[96];
+    if (is_overridden)
+        snprintf(name_buf, sizeof(name_buf), "● %s", fi->name);
+    else
+        snprintf(name_buf, sizeof(name_buf), "%s", fi->name);
+
     ca_text(&(Ca_TextDesc){
-        .text  = fi->name,
+        .text  = name_buf,
         .id    = name_id,
-        .style = "inspector-field-name",
+        .style = is_overridden
+                    ? "inspector-field-name inspector-field-overridden"
+                    : "inspector-field-name",
     });
 
     /* Special-case: Prototype.path → dropdown of registered prototypes */
@@ -417,6 +507,7 @@ static void build_field(const char *comp_name, Qs_ComponentType *ct,
         *b = (InputBinding){
             .comp_type = ct, .field_offset = fi->offset,
             .field_size = fi->size, .field_type = fi->type,
+            .comp_name = comp_name, .field_name = fi->name,
         };
 
         if (fi->type == QS_FIELD_FLOAT)
@@ -458,6 +549,7 @@ static void build_field(const char *comp_name, Qs_ComponentType *ct,
                 .comp_type = ct, .field_offset = fi->offset,
                 .field_size = fi->size, .vec_index = i,
                 .field_type = fi->type,
+                .comp_name = comp_name, .field_name = fi->name,
             };
             snprintf(buf, sizeof(buf), "%.3f", v[i]);
 
@@ -494,6 +586,7 @@ static void build_field(const char *comp_name, Qs_ComponentType *ct,
         *b = (InputBinding){
             .comp_type = ct, .field_offset = fi->offset,
             .field_size = fi->size, .field_type = fi->type,
+            .comp_name = comp_name, .field_name = fi->name,
         };
         char check_id[96];
         snprintf(check_id, sizeof(check_id), "ins-field-check-%s-%s", comp_name, fi->name);
@@ -535,7 +628,7 @@ static void on_remove_component(Ca_Button *btn, void *user_data)
 {
     (void)btn;
     if (!s_editor || !user_data) return;
-    Qs_Scene *scene = qs_scene_active();
+    Qs_Scene *scene  = inspect_source_scene(s_editor);
     Qs_Entity entity = editor_selected_entity(s_editor);
     if (!scene || entity == QS_ENTITY_INVALID) return;
     Qs_ComponentType *ct = (Qs_ComponentType *)user_data;
@@ -561,7 +654,9 @@ static void on_edit_prototype(Ca_Button *btn, void *user_data)
         scene, entity, qs_prototype_comp_type());
     if (!pc || !pc->path[0]) return;
 
-    /* Resolve the .qproto path relative to the project */
+    /* Resolve the .qproto path the same way the runtime does:
+       absolute paths pass through, otherwise try project-relative first
+       (matches how qs_scene.c's resolve_path() works for prototypes). */
     Qs_Project *proj = editor_project(s_editor);
     if (!proj) return;
 
@@ -570,10 +665,8 @@ static void on_edit_prototype(Ca_Button *btn, void *user_data)
         (pc->path[0] && pc->path[1] == ':')) {
         snprintf(full_path, sizeof(full_path), "%s", pc->path);
     } else {
-        /* Resolve relative to the scene file directory */
         const char *proj_path = qs_project_path(proj);
-        snprintf(full_path, sizeof(full_path), "%s/scenes/%s",
-                 proj_path, pc->path);
+        snprintf(full_path, sizeof(full_path), "%s/%s", proj_path, pc->path);
     }
 
     editor_open_prototype(s_editor, full_path);
@@ -615,18 +708,6 @@ static void build_sections(Qs_Scene *scene, Qs_Entity entity)
             .style = "inspector-section-label",
             .color = component_icon_color(comp_name),
         });
-        /* "Edit" button for Prototype component in scene mode */
-        if (strcmp(comp_name, "Prototype") == 0 &&
-            editor_mode(s_editor) == ED_MODE_SCENE)
-        {
-            ca_btn_begin(&(Ca_BtnDesc){
-                .text     = "Edit",
-                .id       = "ins-proto-edit-btn",
-                .style    = "inspector-edit-btn",
-                .on_click = on_edit_prototype,
-            });
-            ca_btn_end();
-        }
         /* Remove-component button — hidden for required components */
         if (strcmp(comp_name, "Transform") != 0) {
             char rm_id[96];
@@ -641,6 +722,21 @@ static void build_sections(Qs_Scene *scene, Qs_Entity entity)
             ca_btn_end();
         }
         ca_div_end();
+
+        /* Prominent "Edit Prototype" action row — opens the prototype in
+           an isolated editor window so the user can modify its inner
+           entities without polluting the outer scene's hierarchy. */
+        if (strcmp(comp_name, "Prototype") == 0 &&
+            editor_mode(s_editor) == ED_MODE_SCENE)
+        {
+            ca_btn_begin(&(Ca_BtnDesc){
+                .text     = ICON_PROTOTYPE "  Edit Prototype",
+                .id       = "ins-proto-edit-btn",
+                .style    = "inspector-proto-edit-row",
+                .on_click = on_edit_prototype,
+            });
+            ca_btn_end();
+        }
 
         /* Fields */
         const Qs_TypeInfo *info = qs_component_type_info(ct);
@@ -670,7 +766,7 @@ static void on_add_component_select(Ca_Select *sel, void *user_data)
     int idx = ca_select_get(sel);
     if (idx <= 0 || (uint32_t)idx > s_add_comp_count) return;
 
-    Qs_Scene *scene = qs_scene_active();
+    Qs_Scene *scene  = inspect_source_scene(s_editor);
     Qs_Entity entity = editor_selected_entity(s_editor);
     if (!scene || entity == QS_ENTITY_INVALID) return;
 
@@ -752,7 +848,7 @@ void ed_inspector_update(void *editor)
 {
     Editor *ed = (Editor *)editor;
     Qs_Entity entity = editor_selected_entity(ed);
-    Qs_Scene *scene  = qs_scene_active();
+    Qs_Scene *scene  = inspect_source_scene(ed);
 
     bool valid = (entity != QS_ENTITY_INVALID && scene &&
                   qs_entity_valid(scene, entity));
@@ -760,6 +856,7 @@ void ed_inspector_update(void *editor)
     if (!valid) {
         if (s_displayed_entity != QS_ENTITY_INVALID) {
             s_displayed_entity = QS_ENTITY_INVALID;
+            s_displayed_scene  = NULL;
             ca_set_hidden(s_header_div, true);
             ca_set_hidden(s_no_selection, false);
             ca_reconcile_begin(s_content_div);
@@ -769,7 +866,7 @@ void ed_inspector_update(void *editor)
         return;
     }
 
-    if (entity == s_displayed_entity) {
+    if (entity == s_displayed_entity && scene == s_displayed_scene) {
         /* Same entity — refresh bound field values (e.g. during gizmo drag) */
         if (!scene) return;
         for (uint32_t i = 0; i < s_binding_count; i++) {
@@ -808,6 +905,7 @@ void ed_inspector_update(void *editor)
     }
 
     s_displayed_entity = entity;
+    s_displayed_scene  = scene;
     ca_set_hidden(s_header_div, false);
     ca_set_hidden(s_no_selection, true);
     update_header(scene, entity);

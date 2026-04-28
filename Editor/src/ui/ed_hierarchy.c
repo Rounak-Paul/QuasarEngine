@@ -17,6 +17,12 @@
 typedef struct {
     Editor   *editor;
     Qs_Entity entity;
+    /* Set when this node represents an entity inside a prototype instance.
+       `proto_owner` is the outer-scene entity holding the PrototypeComp;
+       `inner_scene` is the loaded `pc->inner` containing `entity`.
+       Both QS_ENTITY_INVALID/NULL for normal scene entities. */
+    Qs_Entity proto_owner;
+    Qs_Scene *inner_scene;
 } HierarchyClickCtx;
 
 static HierarchyClickCtx s_click_ctx[MAX_ENTITY_NODES];
@@ -28,8 +34,13 @@ static void on_entity_select(Ca_TreeNode *tn, void *user_data)
 {
     (void)tn;
     HierarchyClickCtx *ctx = (HierarchyClickCtx *)user_data;
-    if (ctx && ctx->editor)
+    if (!ctx || !ctx->editor) return;
+    if (ctx->proto_owner != QS_ENTITY_INVALID && ctx->inner_scene) {
+        editor_set_proto_selection(ctx->editor, ctx->proto_owner,
+                                   ctx->inner_scene, ctx->entity);
+    } else {
         editor_set_selected_entity(ctx->editor, ctx->entity);
+    }
 }
 
 /* ---- Add-entity helpers --------------------------------------------- */
@@ -163,8 +174,10 @@ static void render_entity_node(Editor *ed, Qs_Scene *scene, Qs_Entity entity, Qs
     HierarchyClickCtx *ctx = NULL;
     if (s_click_idx < MAX_ENTITY_NODES) {
         ctx = &s_click_ctx[s_click_idx++];
-        ctx->editor = ed;
-        ctx->entity = entity;
+        ctx->editor       = ed;
+        ctx->entity       = entity;
+        ctx->proto_owner  = QS_ENTITY_INVALID;
+        ctx->inner_scene  = NULL;
     }
 
     const char *style = (entity == selected)
@@ -174,7 +187,10 @@ static void render_entity_node(Editor *ed, Qs_Scene *scene, Qs_Entity entity, Qs
     char node_id[64];
     snprintf(node_id, sizeof(node_id), "hier-entity-%u", (unsigned)entity);
 
-    /* Check if this entity has children */
+    /* A prototype is exposed in the scene as a single component — its
+       inner entities are intentionally hidden from the outer hierarchy
+       to avoid clutter.  Use the inspector's "Edit Prototype" button to
+       open the prototype in its own edit window. */
     bool has_children = false;
     for (Qs_Entity e = qs_scene_first(scene, qs_transform_type());
          e != QS_ENTITY_INVALID;

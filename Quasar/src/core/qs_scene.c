@@ -295,8 +295,11 @@ static void prototype_comp_init(void *comp, Qs_Scene *scene, Qs_Entity entity)
 {
     (void)scene; (void)entity;
     Qs_PrototypeComp *pc = (Qs_PrototypeComp *)comp;
-    pc->inner       = NULL;
-    pc->load_failed = false;
+    pc->inner          = NULL;
+    pc->load_failed    = false;
+    pc->overrides      = NULL;
+    pc->override_count = 0;
+    pc->override_cap   = 0;
 }
 
 static void prototype_comp_destroy(void *comp, Qs_Scene *scene, Qs_Entity entity)
@@ -307,6 +310,196 @@ static void prototype_comp_destroy(void *comp, Qs_Scene *scene, Qs_Entity entity
         qs_scene_destroy(pc->inner);
         pc->inner = NULL;
     }
+    free(pc->overrides);
+    pc->overrides      = NULL;
+    pc->override_count = 0;
+    pc->override_cap   = 0;
+}
+
+/* ================================================================
+   PROTOTYPE OVERRIDE API
+   ================================================================ */
+
+static size_t field_type_byte_size(Qs_FieldType t)
+{
+    switch (t) {
+    case QS_FIELD_FLOAT:   return sizeof(float);
+    case QS_FIELD_FLOAT2:  return sizeof(float) * 2;
+    case QS_FIELD_FLOAT3:  return sizeof(float) * 3;
+    case QS_FIELD_FLOAT4:  return sizeof(float) * 4;
+    case QS_FIELD_INT32:   return sizeof(int32_t);
+    case QS_FIELD_UINT32:  return sizeof(uint32_t);
+    case QS_FIELD_BOOL:    return sizeof(bool);
+    case QS_FIELD_ENTITY:  return sizeof(uint32_t);
+    case QS_FIELD_STRING:  return 0; /* string handled specially */
+    }
+    return 0;
+}
+
+static int find_override_index(const Qs_PrototypeComp *pc,
+                               uint32_t inner_entity_id,
+                               const char *comp_name,
+                               const char *field_name)
+{
+    if (!pc || !comp_name || !field_name) return -1;
+    for (uint32_t i = 0; i < pc->override_count; i++) {
+        const Qs_PrototypeOverride *o = &pc->overrides[i];
+        if (o->inner_entity_id == inner_entity_id &&
+            strcmp(o->comp_name, comp_name) == 0 &&
+            strcmp(o->field_name, field_name) == 0)
+            return (int)i;
+    }
+    return -1;
+}
+
+static Qs_PrototypeOverride *override_alloc_or_replace(
+    Qs_PrototypeComp *pc,
+    uint32_t inner_entity_id,
+    const char *comp_name,
+    const char *field_name)
+{
+    int idx = find_override_index(pc, inner_entity_id, comp_name, field_name);
+    if (idx >= 0) return &pc->overrides[idx];
+
+    if (pc->override_count == pc->override_cap) {
+        uint32_t cap = pc->override_cap ? pc->override_cap * 2 : 8;
+        Qs_PrototypeOverride *tmp = (Qs_PrototypeOverride *)realloc(
+            pc->overrides, cap * sizeof(*tmp));
+        if (!tmp) return NULL;
+        pc->overrides    = tmp;
+        pc->override_cap = cap;
+    }
+    Qs_PrototypeOverride *o = &pc->overrides[pc->override_count++];
+    memset(o, 0, sizeof(*o));
+    o->inner_entity_id = inner_entity_id;
+    snprintf(o->comp_name,  sizeof(o->comp_name),  "%s", comp_name);
+    snprintf(o->field_name, sizeof(o->field_name), "%s", field_name);
+    return o;
+}
+
+bool qs_prototype_set_override(Qs_PrototypeComp *pc,
+                               uint32_t inner_entity_id,
+                               const char *comp_name,
+                               const char *field_name,
+                               Qs_FieldType type,
+                               const void *value)
+{
+    if (!pc || !comp_name || !field_name || !value) return false;
+    Qs_PrototypeOverride *o = override_alloc_or_replace(
+        pc, inner_entity_id, comp_name, field_name);
+    if (!o) return false;
+    o->type = type;
+    if (type == QS_FIELD_STRING) {
+        snprintf(o->value.sv, sizeof(o->value.sv), "%s", (const char *)value);
+    } else {
+        size_t sz = field_type_byte_size(type);
+        if (sz > 0 && sz <= sizeof(o->value)) {
+            memset(&o->value, 0, sizeof(o->value));
+            memcpy(&o->value, value, sz);
+        }
+    }
+    qs_prototype_apply_overrides(pc);
+    return true;
+}
+
+bool qs_prototype_clear_override(Qs_PrototypeComp *pc,
+                                 uint32_t inner_entity_id,
+                                 const char *comp_name,
+                                 const char *field_name)
+{
+    if (!pc) return false;
+    int idx = find_override_index(pc, inner_entity_id, comp_name, field_name);
+    if (idx < 0) return false;
+    /* Swap-remove */
+    if ((uint32_t)idx != pc->override_count - 1)
+        pc->overrides[idx] = pc->overrides[pc->override_count - 1];
+    pc->override_count--;
+    return true;
+}
+
+const Qs_PrototypeOverride *qs_prototype_find_override(
+    const Qs_PrototypeComp *pc,
+    uint32_t inner_entity_id,
+    const char *comp_name,
+    const char *field_name)
+{
+    int idx = find_override_index(pc, inner_entity_id, comp_name, field_name);
+    return idx >= 0 ? &pc->overrides[idx] : NULL;
+}
+
+uint32_t qs_prototype_override_count(const Qs_PrototypeComp *pc)
+{
+    return pc ? pc->override_count : 0;
+}
+
+const Qs_PrototypeOverride *qs_prototype_override_at(
+    const Qs_PrototypeComp *pc, uint32_t index)
+{
+    if (!pc || index >= pc->override_count) return NULL;
+    return &pc->overrides[index];
+}
+
+Qs_Entity qs_scene_find_by_id(Qs_Scene *scene, uint32_t id)
+{
+    Qs_ComponentType *idt = qs_id_comp_type();
+    if (!scene || !idt) return QS_ENTITY_INVALID;
+    for (Qs_Entity e = qs_scene_first(scene, idt);
+         e != QS_ENTITY_INVALID;
+         e = qs_scene_next(scene, idt, e))
+    {
+        Qs_IdComp *idc = (Qs_IdComp *)qs_entity_get(scene, e, idt);
+        if (idc && idc->id == id) return e;
+    }
+    return QS_ENTITY_INVALID;
+}
+
+static const Qs_FieldInfo *find_field_info(const Qs_TypeInfo *info,
+                                           const char *field_name)
+{
+    if (!info || !field_name) return NULL;
+    for (uint32_t i = 0; i < info->field_count; i++) {
+        if (strcmp(info->fields[i].name, field_name) == 0)
+            return &info->fields[i];
+    }
+    return NULL;
+}
+
+void qs_prototype_apply_overrides(Qs_PrototypeComp *pc)
+{
+    if (!pc || !pc->inner || pc->override_count == 0) return;
+    for (uint32_t i = 0; i < pc->override_count; i++) {
+        const Qs_PrototypeOverride *o = &pc->overrides[i];
+        Qs_Entity e = qs_scene_find_by_id(pc->inner, o->inner_entity_id);
+        if (e == QS_ENTITY_INVALID) continue;
+
+        Qs_ComponentType *ct = qs_component_find(o->comp_name);
+        if (!ct) continue;
+        const Qs_TypeInfo *info = qs_component_type_info(ct);
+        if (!info) continue;
+        const Qs_FieldInfo *fi = find_field_info(info, o->field_name);
+        if (!fi || fi->type != o->type) continue;
+
+        void *comp = qs_entity_get(pc->inner, e, ct);
+        if (!comp) continue;
+        char *dst = (char *)comp + fi->offset;
+
+        if (o->type == QS_FIELD_STRING) {
+            snprintf(dst, fi->size, "%s", o->value.sv);
+        } else {
+            size_t sz = field_type_byte_size(o->type);
+            if (sz > 0 && sz <= fi->size) memcpy(dst, &o->value, sz);
+        }
+    }
+}
+
+void qs_prototype_reload(Qs_PrototypeComp *pc)
+{
+    if (!pc) return;
+    if (pc->inner) {
+        qs_scene_destroy(pc->inner);
+        pc->inner = NULL;
+    }
+    pc->load_failed = false;
 }
 
 /* ================================================================
@@ -874,8 +1067,51 @@ cJSON *qs_scene_to_json(const Qs_Scene *scene)
                 void *comp = store_get(&scene->stores[t], e,
                                        type->data_size);
                 cJSON *comp_json = qs_reflect_to_json(comp, type->type_info);
-                if (comp_json)
+                if (comp_json) {
+                    /* Attach Prototype overrides as a sibling array on the
+                       component object so they round-trip through JSON. */
+                    if (type == s_prototype_comp_type) {
+                        Qs_PrototypeComp *pc = (Qs_PrototypeComp *)comp;
+                        if (pc->override_count > 0) {
+                            cJSON *ov_arr = cJSON_CreateArray();
+                            for (uint32_t i = 0; i < pc->override_count; i++) {
+                                const Qs_PrototypeOverride *o = &pc->overrides[i];
+                                cJSON *ov = cJSON_CreateObject();
+                                cJSON_AddNumberToObject(ov, "entity_id", (double)o->inner_entity_id);
+                                cJSON_AddStringToObject(ov, "comp",  o->comp_name);
+                                cJSON_AddStringToObject(ov, "field", o->field_name);
+                                cJSON_AddNumberToObject(ov, "type",  (double)o->type);
+                                switch (o->type) {
+                                case QS_FIELD_FLOAT:
+                                    cJSON_AddNumberToObject(ov, "value", o->value.fv[0]); break;
+                                case QS_FIELD_FLOAT2:
+                                case QS_FIELD_FLOAT3:
+                                case QS_FIELD_FLOAT4: {
+                                    int n = (o->type == QS_FIELD_FLOAT2) ? 2
+                                          : (o->type == QS_FIELD_FLOAT3) ? 3 : 4;
+                                    cJSON *a = cJSON_CreateArray();
+                                    for (int k = 0; k < n; k++)
+                                        cJSON_AddItemToArray(a, cJSON_CreateNumber(o->value.fv[k]));
+                                    cJSON_AddItemToObject(ov, "value", a);
+                                    break;
+                                }
+                                case QS_FIELD_INT32:
+                                    cJSON_AddNumberToObject(ov, "value", (double)o->value.iv); break;
+                                case QS_FIELD_UINT32:
+                                case QS_FIELD_ENTITY:
+                                    cJSON_AddNumberToObject(ov, "value", (double)o->value.uv); break;
+                                case QS_FIELD_BOOL:
+                                    cJSON_AddBoolToObject(ov, "value", o->value.bv); break;
+                                case QS_FIELD_STRING:
+                                    cJSON_AddStringToObject(ov, "value", o->value.sv); break;
+                                }
+                                cJSON_AddItemToArray(ov_arr, ov);
+                            }
+                            cJSON_AddItemToObject(comp_json, "__overrides", ov_arr);
+                        }
+                    }
                     cJSON_AddItemToObject(comps, type->name, comp_json);
+                }
             } else {
                 cJSON_AddItemToObject(comps, type->name,
                                       cJSON_CreateObject());
@@ -951,6 +1187,72 @@ bool qs_scene_from_json(Qs_Scene *scene, Qs_Engine *engine,
 
             if (type->type_info)
                 qs_reflect_from_json(comp, type->type_info, comp_json);
+
+            /* Read Prototype overrides if present. */
+            if (type == s_prototype_comp_type) {
+                Qs_PrototypeComp *pc = (Qs_PrototypeComp *)comp;
+                const cJSON *ov_arr =
+                    cJSON_GetObjectItemCaseSensitive(comp_json, "__overrides");
+                if (cJSON_IsArray(ov_arr)) {
+                    const cJSON *ov;
+                    cJSON_ArrayForEach(ov, ov_arr) {
+                        const cJSON *eid_j = cJSON_GetObjectItemCaseSensitive(ov, "entity_id");
+                        const cJSON *cn_j  = cJSON_GetObjectItemCaseSensitive(ov, "comp");
+                        const cJSON *fn_j  = cJSON_GetObjectItemCaseSensitive(ov, "field");
+                        const cJSON *tp_j  = cJSON_GetObjectItemCaseSensitive(ov, "type");
+                        const cJSON *vl_j  = cJSON_GetObjectItemCaseSensitive(ov, "value");
+                        if (!cJSON_IsNumber(eid_j) ||
+                            !cJSON_IsString(cn_j) ||
+                            !cJSON_IsString(fn_j) ||
+                            !cJSON_IsNumber(tp_j))
+                            continue;
+                        Qs_FieldType ft = (Qs_FieldType)tp_j->valueint;
+                        uint32_t eid = (uint32_t)eid_j->valuedouble;
+                        const char *cn = cn_j->valuestring;
+                        const char *fn = fn_j->valuestring;
+                        switch (ft) {
+                        case QS_FIELD_FLOAT: {
+                            float v = (float)cJSON_GetNumberValue(vl_j);
+                            qs_prototype_set_override(pc, eid, cn, fn, ft, &v); break;
+                        }
+                        case QS_FIELD_FLOAT2:
+                        case QS_FIELD_FLOAT3:
+                        case QS_FIELD_FLOAT4: {
+                            int n = (ft == QS_FIELD_FLOAT2) ? 2
+                                  : (ft == QS_FIELD_FLOAT3) ? 3 : 4;
+                            float v[4] = {0};
+                            if (cJSON_IsArray(vl_j)) {
+                                int k = 0;
+                                const cJSON *it;
+                                cJSON_ArrayForEach(it, vl_j) {
+                                    if (k >= n) break;
+                                    if (cJSON_IsNumber(it)) v[k] = (float)it->valuedouble;
+                                    k++;
+                                }
+                            }
+                            qs_prototype_set_override(pc, eid, cn, fn, ft, v); break;
+                        }
+                        case QS_FIELD_INT32: {
+                            int32_t v = cJSON_IsNumber(vl_j) ? vl_j->valueint : 0;
+                            qs_prototype_set_override(pc, eid, cn, fn, ft, &v); break;
+                        }
+                        case QS_FIELD_UINT32:
+                        case QS_FIELD_ENTITY: {
+                            uint32_t v = cJSON_IsNumber(vl_j) ? (uint32_t)vl_j->valuedouble : 0;
+                            qs_prototype_set_override(pc, eid, cn, fn, ft, &v); break;
+                        }
+                        case QS_FIELD_BOOL: {
+                            bool v = cJSON_IsTrue(vl_j);
+                            qs_prototype_set_override(pc, eid, cn, fn, ft, &v); break;
+                        }
+                        case QS_FIELD_STRING: {
+                            const char *v = cJSON_IsString(vl_j) ? vl_j->valuestring : "";
+                            qs_prototype_set_override(pc, eid, cn, fn, ft, v); break;
+                        }
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -1377,6 +1679,12 @@ void qs_scene_submit_renderables(Qs_Scene *scene,
                 }
                 pc->inner = inner;
             }
+
+            /* Apply per-instance overrides each frame so user edits are
+               immediately reflected in the rendered prototype.  Overrides
+               are kept on the outer-scene component, never written to the
+               source .qproto file. */
+            qs_prototype_apply_overrides(pc);
 
             float local_world[16];
             qs_scene_world_matrix(scene, e, local_world);

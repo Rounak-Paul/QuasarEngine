@@ -38,6 +38,20 @@ struct Editor {
     Qs_Scene     *proto_stack_scene[EDITOR_PROTO_STACK_DEPTH];
     EditorCamera  proto_stack_cam[EDITOR_PROTO_STACK_DEPTH];
     uint32_t      proto_stack_depth;
+
+    /* Editor-only preview light injected into the prototype scene so the
+       inner geometry is visible while editing.  Destroyed before save so
+       it is never baked into the .qproto file. */
+    Qs_Entity     proto_preview_light;
+
+    /* ---- Prototype-instance override editing context ----
+       When the user expands a prototype instance in the hierarchy and
+       selects one of its inner entities, these fields point to that
+       inner-scene context so the inspector can route field edits
+       through the PrototypeComp override system rather than mutating
+       the source .qproto file. */
+    Qs_Entity     proto_owner;          ///< QS_ENTITY_INVALID when inactive.
+    Qs_Scene     *proto_inner_scene;
 };
 
 /* ---- Editor CSS theme (Quasar Dark) ---- */
@@ -371,6 +385,17 @@ static const char *g_editor_css =
     "  height: 16px;"
     "}"
 
+    /* Inner-scene entity exposed by an expanded prototype instance.
+       Edits route through the override system, so we tint these
+       slightly differently to distinguish them from genuine scene
+       entities. */
+    ".hierarchy-proto-inner {"
+    "  color: #6e8aff;"
+    "  font-size: 12px;"
+    "  font-style: italic;"
+    "  height: 16px;"
+    "}"
+
     ".hierarchy-component {"
     "  color: #4a4e6a;"
     "  font-size: 12px;"
@@ -470,6 +495,11 @@ static const char *g_editor_css =
     "  font-size: 12px;"
     "  text-align: left;"
     "  width: 100%;"
+    "}"
+
+    /* Highlights a field that has been overridden on a prototype instance. */
+    ".inspector-field-overridden {"
+    "  color: #ffd166;"
     "}"
 
     ".inspector-vec-row {"
@@ -747,6 +777,25 @@ static const char *g_editor_css =
     "  corner-radius: 3px;"
     "  padding-left: 8px;"
     "  padding-right: 8px;"
+    "}"
+
+    /* Full-width "Edit Prototype" action row beneath the Prototype
+       component header — opens the prototype in its own editor window. */
+    ".inspector-proto-edit-row {"
+    "  width: 100%;"
+    "  height: 26px;"
+    "  background: #242430;"
+    "  color: #c8d0ff;"
+    "  font-size: 12px;"
+    "  font-weight: bold;"
+    "  text-align: center;"
+    "  corner-radius: 4px;"
+    "  margin-top: 4px;"
+    "  margin-bottom: 4px;"
+    "}"
+    ".inspector-proto-edit-row:hover {"
+    "  background: #2e2e3e;"
+    "  color: #6e8aff;"
     "}"
 
     /* ---- Inspector remove-component button (× in section header) ---- */
@@ -1129,7 +1178,10 @@ Editor *editor_create(const EditorDesc *desc)
 {
     Editor *ed = calloc(1, sizeof(Editor));
     if (!ed) return NULL;
-    ed->selected_entity = QS_ENTITY_INVALID;
+    ed->selected_entity     = QS_ENTITY_INVALID;
+    ed->proto_owner         = QS_ENTITY_INVALID;
+    ed->proto_inner_scene   = NULL;
+    ed->proto_preview_light = QS_ENTITY_INVALID;
 
     /* Open project */
     if (desc->project_path) {
@@ -1277,7 +1329,34 @@ Qs_Entity editor_selected_entity(const Editor *ed)
 void editor_set_selected_entity(Editor *ed, Qs_Entity entity)
 {
     if (!ed) return;
-    ed->selected_entity = entity;
+    ed->selected_entity   = entity;
+    ed->proto_owner       = QS_ENTITY_INVALID;
+    ed->proto_inner_scene = NULL;
+}
+
+void editor_set_proto_selection(Editor *ed,
+                                Qs_Entity owner,
+                                Qs_Scene *inner_scene,
+                                Qs_Entity inner_entity)
+{
+    if (!ed) return;
+    if (owner == QS_ENTITY_INVALID || !inner_scene) {
+        editor_set_selected_entity(ed, inner_entity);
+        return;
+    }
+    ed->selected_entity   = inner_entity;
+    ed->proto_owner       = owner;
+    ed->proto_inner_scene = inner_scene;
+}
+
+Qs_Entity editor_proto_owner(const Editor *ed)
+{
+    return ed ? ed->proto_owner : QS_ENTITY_INVALID;
+}
+
+Qs_Scene *editor_proto_inner_scene(const Editor *ed)
+{
+    return ed ? ed->proto_inner_scene : NULL;
 }
 
 EditorMode editor_mode(const Editor *editor)
@@ -1315,7 +1394,30 @@ bool editor_open_prototype(Editor *editor, const char *proto_path)
     qs_scene_set_active(proto_scene);
 
     snprintf(editor->proto_path, sizeof(editor->proto_path), "%s", proto_path);
-    editor->selected_entity = QS_ENTITY_INVALID;
+    editor->selected_entity   = QS_ENTITY_INVALID;
+    editor->proto_owner       = QS_ENTITY_INVALID;
+    editor->proto_inner_scene = NULL;
+
+    /* Inject an editor-only preview directional light if the prototype
+       has no lights of its own.  This is purely a viewport convenience —
+       it is destroyed before the prototype is saved so the .qproto file
+       never gains a stray light entity. */
+    editor->proto_preview_light = QS_ENTITY_INVALID;
+    if (qs_scene_first(proto_scene, qs_light_comp_type()) == QS_ENTITY_INVALID) {
+        Qs_Entity sun = qs_entity_create(proto_scene, "(Editor Preview Light)");
+        if (sun != QS_ENTITY_INVALID) {
+            Qs_LightComp *lc = qs_entity_add(proto_scene, sun, qs_light_comp_type());
+            if (lc) {
+                lc->color[0]  = 1.0f;
+                lc->color[1]  = 0.95f;
+                lc->color[2]  = 0.9f;
+                lc->intensity = 3.0f;
+                editor->proto_preview_light = sun;
+            } else {
+                qs_entity_destroy(proto_scene, sun);
+            }
+        }
+    }
 
     /* Reset camera for prototype view */
     ed_camera_init(&editor->cam);
@@ -1352,6 +1454,13 @@ void editor_close_prototype(Editor *editor)
 
     /* Save the current prototype scene back to its source path. */
     Qs_Scene *proto_scene = qs_scene_active();
+    /* Strip the editor-only preview light first so it never lands in
+       the saved .qproto. */
+    if (proto_scene && editor->proto_preview_light != QS_ENTITY_INVALID) {
+        if (qs_entity_valid(proto_scene, editor->proto_preview_light))
+            qs_entity_destroy(proto_scene, editor->proto_preview_light);
+        editor->proto_preview_light = QS_ENTITY_INVALID;
+    }
     if (proto_scene && editor->proto_path[0])
         qs_scene_save(proto_scene, editor->proto_path);
     if (proto_scene)
@@ -1363,8 +1472,10 @@ void editor_close_prototype(Editor *editor)
     qs_scene_set_active(prev);
     editor->cam = editor->proto_stack_cam[editor->proto_stack_depth];
 
-    editor->selected_entity = QS_ENTITY_INVALID;
-    editor->proto_path[0]   = '\0';
+    editor->selected_entity   = QS_ENTITY_INVALID;
+    editor->proto_owner       = QS_ENTITY_INVALID;
+    editor->proto_inner_scene = NULL;
+    editor->proto_path[0]     = '\0';
 
     if (editor->proto_stack_depth == 0) {
         if (s_breadcrumb_bar) ca_set_hidden(s_breadcrumb_bar, true);

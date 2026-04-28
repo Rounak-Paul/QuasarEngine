@@ -6,6 +6,7 @@
 #include <stddef.h>
 
 #include "qs_light.h"
+#include "qs_reflect.h"
 
 typedef struct Qs_Engine         Qs_Engine;
 typedef struct Qs_Scene          Qs_Scene;
@@ -123,12 +124,88 @@ typedef struct Qs_TagComp {
 /// composing its entities' world transforms with the parent entity's
 /// world matrix.  Imported models (e.g. glTF) are automatically
 /// represented as prototypes by the asset import pipeline.
+///
+/// Per-instance overrides:
+///   When a prototype is placed in a scene, individual fields of inner-scene
+///   entities can be customised without modifying the source .qproto file.
+///   Overrides are keyed by (inner_entity_id, comp_name, field_name) and
+///   applied to the inner scene each frame before rendering.  See the
+///   qs_prototype_*_override API below.
+typedef struct Qs_PrototypeOverride {
+    uint32_t       inner_entity_id;     ///< Stable IdComp.id within the inner scene.
+    char           comp_name[32];       ///< Component type name, e.g. "Transform".
+    char           field_name[32];      ///< Field name, e.g. "position".
+    Qs_FieldType   type;                ///< Value type tag.
+    union {
+        float    fv[4];                 ///< FLOAT / FLOAT2 / FLOAT3 / FLOAT4.
+        int32_t  iv;                    ///< INT32.
+        uint32_t uv;                    ///< UINT32 / ENTITY.
+        bool     bv;                    ///< BOOL.
+        char     sv[256];               ///< STRING (truncated if larger).
+    } value;
+} Qs_PrototypeOverride;
+
 typedef struct Qs_PrototypeComp {
     char            path[256];           ///< Project- or scene-relative .qproto path.
-    /* ---- runtime fields (not serialized) ---- */
+    /* ---- runtime fields (not serialized via reflection) ---- */
     Qs_Scene       *inner;               ///< Inner ECS world (lazy-loaded on first use).
     bool            load_failed;         ///< Set after a failed lazy load to avoid retries.
+    Qs_PrototypeOverride *overrides;     ///< Heap-allocated; may be NULL.
+    uint32_t        override_count;
+    uint32_t        override_cap;
 } Qs_PrototypeComp;
+
+/* ---- Prototype override API ----------------------------------------- */
+
+/// Sets (or replaces) an override on the prototype instance.  `value` must
+/// point to data matching `type` (e.g. float[3] for FLOAT3, char* for
+/// STRING).  Returns true on success.  The override is applied to the
+/// inner scene immediately if it is loaded, and re-applied each frame.
+bool qs_prototype_set_override(Qs_PrototypeComp *pc,
+                               uint32_t inner_entity_id,
+                               const char *comp_name,
+                               const char *field_name,
+                               Qs_FieldType type,
+                               const void *value);
+
+/// Removes an override.  Returns true if one existed.  After clearing, the
+/// inner-scene field reverts to its source-prototype value on the next
+/// override-apply pass; if you need an immediate revert, reload the inner
+/// scene via qs_prototype_reload().
+bool qs_prototype_clear_override(Qs_PrototypeComp *pc,
+                                 uint32_t inner_entity_id,
+                                 const char *comp_name,
+                                 const char *field_name);
+
+/// Returns the override matching the key, or NULL if none.
+const Qs_PrototypeOverride *qs_prototype_find_override(
+    const Qs_PrototypeComp *pc,
+    uint32_t inner_entity_id,
+    const char *comp_name,
+    const char *field_name);
+
+/// Number of overrides currently stored on the instance.
+uint32_t qs_prototype_override_count(const Qs_PrototypeComp *pc);
+
+/// Indexed access to the overrides list (0 .. count-1).
+const Qs_PrototypeOverride *qs_prototype_override_at(
+    const Qs_PrototypeComp *pc, uint32_t index);
+
+/// Applies all stored overrides to the inner scene's component data.
+/// Safe to call when inner is NULL (no-op).  Called automatically before
+/// rendering, but can be invoked manually after editing for an
+/// immediate UI refresh.
+void qs_prototype_apply_overrides(Qs_PrototypeComp *pc);
+
+/// Drops the lazy-loaded inner scene so it will be reloaded fresh from
+/// disk on the next render.  Useful after clearing overrides to discard
+/// any side-effects in the inner ECS data.
+void qs_prototype_reload(Qs_PrototypeComp *pc);
+
+/// Looks up an inner-scene entity by its stable IdComp.id.  Returns
+/// QS_ENTITY_INVALID if no entity with that id exists.
+Qs_Entity qs_scene_find_by_id(Qs_Scene *scene, uint32_t id);
+
 
 /// Returns the built-in Transform component type handle.
 Qs_ComponentType *qs_transform_type(void);

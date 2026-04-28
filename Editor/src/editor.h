@@ -48,6 +48,23 @@ Qs_Entity editor_selected_entity(const Editor *editor);
 /// Sets the selected entity.
 void editor_set_selected_entity(Editor *editor, Qs_Entity entity);
 
+/// Selects an entity inside a prototype instance for editing through
+/// the override system.  `owner` is the outer-scene entity that holds
+/// the PrototypeComp; `inner_scene` and `inner_entity` identify the
+/// entity inside the loaded inner scene.  Pass QS_ENTITY_INVALID for
+/// `owner` to clear (equivalent to `editor_set_selected_entity`).
+void editor_set_proto_selection(Editor *editor,
+                                Qs_Entity owner,
+                                Qs_Scene *inner_scene,
+                                Qs_Entity inner_entity);
+
+/// Returns the outer-scene entity owning the active prototype-override
+/// editing context, or QS_ENTITY_INVALID when not editing into a prototype.
+Qs_Entity editor_proto_owner(const Editor *editor);
+
+/// Returns the inner scene currently being edited via overrides, or NULL.
+Qs_Scene *editor_proto_inner_scene(const Editor *editor);
+
 /// Returns the current editor mode.
 EditorMode editor_mode(const Editor *editor);
 
