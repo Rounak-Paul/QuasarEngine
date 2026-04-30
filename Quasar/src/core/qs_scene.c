@@ -1590,6 +1590,24 @@ void qs_scene_submit_renderables(Qs_Scene *scene,
 {
     if (!scene || !renderer) return;
 
+    /* Hard cap on prototype recursion depth.  This is a defense-in-depth
+       guard: cyclic prototype references are supposed to be rejected at
+       edit time (see qs_prototype_would_create_cycle) and at save time,
+       but a corrupted file on disk could still bring the runtime down
+       without this safety net. */
+    enum { QS_PROTO_RUNTIME_DEPTH_MAX = 16 };
+    static int s_proto_recursion_depth;
+    if (s_proto_recursion_depth >= QS_PROTO_RUNTIME_DEPTH_MAX) {
+        static bool warned;
+        if (!warned) {
+            QS_LOG_ERROR("Prototype recursion depth exceeded (%d) — "
+                         "cyclic .qproto reference detected, aborting submit",
+                         QS_PROTO_RUNTIME_DEPTH_MAX);
+            warned = true;
+        }
+        return;
+    }
+
     float identity[16];
     if (!parent_world) {
         qs_m4_identity(identity);
@@ -1691,7 +1709,196 @@ void qs_scene_submit_renderables(Qs_Scene *scene,
             float world[16];
             qs_m4_mul(parent_world, local_world, world);
 
+            s_proto_recursion_depth++;
             qs_scene_submit_renderables(pc->inner, engine, renderer, world);
+            s_proto_recursion_depth--;
         }
     }
+}
+
+/* ================================================================
+   PROTOTYPE DEPENDENCY / CYCLE DETECTION
+   ================================================================
+   Walks .qproto JSON files on disk to determine whether one prototype
+   transitively references another. The inner Qs_Scene is never
+   instantiated, so this is cheap enough to call from UI handlers.
+   A bounded visited set + depth cap guarantees termination even on
+   corrupt cyclic files. ================================================ */
+
+#define QS_PROTO_VISITED_MAX 128
+#define QS_PROTO_DEPTH_MAX   32
+
+typedef struct {
+    char paths[QS_PROTO_VISITED_MAX][256];
+    uint32_t count;
+} ProtoVisitedSet;
+
+static void proto_normalise_path(Qs_Project *project,
+                                 const char *in, char *out, size_t out_size)
+{
+    if (!in || !out || out_size == 0) return;
+    if (!*in) { out[0] = '\0'; return; }
+
+    /* If `in` is an absolute path that lies under the project root,
+       strip the root + trailing slash so callers can pass either
+       absolute (e.g. editor->proto_path) or project-relative
+       (e.g. dropdown values, paths embedded in .qproto JSON) and have
+       them compare equal. */
+    const char *src = in;
+    if ((src[0] == '/' || (src[0] && src[1] == ':')) && project) {
+        const char *root = qs_project_path(project);
+        if (root && *root) {
+            size_t rl = strlen(root);
+            if (strncmp(src, root, rl) == 0) {
+                src += rl;
+                while (*src == '/' || *src == '\\') src++;
+            }
+        }
+    }
+
+    while (src[0] == '.' && src[1] == '/') src += 2;
+    size_t w = 0;
+    char prev = '\0';
+    for (size_t i = 0; src[i] && w + 1 < out_size; i++) {
+        char c = src[i];
+        if (c == '\\') c = '/';
+        if (c == '/' && prev == '/') continue;
+        out[w++] = c;
+        prev = c;
+    }
+    out[w] = '\0';
+}
+
+static bool proto_paths_equal(Qs_Project *project, const char *a, const char *b)
+{
+    char na[512], nb[512];
+    proto_normalise_path(project, a, na, sizeof(na));
+    proto_normalise_path(project, b, nb, sizeof(nb));
+    return strcmp(na, nb) == 0;
+}
+
+static bool proto_visited_contains(const ProtoVisitedSet *vs,
+                                   Qs_Project *project, const char *path)
+{
+    char n[256];
+    proto_normalise_path(project, path, n, sizeof(n));
+    for (uint32_t i = 0; i < vs->count; i++)
+        if (strcmp(vs->paths[i], n) == 0) return true;
+    return false;
+}
+
+static void proto_visited_add(ProtoVisitedSet *vs,
+                              Qs_Project *project, const char *path)
+{
+    if (vs->count >= QS_PROTO_VISITED_MAX) return;
+    proto_normalise_path(project, path, vs->paths[vs->count], sizeof(vs->paths[0]));
+    vs->count++;
+}
+
+static cJSON *proto_read_json_file(const char *abs_path)
+{
+    FILE *f = fopen(abs_path, "rb");
+    if (!f) return NULL;
+    fseek(f, 0, SEEK_END);
+    long len = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    if (len <= 0) { fclose(f); return NULL; }
+    char *buf = (char *)malloc((size_t)len + 1);
+    if (!buf) { fclose(f); return NULL; }
+    size_t n = fread(buf, 1, (size_t)len, f);
+    buf[n] = '\0';
+    fclose(f);
+    cJSON *json = cJSON_Parse(buf);
+    free(buf);
+    return json;
+}
+
+static void proto_resolve_path(Qs_Project *project,
+                               const char *rel,
+                               char *abs, size_t abs_size)
+{
+    if (!rel || !*rel) { if (abs_size) abs[0] = '\0'; return; }
+    if (rel[0] == '/' || (rel[0] && rel[1] == ':')) {
+        snprintf(abs, abs_size, "%s", rel);
+        return;
+    }
+    const char *root = project ? qs_project_path(project) : NULL;
+    if (root && *root) snprintf(abs, abs_size, "%s/%s", root, rel);
+    else               snprintf(abs, abs_size, "%s", rel);
+}
+
+static bool proto_depends_on_recursive(Qs_Project *project,
+                                       const char *subject_rel,
+                                       const char *target_norm,
+                                       ProtoVisitedSet *visited,
+                                       uint32_t depth)
+{
+    if (!subject_rel || !*subject_rel) return false;
+    if (depth >= QS_PROTO_DEPTH_MAX) {
+        QS_LOG_WARN("Prototype dep walk hit depth %d at '%s'", QS_PROTO_DEPTH_MAX, subject_rel);
+        return false;
+    }
+    if (proto_visited_contains(visited, project, subject_rel)) return false;
+    proto_visited_add(visited, project, subject_rel);
+
+    char abs[1024];
+    proto_resolve_path(project, subject_rel, abs, sizeof(abs));
+    cJSON *json = proto_read_json_file(abs);
+    if (!json) return false;
+
+    bool hit = false;
+    const cJSON *entities = cJSON_GetObjectItemCaseSensitive(json, "entities");
+    if (cJSON_IsArray(entities)) {
+        const cJSON *ent;
+        cJSON_ArrayForEach(ent, entities) {
+            if (hit) break;
+            const cJSON *comps = cJSON_GetObjectItemCaseSensitive(ent, "components");
+            if (!cJSON_IsObject(comps)) continue;
+            const cJSON *proto = cJSON_GetObjectItemCaseSensitive(comps, "Prototype");
+            if (!cJSON_IsObject(proto)) continue;
+            const cJSON *path_j = cJSON_GetObjectItemCaseSensitive(proto, "path");
+            if (!cJSON_IsString(path_j) || !path_j->valuestring) continue;
+            const char *child_path = path_j->valuestring;
+            if (!*child_path) continue;
+
+            char child_norm[512];
+            proto_normalise_path(project, child_path, child_norm, sizeof(child_norm));
+            if (strcmp(child_norm, target_norm) == 0) { hit = true; break; }
+
+            if (proto_depends_on_recursive(project, child_path,
+                                           target_norm, visited, depth + 1))
+            {
+                hit = true;
+                break;
+            }
+        }
+    }
+    cJSON_Delete(json);
+    return hit;
+}
+
+bool qs_prototype_path_depends_on(Qs_Project *project,
+                                  const char *subject_path,
+                                  const char *target_path)
+{
+    if (!subject_path || !*subject_path) return false;
+    if (!target_path  || !*target_path)  return false;
+    if (proto_paths_equal(project, subject_path, target_path)) return true;
+
+    char target_norm[512];
+    proto_normalise_path(project, target_path, target_norm, sizeof(target_norm));
+
+    ProtoVisitedSet visited = {0};
+    return proto_depends_on_recursive(project, subject_path,
+                                      target_norm, &visited, 0);
+}
+
+bool qs_prototype_would_create_cycle(Qs_Project *project,
+                                     const char *host_path,
+                                     const char *candidate_inner_path)
+{
+    if (!host_path || !candidate_inner_path) return false;
+    if (!*host_path || !*candidate_inner_path) return false;
+    if (proto_paths_equal(project, host_path, candidate_inner_path)) return true;
+    return qs_prototype_path_depends_on(project, candidate_inner_path, host_path);
 }

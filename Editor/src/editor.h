@@ -84,6 +84,11 @@ Qs_Scene *editor_proto_inner_scene(const Editor *editor);
 /// Returns the current editor mode.
 EditorMode editor_mode(const Editor *editor);
 
+/// Returns the project-relative path of the .qproto currently being
+/// edited (top of the prototype edit stack), or "" if not in prototype
+/// edit mode.
+const char *editor_current_proto_path(const Editor *editor);
+
 /// Opens a prototype for isolated editing.  Saves the current scene context
 /// and creates a temporary scene for the prototype.
 bool editor_open_prototype(Editor *editor, const char *proto_path);

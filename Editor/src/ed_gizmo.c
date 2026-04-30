@@ -2,7 +2,7 @@
 #include "ed_pick.h"
 #include "ui/ed_toolbar.h"
 #include "editor.h"
-#include "ed_undo.h"
+#include "ed_commands.h"
 #include "qs_input.h"
 #include "qs_math.h"
 #include "qs_renderer.h"

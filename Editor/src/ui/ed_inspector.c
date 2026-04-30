@@ -1,7 +1,7 @@
 #include "ed_inspector.h"
 #include "editor.h"
-#include "ed_icons.h"
-#include "ed_undo.h"
+#include "ed_layout.h"
+#include "ed_commands.h"
 #include "ca_theme.h"
 
 #include <stdio.h>
@@ -329,10 +329,33 @@ static void on_proto_path_select(Ca_Select *sel, void *user_data)
     if (!pc) return;
 
     int idx = ca_select_get(sel);
+    const char *new_path = (idx > 0 && (uint32_t)idx < s_proto_option_count)
+                               ? s_proto_paths[idx] : "";
+
+    /* Cycle guard: when editing inside a .qproto, refuse to assign a
+       prototype path that would (directly or transitively) embed the
+       currently-open prototype.  Without this check the runtime would
+       lazy-load the inner scene recursively and exhaust the editor's
+       prototype edit stack. */
+    if (new_path && *new_path && editor_mode(s_editor) == ED_MODE_PROTOTYPE) {
+        const char *host = editor_current_proto_path(s_editor);
+        if (host && *host &&
+            qs_prototype_would_create_cycle(editor_project(s_editor),
+                                            host, new_path))
+        {
+            QS_LOG_ERROR("Refusing prototype assignment '%s': would create cyclic reference (host '%s')",
+                         new_path, host);
+            /* Don't apply the selection — snap the dropdown back to
+               "(none)" so the rejected pick is not visually retained. */
+            ca_select_set(sel, 0);
+            return;
+        }
+    }
+
     if (idx <= 0) {
         pc->path[0] = '\0';
     } else if ((uint32_t)idx < s_proto_option_count) {
-        snprintf(pc->path, sizeof(pc->path), "%s", s_proto_paths[idx]);
+        snprintf(pc->path, sizeof(pc->path), "%s", new_path);
     }
 
     /* Force lazy reload at next render */

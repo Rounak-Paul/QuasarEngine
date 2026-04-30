@@ -14,6 +14,7 @@ typedef struct Qs_ComponentType  Qs_ComponentType;
 typedef struct Qs_TypeInfo       Qs_TypeInfo;
 typedef struct Qs_Mesh           Qs_Mesh;
 typedef struct Qs_Material       Qs_Material;
+typedef struct Qs_Project        Qs_Project;
 struct cJSON;
 
 /* ================================================================
@@ -201,6 +202,30 @@ void qs_prototype_apply_overrides(Qs_PrototypeComp *pc);
 /// disk on the next render.  Useful after clearing overrides to discard
 /// any side-effects in the inner ECS data.
 void qs_prototype_reload(Qs_PrototypeComp *pc);
+
+/* ---- Prototype dependency / cycle detection ----------------------- */
+
+/// Returns true if the .qproto file at `subject_path` directly or
+/// transitively contains a `Qs_PrototypeComp` whose `path` resolves to
+/// `target_path`.  Used by the editor to reject would-be edits that
+/// would create a cyclic prototype reference (e.g. dropping prototype
+/// A as a child of A's own hierarchy, or routing A→B→A).
+///
+/// Path arguments are project-relative (the same form stored in
+/// `Qs_PrototypeComp.path`).  An equal subject/target counts as a cycle.
+/// The check is bounded; cycles in already-corrupted files are detected
+/// via an internal visited set rather than recursing forever.
+bool qs_prototype_path_depends_on(Qs_Project *project,
+                                  const char *subject_path,
+                                  const char *target_path);
+
+/// Convenience: returns true if assigning `candidate_inner_path` as a
+/// `PrototypeComp.path` inside `host_path` would create a cycle.
+/// Equivalent to:
+///   candidate == host || qs_prototype_path_depends_on(candidate, host)
+bool qs_prototype_would_create_cycle(Qs_Project *project,
+                                     const char *host_path,
+                                     const char *candidate_inner_path);
 
 /// Looks up an inner-scene entity by its stable IdComp.id.  Returns
 /// QS_ENTITY_INVALID if no entity with that id exists.

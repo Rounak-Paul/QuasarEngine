@@ -1,6 +1,6 @@
 #include "ed_hierarchy.h"
 #include "editor.h"
-#include "ed_icons.h"
+#include "ed_layout.h"
 #include "ca_theme.h"
 
 #include <string.h>

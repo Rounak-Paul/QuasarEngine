@@ -1,6 +1,6 @@
 {
 	"name":	"Prototype",
-	"next_entity_id":	153,
+	"next_entity_id":	255,
 	"entities":	[{
 			"name":	"ABeautifulGame",
 			"enabled":	true,
@@ -852,6 +852,9 @@
 					"visible":	true,
 					"mesh_path":	"meshes/Castle_Shared_9.qsmesh",
 					"material_path":	"materials/Castle_Black_9.qsmat"
+				},
+				"Prototype":	{
+					"path":	""
 				}
 			}
 		}, {

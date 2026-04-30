@@ -2,13 +2,12 @@
 #include "ed_camera.h"
 #include "ed_gizmo.h"
 #include "ed_pick.h"
-#include "ed_keybinds.h"
-#include "ed_undo.h"
+#include "ed_commands.h"
 #include "qs_math.h"
 #include "ui/ed_menu_bar.h"
 #include "ui/ed_toolbar.h"
 #include "ui/ed_layout.h"
-#include "ui/ed_status_bar.h"
+#include "ui/ed_layout.h"
 #include "ui/ed_inspector.h"
 #include "ui/ed_hierarchy.h"
 #include "ui/ed_plugin_manager.h"
@@ -1471,6 +1470,21 @@ EditorMode editor_mode(const Editor *editor)
     return editor ? editor->mode : ED_MODE_SCENE;
 }
 
+const char *editor_current_proto_path(const Editor *editor)
+{
+    if (!editor || editor->mode != ED_MODE_PROTOTYPE) return "";
+    /* The stored proto_path is absolute (qs_scene_save needs it that way).
+       Cycle detection compares against project-relative paths from the
+       prototype dropdown / from PrototypeComp paths embedded in .qproto
+       JSON, so we convert here.  Static buffer is fine — only one
+       prototype is "current" at a time and this accessor is only read
+       on the UI thread. */
+    static char rel[1024];
+    qs_project_make_relative(editor->project, editor->proto_path,
+                             rel, sizeof(rel));
+    return rel[0] ? rel : editor->proto_path;
+}
+
 bool editor_open_prototype(Editor *editor, const char *proto_path)
 {
     if (!editor || !proto_path) return false;
@@ -1478,6 +1492,34 @@ bool editor_open_prototype(Editor *editor, const char *proto_path)
         QS_LOG_ERROR("Prototype edit stack full (max depth %d)",
                      EDITOR_PROTO_STACK_DEPTH);
         return false;
+    }
+
+    /* Reject re-entry into a prototype that's already being edited.
+       Without this guard, opening A → A would push the same .qproto
+       repeatedly, exhaust the edit stack, and (worse) recursively load
+       the inner Qs_Scene for each entry. */
+    if (editor->mode == ED_MODE_PROTOTYPE &&
+        editor->proto_path[0] &&
+        strcmp(editor->proto_path, proto_path) == 0)
+    {
+        QS_LOG_WARN("Prototype '%s' is already open for edit at this level", proto_path);
+        return false;
+    }
+    /* Also reject if the candidate appears anywhere up the open chain
+       (would-be cycle: editing A, then drilling A→B→A). */
+    {
+        const char *root = editor->project ? qs_project_path(editor->project) : NULL;
+        for (uint32_t i = 0; i < editor->proto_stack_depth; i++) {
+            (void)i;
+        }
+        if (qs_prototype_would_create_cycle(editor->project, editor->proto_path[0] ? editor->proto_path : "",
+                                            proto_path) && editor->proto_path[0])
+        {
+            QS_LOG_ERROR("Refusing to open '%s': would create cyclic prototype edit (root '%s')",
+                         proto_path, editor->proto_path);
+            (void)root;
+            return false;
+        }
     }
 
     /* Push current scene + camera onto the stack */
