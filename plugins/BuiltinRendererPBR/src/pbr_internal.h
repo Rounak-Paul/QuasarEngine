@@ -14,6 +14,10 @@
 #define QS_CSM_CASCADES    3
 #define QS_SHADOW_MAP_SIZE 2048
 
+/* Desired MSAA sample count for the forward lit pass.  Automatically clamped
+   to the device maximum at attach time.  Set to 1 to disable MSAA. */
+#define PBR_MSAA_SAMPLES   4
+
 /* ----------------------------------------------------------------
    PbrRenderer — plugin-internal per-renderer state.
    The engine now owns: camera, clear_color, name, nodes, renderables,
@@ -48,6 +52,16 @@ struct PbrRenderer {
     Qs_RenderAttachment *shadow_att[QS_CSM_CASCADES]; /* 1024x1024 depth maps  */
     Qs_RenderAttachment *bloom_att[2];        /* half-res bloom ping-pong       */
 
+    /* Plugin-owned MSAA transient resources for the forward lit pass.
+       msaa_color is the MSAA render target; the resolved output goes to hdr_att.
+       msaa_depth is a matching MSAA depth buffer used only during the pass. */
+    Qs_GpuImage    *msaa_color_image;
+    Qs_GpuImageView *msaa_color_view;
+    Qs_GpuImage    *msaa_depth_image;
+    Qs_GpuImageView *msaa_depth_view;
+    uint32_t         current_msaa_samples; /* sample count of the allocated MSAA images */
+    uint32_t         last_w, last_h;       /* viewport dimensions from last on_resize */
+
     /* Shadow sampling views (one per cascade, created from shadow_att images).
        The engine manages the depth-attachment view via qs_attachment_view();
        these are separate sampler views created by the plugin. */
@@ -75,11 +89,15 @@ typedef struct PbrPassResources {
     Qs_GpuPipeline            *shadow_pipeline;
     Qs_GpuPipelineLayout      *shadow_layout;
 
-    /* Forward lit pass */
-    Qs_GpuPipeline            *forward_pipeline;
-    Qs_GpuPipeline            *forward_wireframe_pipeline;
+    /* Forward lit pass
+     * One pipeline pair per MSAA tier: index 0=1×, 1=2×, 2=4×, 3=8×.
+     * Only entries up to [sample_count_to_idx(dev_max_samples)] are created. */
+#define PBR_MSAA_TIER_COUNT 4
+    Qs_GpuPipeline            *forward_pipelines[PBR_MSAA_TIER_COUNT];
+    Qs_GpuPipeline            *forward_wireframe_pipelines[PBR_MSAA_TIER_COUNT];
     Qs_GpuPipelineLayout      *forward_layout;
     Qs_GpuDescriptorSetLayout *frame_set_layout;
+    uint32_t                   dev_max_samples; /* highest tier supported by the device */
 
     /* Bloom (downsample / upsample) */
     Qs_GpuPipeline            *bloom_down_pipeline;
@@ -137,8 +155,9 @@ void pbr_pass_resources_shutdown(Qs_GpuContext *gpu, PbrPassResources *ps);
    Exposed to the editor via the plugin's on_editor_ui callback.
    ---------------------------------------------------------------- */
 typedef struct PbrPostProcessSettings {
-    float bloom_strength;    /* blend factor for bloom over HDR (default 0.04) */
-    float vignette_strength; /* vignette power exponent        (default 0.35)  */
+    float    bloom_strength;    /* blend factor for bloom over HDR (default 0.04) */
+    float    vignette_strength; /* vignette power exponent        (default 0.35)  */
+    uint32_t msaa_sample_count; /* MSAA tier: 1=off, 2/4/8=on (default PBR_MSAA_SAMPLES) */
 } PbrPostProcessSettings;
 
 /* Returns a pointer to the single mutable post-process settings instance. */

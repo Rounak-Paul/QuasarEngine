@@ -139,6 +139,7 @@ typedef struct Qs_GpuImageDesc {
     uint32_t          mip_levels;    ///< 1 = no mips
     Qs_GpuImageFormat format;
     Qs_GpuImageUsage  usage;
+    uint32_t          sample_count;  ///< 1 = no MSAA (default), 2/4/8 = multisample
 } Qs_GpuImageDesc;
 
 typedef struct Qs_GpuImageViewDesc {
@@ -215,6 +216,7 @@ typedef struct Qs_GpuGraphicsPipelineDesc {
     Qs_GpuImageFormat          color_format;
     Qs_GpuImageFormat          depth_format;   ///< QS_GPU_FORMAT_DEPTH_AUTO = no depth attachment
     bool                       wireframe;      ///< Draw triangles as lines (VK_POLYGON_MODE_LINE)
+    uint32_t                   sample_count;   ///< 1 = no MSAA (default), 2/4/8 = multisample
 } Qs_GpuGraphicsPipelineDesc;
 
 typedef struct Qs_GpuImageBarrier {
@@ -229,6 +231,9 @@ typedef struct Qs_GpuImageBarrier {
 typedef struct Qs_GpuRenderTarget {
     Qs_GpuImageView *color;           ///< Color attachment (required)
     Qs_GpuImageView *depth;           ///< Depth attachment (NULL = no depth)
+    /// When non-NULL and color is a multisample image, the resolved single-sample
+    /// output is written to this view automatically at vkCmdEndRendering.
+    Qs_GpuImageView *resolve_target;  ///< MSAA resolve destination (NULL = no resolve)
     float            clear_color[4];  ///< RGBA clear value for color attachment
     float            clear_depth;     ///< Depth clear value (typically 1.0)
     uint32_t         width;
@@ -263,6 +268,10 @@ typedef void (*Qs_ViewportResizeFn)(Qs_Viewport *viewport, uint32_t width,
 
 /// Returns the engine's GPU context.  Valid after qs_engine_create().
 Qs_GpuContext *qs_engine_gpu(Qs_Engine *engine);
+
+/// Returns the maximum multisample count supported by the device for color
+/// and depth images used as render targets (always a power of 2, minimum 1).
+uint32_t qs_gpu_max_sample_count(Qs_GpuContext *gpu);
 
 /* ================================================================
    BUFFER API
