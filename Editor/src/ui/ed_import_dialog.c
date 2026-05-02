@@ -22,6 +22,7 @@
 
 #include "ed_import_dialog.h"
 #include "quasar.h"
+#include "../ed_style.h"
 #include "qs_asset.h"
 #include "qs_asset_pack.h"
 #include "qs_job.h"
@@ -448,6 +449,7 @@ void ed_import_dialog_open(const char *source_path)
         return;
     }
 
+    ca_window_set_scale(s_win, ED_UI_SCALE);
     s_pending_progress = false;
 
     /* Build static shell + initial preview content in one pass. */

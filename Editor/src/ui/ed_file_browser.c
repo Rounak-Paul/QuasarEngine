@@ -1,5 +1,6 @@
 #include "ed_file_browser.h"
 #include "ca_theme.h"
+#include "../ed_style.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -700,6 +701,8 @@ void ed_file_browser_open(const EdFBDesc *desc)
         s_fb.open = false;
         return;
     }
+
+    ca_window_set_scale(s_fb.window, ED_UI_SCALE);
 
     /* Build UI tree in the new window */
     build_window_ui();

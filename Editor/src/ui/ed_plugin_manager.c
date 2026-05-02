@@ -1,5 +1,6 @@
 #include "ed_plugin_manager.h"
 #include "editor.h"
+#include "../ed_style.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -206,6 +207,8 @@ void ed_plugin_manager_open(void)
         .height = 360,
     });
     if (!s_win) return;
+
+    ca_window_set_scale(s_win, ED_UI_SCALE);
 
     ca_ui_begin(s_win, &(Ca_DivDesc){
         .direction = CA_VERTICAL,
