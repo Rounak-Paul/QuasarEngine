@@ -1,6 +1,6 @@
 {
 	"name":	"Scene",
-	"next_entity_id":	4,
+	"next_entity_id":	6,
 	"entities":	[{
 			"name":	"Sun",
 			"enabled":	true,
@@ -41,7 +41,7 @@
 					"tag":	"Untagged"
 				},
 				"Transform":	{
-					"position":	[0, 1, 0],
+					"position":	[0, 0.34139478206634521, 0],
 					"rotation":	[0, 0, 0, 1],
 					"scale":	[1, 1, 1]
 				},
