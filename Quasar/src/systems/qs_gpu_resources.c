@@ -221,11 +221,7 @@ void qs_texture_extents(const Qs_Texture *t, uint32_t *out_w, uint32_t *out_h)
 
 uint32_t qs_texture_count(void)
 {
-    if (!g_texture_sys) return 0;
-    uint32_t n = 0;
-    for (uint32_t i = 0; i < QS_MAX_TEXTURES; i++)
-        if (g_texture_sys->textures[i].in_use) n++;
-    return n;
+    return g_texture_sys ? g_texture_sys->count : 0;
 }
 
 Qs_Texture *qs_texture_at(uint32_t index)
@@ -779,11 +775,7 @@ void qs_material_update_params(Qs_Material *mat, const Qs_PBRParams *params)
 
 uint32_t qs_material_count(void)
 {
-    if (!g_material_sys) return 0;
-    uint32_t n = 0;
-    for (uint32_t i = 0; i < QS_MAX_MATERIALS; i++)
-        if (g_material_sys->materials[i].in_use) n++;
-    return n;
+    return g_material_sys ? g_material_sys->count : 0;
 }
 
 Qs_Material *qs_material_at(uint32_t index)

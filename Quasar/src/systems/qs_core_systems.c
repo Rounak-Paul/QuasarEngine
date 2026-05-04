@@ -2,6 +2,7 @@
 
 #include "qs_log.h"
 #include "qs_system.h"
+#include <causality.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdarg.h>
@@ -46,6 +47,7 @@ typedef struct {
     FILE          *file;
     Qs_LogListenerFn listener;
     void            *listener_data;
+    Ca_Mutex        *mutex;   /* protects entries/storage/count/unflushed */
 } Qs_LogState;
 
 static Qs_LogState *g_log = NULL;
@@ -98,6 +100,9 @@ static bool log_system_init(Qs_System *system, Qs_Engine *engine)
     state->storage     = calloc(state->capacity, sizeof(Qs_LogStorage));
     if (!state->entries || !state->storage) return false;
 
+    state->mutex = ca_mutex_create();
+    if (!state->mutex) { free(state->entries); free(state->storage); return false; }
+
     state->min_level  = QS_LOG_DEBUG;
     state->start_time = get_time_sec();
     state->file       = fopen(QS_LOG_FILE_NAME, "w");
@@ -138,6 +143,8 @@ static void log_system_shutdown(Qs_System *system, Qs_Engine *engine)
     state->storage = NULL;
     state->count   = 0;
 
+    if (state->mutex) { ca_mutex_destroy(state->mutex); state->mutex = NULL; }
+
     g_log = NULL;
 }
 
@@ -165,7 +172,7 @@ void qs_log(Qs_LogLevel level, const char *fmt, ...)
 
     if (level < g_log->min_level) return;
 
-    /* Format message */
+    /* Format message (outside lock — uses only local stack) */
     char buf[QS_LOG_MSG_MAX];
     va_list args;
     va_start(args, fmt);
@@ -174,12 +181,24 @@ void qs_log(Qs_LogLevel level, const char *fmt, ...)
 
     double elapsed = get_time_sec() - g_log->start_time;
 
+    /* Print to stdout first (outside lock) so interactive consoles stay
+       responsive even if the storage lock is briefly contended. */
+    char ts[16];
+    format_timestamp(elapsed, ts, sizeof(ts));
+    printf("%s[%s] [%s] %s\033[0m\n",
+           g_level_colors[level], ts, g_level_labels[level], buf);
+
+    if (g_log->mutex) ca_mutex_lock(g_log->mutex);
+
     /* Grow arrays if needed */
     if (g_log->count == g_log->capacity) {
         uint32_t new_cap = g_log->capacity * 2;
         Qs_LogEntry   *new_entries = realloc(g_log->entries, new_cap * sizeof(Qs_LogEntry));
         Qs_LogStorage *new_storage = realloc(g_log->storage, new_cap * sizeof(Qs_LogStorage));
-        if (!new_entries || !new_storage) return;
+        if (!new_entries || !new_storage) {
+            if (g_log->mutex) ca_mutex_unlock(g_log->mutex);
+            return;
+        }
         g_log->entries  = new_entries;
         g_log->storage  = new_storage;
         g_log->capacity = new_cap;
@@ -188,7 +207,10 @@ void qs_log(Qs_LogLevel level, const char *fmt, ...)
     /* Store message */
     size_t msg_len = strlen(buf);
     char *text = malloc(msg_len + 1);
-    if (!text) return;
+    if (!text) {
+        if (g_log->mutex) ca_mutex_unlock(g_log->mutex);
+        return;
+    }
     memcpy(text, buf, msg_len + 1);
 
     uint32_t idx = g_log->count++;
@@ -199,17 +221,14 @@ void qs_log(Qs_LogLevel level, const char *fmt, ...)
         .message   = text,
     };
 
-    /* Print to stdout with color */
-    char ts[16];
-    format_timestamp(elapsed, ts, sizeof(ts));
-    printf("%s[%s] [%s] %s\033[0m\n", g_level_colors[level], ts, g_level_labels[level], buf);
-
     /* Auto-flush to file at threshold */
     g_log->unflushed++;
     if (g_log->unflushed >= QS_LOG_FLUSH_THRESH)
         flush_to_file(g_log);
 
-    /* Notify listener */
+    if (g_log->mutex) ca_mutex_unlock(g_log->mutex);
+
+    /* Notify listener (outside lock to avoid re-entrancy deadlock) */
     if (g_log->listener)
         g_log->listener(g_log->listener_data);
 }
@@ -370,7 +389,6 @@ void qs_event_fire(Qs_EventBus *bus, Qs_EventId id,
 #include "qs_job.h"
 #include "qs_log.h"
 #include "qs_system.h"
-#include <causality.h>
 #include <stdlib.h>
 
 #ifdef _WIN32
@@ -633,7 +651,12 @@ void qs_job_dispatch(Qs_JobSystem* sys, const Qs_JobDesc* job,
         .data    = job->data,
         .counter = counter,
     };
-    queue_push(&sys->queue, &entry);
+    if (!queue_push(&sys->queue, &entry)) {
+        /* Queue full: roll back the counter increment to prevent qs_job_wait
+           from hanging forever waiting on a job that was never queued. */
+        QS_LOG_WARN("Job queue full — job dropped (increase QS_JOB_QUEUE_CAP)");
+        if (counter) counter_decrement_and_notify(counter);
+    }
 }
 
 void qs_job_dispatch_batch(Qs_JobSystem* sys, const Qs_JobDesc* jobs,

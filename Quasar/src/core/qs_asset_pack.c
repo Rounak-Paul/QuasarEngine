@@ -949,7 +949,7 @@ Qs_Material *qs_asset_cache_material(Qs_Engine *engine, const char *abs_path)
     if (len <= 0) { fclose(f); return NULL; }
     char *buf = malloc((size_t)len + 1);
     if (!buf) { fclose(f); return NULL; }
-    fread(buf, 1, (size_t)len, f); buf[len] = '\0'; fclose(f);
+    size_t nread = fread(buf, 1, (size_t)len, f); buf[nread] = '\0'; fclose(f);
 
     cJSON *root = cJSON_Parse(buf);
     free(buf);

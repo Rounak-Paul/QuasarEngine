@@ -50,8 +50,9 @@ struct Qs_Engine {
 static double engine_clock(void)
 {
 #ifdef _WIN32
-    LARGE_INTEGER freq, counter;
-    QueryPerformanceFrequency(&freq);
+    static LARGE_INTEGER freq = {0};
+    if (!freq.QuadPart) QueryPerformanceFrequency(&freq);
+    LARGE_INTEGER counter;
     QueryPerformanceCounter(&counter);
     return (double)counter.QuadPart / (double)freq.QuadPart;
 #else

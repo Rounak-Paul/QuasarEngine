@@ -489,9 +489,24 @@ static const Qs_FieldInfo *find_field_info(const Qs_TypeInfo *info,
 void qs_prototype_apply_overrides(Qs_PrototypeComp *pc)
 {
     if (!pc || !pc->inner || pc->override_count == 0) return;
+
+    /* Cache entity lookups within this call to avoid O(N*M) scans when
+       multiple overrides share the same inner_entity_id. */
+    enum { CACHE_CAP = 16 };
+    struct { uint32_t id; Qs_Entity e; } cache[CACHE_CAP];
+    uint32_t cn = 0;
+
     for (uint32_t i = 0; i < pc->override_count; i++) {
         const Qs_PrototypeOverride *o = &pc->overrides[i];
-        Qs_Entity e = qs_scene_find_by_id(pc->inner, o->inner_entity_id);
+
+        Qs_Entity e = QS_ENTITY_INVALID;
+        for (uint32_t c = 0; c < cn; c++) {
+            if (cache[c].id == o->inner_entity_id) { e = cache[c].e; break; }
+        }
+        if (e == QS_ENTITY_INVALID) {
+            e = qs_scene_find_by_id(pc->inner, o->inner_entity_id);
+            if (cn < CACHE_CAP) { cache[cn].id = o->inner_entity_id; cache[cn].e = e; cn++; }
+        }
         if (e == QS_ENTITY_INVALID) continue;
 
         Qs_ComponentType *ct = qs_component_find(o->comp_name);
@@ -900,6 +915,10 @@ bool qs_entity_enabled(const Qs_Scene *scene, Qs_Entity entity)
 void qs_entity_set_parent(Qs_Scene *scene, Qs_Entity entity, Qs_Entity parent)
 {
     if (!scene || entity >= QS_MAX_ENTITIES) return;
+    if (parent == entity) {
+        QS_LOG_WARN("qs_entity_set_parent: entity %u cannot be its own parent", entity);
+        return;
+    }
     scene->parent_entity[entity] = parent;
 }
 
@@ -1055,8 +1074,10 @@ cJSON *qs_scene_to_json(const Qs_Scene *scene)
     cJSON *entities = cJSON_CreateArray();
     cJSON_AddItemToObject(root, "entities", entities);
 
-    /* Build entity → array-index map for parent indices */
-    int entity_to_index[QS_MAX_ENTITIES];
+    /* Build entity → array-index map for parent indices.
+       Use heap to avoid a ~16 KB stack allocation. */
+    int *entity_to_index = calloc(QS_MAX_ENTITIES, sizeof(int));
+    if (!entity_to_index) { cJSON_Delete(root); return NULL; }
     for (int i = 0; i < QS_MAX_ENTITIES; i++) entity_to_index[i] = -1;
     int idx = 0;
     for (uint32_t e = bit_next_set(scene->alive, 0);
@@ -1144,6 +1165,7 @@ cJSON *qs_scene_to_json(const Qs_Scene *scene)
         cJSON_AddItemToArray(entities, ent);
     }
 
+    free(entity_to_index);
     return root;
 }
 
@@ -1664,15 +1686,10 @@ void qs_scene_submit_renderables(Qs_Scene *scene,
         }
     }
 
-    /* Light components — only submit at the top level (parent is identity)
-       to avoid duplicating lights from every prototype instance. */
+    /* Light components — only submit at the top level (not inside a prototype
+       recursion) to avoid duplicating lights from every prototype instance. */
     if (s_light_comp_type) {
-        bool top_level = true;
-        for (int i = 0; i < 16 && top_level; i++) {
-            float v = parent_world[i];
-            float ref = (i % 5 == 0) ? 1.0f : 0.0f;
-            if (v != ref) top_level = false;
-        }
+        bool top_level = (s_proto_recursion_depth == 0);
         if (top_level) {
             for (Qs_Entity e = qs_scene_first(scene, s_light_comp_type);
                  e != QS_ENTITY_INVALID;
