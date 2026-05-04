@@ -78,4 +78,11 @@ void qs_texture_extents(const Qs_Texture *texture,
 /// Returns the mip level count.
 uint32_t qs_texture_mip_levels(const Qs_Texture *texture);
 
+/// Returns the number of live (in-use) textures managed by the texture system.
+uint32_t qs_texture_count(void);
+
+/// Returns the i-th live texture (0-based, dense order).
+/// Returns NULL if index >= qs_texture_count().
+Qs_Texture *qs_texture_at(uint32_t index);
+
 #endif

@@ -72,4 +72,32 @@ void qs_project_resolve(const Qs_Project *project,
                         const char *path,
                         char *out, size_t out_size);
 
+/* ================================================================
+   ASSET SCAN — filesystem discovery of packed assets
+   ================================================================
+   Walk the project directory recursively and collect every
+   .qstex / .qsmat / .qsmesh file.  Results are returned as
+   project-relative paths.  Call before opening asset pickers.
+   ================================================================ */
+
+/// Scan the project directory for .qstex / .qsmat / .qsmesh files.
+/// Populates the internal texture/material/mesh path lists.
+/// Safe to call multiple times (clears previous results first).
+void qs_project_scan_assets(Qs_Project *project);
+
+/// Number of .qstex files found by the last qs_project_scan_assets() call.
+uint32_t    qs_project_texture_count  (const Qs_Project *project);
+/// Project-relative path to the i-th .qstex file, or NULL if out of range.
+const char *qs_project_texture_path   (const Qs_Project *project, uint32_t index);
+
+/// Number of .qsmat files found by the last qs_project_scan_assets() call.
+uint32_t    qs_project_material_count (const Qs_Project *project);
+/// Project-relative path to the i-th .qsmat file, or NULL if out of range.
+const char *qs_project_material_path  (const Qs_Project *project, uint32_t index);
+
+/// Number of .qsmesh files found by the last qs_project_scan_assets() call.
+uint32_t    qs_project_mesh_count     (const Qs_Project *project);
+/// Project-relative path to the i-th .qsmesh file, or NULL if out of range.
+const char *qs_project_mesh_path      (const Qs_Project *project, uint32_t index);
+
 #endif

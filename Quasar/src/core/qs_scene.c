@@ -19,6 +19,10 @@
 #include <intrin.h>
 #endif
 
+/* Forward declaration — defined later in the file */
+static void resolve_path(const Qs_Scene *scene, const char *rel,
+                         char *abs, size_t abs_size);
+
 /* ================================================================
    LIMITS
    ================================================================ */
@@ -256,6 +260,24 @@ static void mesh_comp_init(void *comp, Qs_Scene *scene, Qs_Entity entity)
     (void)scene; (void)entity;
     Qs_MeshComp *mc = (Qs_MeshComp *)comp;
     mc->visible = true;
+}
+
+static void mesh_comp_destroy(void *comp, Qs_Scene *scene, Qs_Entity entity)
+{
+    (void)entity;
+    Qs_MeshComp *mc = (Qs_MeshComp *)comp;
+    if (mc->mesh_path[0]) {
+        char abs[1024];
+        resolve_path(scene, mc->mesh_path, abs, sizeof(abs));
+        qs_asset_cache_release_mesh(abs);
+        mc->mesh = NULL;
+    }
+    if (mc->material_path[0]) {
+        char abs[1024];
+        resolve_path(scene, mc->material_path, abs, sizeof(abs));
+        qs_asset_cache_release_material(abs);
+        mc->material = NULL;
+    }
 }
 
 static void light_comp_init(void *comp, Qs_Scene *scene, Qs_Entity entity)
@@ -638,6 +660,7 @@ static void register_builtin_types(Qs_Engine *engine)
         .data_size = sizeof(Qs_MeshComp),
         .type_info = &s_mesh_comp_type_info,
         .init      = mesh_comp_init,
+        .destroy   = mesh_comp_destroy,
     });
 
     s_light_comp_type = qs_component_register(engine, &(Qs_ComponentTypeDesc){

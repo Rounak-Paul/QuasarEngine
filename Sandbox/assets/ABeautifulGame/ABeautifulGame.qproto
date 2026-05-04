@@ -1,6 +1,6 @@
 {
 	"name":	"Prototype",
-	"next_entity_id":	255,
+	"next_entity_id":	408,
 	"entities":	[{
 			"name":	"ABeautifulGame",
 			"enabled":	true,
@@ -124,8 +124,8 @@
 				},
 				"MeshComp":	{
 					"visible":	true,
-					"mesh_path":	"meshes/Chessboard_4.qsmesh",
-					"material_path":	"materials/Chessboard_4.qsmat"
+					"mesh_path":	"assets/ABeautifulGame/meshes/Chessboard_4.qsmesh",
+					"material_path":	"assets/ABeautifulGame/materials/Chessboard_4.qsmat"
 				}
 			}
 		}, {

@@ -140,14 +140,30 @@ bool qs_asset_cook(const Qs_ImportResult *result,
    ================================================================ */
 
 /// Get-or-load a GPU mesh from a .qsmesh file.  Returns NULL on failure.
+/// Each successful call increments the cache entry's ref count.
 Qs_Mesh *qs_asset_cache_mesh(Qs_Engine *engine, const char *abs_path);
 
 /// Get-or-load a PBR material from a .qsmat file.  Texture references
 /// inside the material are resolved through qs_asset_cache_texture.
+/// Each successful call increments the cache entry's ref count.
 Qs_Material *qs_asset_cache_material(Qs_Engine *engine, const char *abs_path);
 
 /// Get-or-load a GPU texture from a .qstex file.
+/// Each successful call increments the cache entry's ref count.
 Qs_Texture *qs_asset_cache_texture(Qs_Engine *engine, const char *abs_path);
+
+/// Release a ref acquired by qs_asset_cache_mesh.
+/// The GPU resource is destroyed when the ref count reaches zero.
+void qs_asset_cache_release_mesh(const char *abs_path);
+
+/// Release a ref acquired by qs_asset_cache_material.
+/// Also releases the material's internally-acquired texture refs.
+/// The GPU resource is destroyed when the ref count reaches zero.
+void qs_asset_cache_release_material(const char *abs_path);
+
+/// Release a ref acquired by qs_asset_cache_texture.
+/// The GPU resource is destroyed when the ref count reaches zero.
+void qs_asset_cache_release_texture(const char *abs_path);
 
 /// Drop and destroy every cached entry.  Called at asset-system shutdown.
 void qs_asset_cache_clear(void);

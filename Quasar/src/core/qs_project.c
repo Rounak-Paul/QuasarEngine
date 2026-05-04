@@ -14,6 +14,7 @@
     #define S_ISDIR(m) (((m) & _S_IFMT) == _S_IFDIR)
   #endif
 #else
+  #include <dirent.h>
   #define qs_mkdir(p) mkdir((p), 0755)
 #endif
 
@@ -23,6 +24,7 @@
 
 #define QS_MAX_PATH       1024
 #define QS_MAX_PROTOTYPES 1024
+#define QS_MAX_SCAN       4096   /* max scanned assets per type */
 
 struct Qs_Project {
     char name[64];
@@ -32,6 +34,20 @@ struct Qs_Project {
     /* Asset DB — project-relative paths of registered prototypes */
     char  *prototypes[QS_MAX_PROTOTYPES];
     uint32_t prototype_count;
+
+    /* Scanned assets — populated by qs_project_scan_assets().
+       Stored as project-relative paths (heap-allocated strings). */
+    char    **scan_textures;
+    uint32_t  scan_tex_count;
+    uint32_t  scan_tex_cap;
+
+    char    **scan_materials;
+    uint32_t  scan_mat_count;
+    uint32_t  scan_mat_cap;
+
+    char    **scan_meshes;
+    uint32_t  scan_mesh_count;
+    uint32_t  scan_mesh_cap;
 };
 
 static bool path_is_absolute(const char *p)
@@ -262,6 +278,15 @@ void qs_project_destroy(Qs_Project *project)
     if (!project) return;
     for (uint32_t i = 0; i < project->prototype_count; i++)
         free(project->prototypes[i]);
+
+    /* Free scan arrays */
+    for (uint32_t i = 0; i < project->scan_tex_count;  i++) free(project->scan_textures[i]);
+    for (uint32_t i = 0; i < project->scan_mat_count;  i++) free(project->scan_materials[i]);
+    for (uint32_t i = 0; i < project->scan_mesh_count; i++) free(project->scan_meshes[i]);
+    free(project->scan_textures);
+    free(project->scan_materials);
+    free(project->scan_meshes);
+
     free(project);
 }
 
@@ -351,14 +376,142 @@ bool qs_project_unregister_prototype(Qs_Project *project, const char *path)
     return false;
 }
 
+/* ================================================================
+   ASSET SCAN
+   ================================================================ */
+
+static bool str_ends_with(const char *s, const char *suffix)
+{
+    size_t slen = strlen(s);
+    size_t sflen = strlen(suffix);
+    if (sflen > slen) return false;
+    return strcmp(s + slen - sflen, suffix) == 0;
+}
+
+static void scan_push(char ***arr, uint32_t *count, uint32_t *cap, const char *path)
+{
+    if (*count >= QS_MAX_SCAN) return;
+    if (*count >= *cap) {
+        uint32_t new_cap = *cap ? *cap * 2 : 64;
+        if (new_cap > QS_MAX_SCAN) new_cap = QS_MAX_SCAN;
+        char **tmp = (char **)realloc(*arr, new_cap * sizeof(char *));
+        if (!tmp) return;
+        *arr = tmp;
+        *cap = new_cap;
+    }
+    (*arr)[(*count)++] = strdup(path);
+}
+
+static void scan_dir_recursive(Qs_Project *proj, const char *abs_dir)
+{
+#ifdef _WIN32
+    /* Windows: use FindFirstFile / FindNextFile */
+    char pattern[QS_MAX_PATH];
+    snprintf(pattern, sizeof(pattern), "%s\\*", abs_dir);
+
+    WIN32_FIND_DATAA fd;
+    HANDLE h = FindFirstFileA(pattern, &fd);
+    if (h == INVALID_HANDLE_VALUE) return;
+    do {
+        if (strcmp(fd.cFileName, ".") == 0 || strcmp(fd.cFileName, "..") == 0)
+            continue;
+        char child[QS_MAX_PATH];
+        snprintf(child, sizeof(child), "%s/%s", abs_dir, fd.cFileName);
+        if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
+            scan_dir_recursive(proj, child);
+        } else {
+            char rel[QS_MAX_PATH];
+            qs_project_make_relative(proj, child, rel, sizeof(rel));
+            if      (str_ends_with(child, ".qstex"))  scan_push(&proj->scan_textures,  &proj->scan_tex_count,  &proj->scan_tex_cap,  rel);
+            else if (str_ends_with(child, ".qsmat"))  scan_push(&proj->scan_materials, &proj->scan_mat_count,  &proj->scan_mat_cap,  rel);
+            else if (str_ends_with(child, ".qsmesh")) scan_push(&proj->scan_meshes,    &proj->scan_mesh_count, &proj->scan_mesh_cap, rel);
+        }
+    } while (FindNextFileA(h, &fd));
+    FindClose(h);
+#else
+    DIR *d = opendir(abs_dir);
+    if (!d) return;
+
+    struct dirent *entry;
+    while ((entry = readdir(d)) != NULL) {
+        if (entry->d_name[0] == '.') continue; /* skip . .. and hidden */
+
+        char child[QS_MAX_PATH];
+        snprintf(child, sizeof(child), "%s/%s", abs_dir, entry->d_name);
+
+        struct stat st;
+        if (stat(child, &st) != 0) continue;
+
+        if (S_ISDIR(st.st_mode)) {
+            scan_dir_recursive(proj, child);
+        } else {
+            char rel[QS_MAX_PATH];
+            qs_project_make_relative(proj, child, rel, sizeof(rel));
+            if      (str_ends_with(child, ".qstex"))  scan_push(&proj->scan_textures,  &proj->scan_tex_count,  &proj->scan_tex_cap,  rel);
+            else if (str_ends_with(child, ".qsmat"))  scan_push(&proj->scan_materials, &proj->scan_mat_count,  &proj->scan_mat_cap,  rel);
+            else if (str_ends_with(child, ".qsmesh")) scan_push(&proj->scan_meshes,    &proj->scan_mesh_count, &proj->scan_mesh_cap, rel);
+        }
+    }
+    closedir(d);
+#endif
+}
+
+void qs_project_scan_assets(Qs_Project *project)
+{
+    if (!project) return;
+
+    /* Clear previous results */
+    for (uint32_t i = 0; i < project->scan_tex_count;  i++) free(project->scan_textures[i]);
+    for (uint32_t i = 0; i < project->scan_mat_count;  i++) free(project->scan_materials[i]);
+    for (uint32_t i = 0; i < project->scan_mesh_count; i++) free(project->scan_meshes[i]);
+    project->scan_tex_count  = 0;
+    project->scan_mat_count  = 0;
+    project->scan_mesh_count = 0;
+
+    scan_dir_recursive(project, project->path);
+
+    QS_LOG_INFO("Asset scan: %u textures, %u materials, %u meshes",
+                project->scan_tex_count, project->scan_mat_count,
+                project->scan_mesh_count);
+}
+
+uint32_t qs_project_texture_count(const Qs_Project *p)
+{
+    return p ? p->scan_tex_count : 0;
+}
+const char *qs_project_texture_path(const Qs_Project *p, uint32_t i)
+{
+    if (!p || i >= p->scan_tex_count) return NULL;
+    return p->scan_textures[i];
+}
+
+uint32_t qs_project_material_count(const Qs_Project *p)
+{
+    return p ? p->scan_mat_count : 0;
+}
+const char *qs_project_material_path(const Qs_Project *p, uint32_t i)
+{
+    if (!p || i >= p->scan_mat_count) return NULL;
+    return p->scan_materials[i];
+}
+
+uint32_t qs_project_mesh_count(const Qs_Project *p)
+{
+    return p ? p->scan_mesh_count : 0;
+}
+const char *qs_project_mesh_path(const Qs_Project *p, uint32_t i)
+{
+    if (!p || i >= p->scan_mesh_count) return NULL;
+    return p->scan_meshes[i];
+}
+
 uint32_t qs_project_check_assets(const Qs_Project *project)
 {
-    if (!project) return 0;
     uint32_t missing = 0;
-    char abs[QS_MAX_PATH];
+    char abspath[QS_MAX_PATH];
     for (uint32_t i = 0; i < project->prototype_count; i++) {
-        qs_project_resolve(project, project->prototypes[i], abs, sizeof(abs));
-        if (!file_exists(abs)) {
+        qs_project_resolve(project, project->prototypes[i], abspath, sizeof(abspath));
+        if (!file_exists(abspath)) {
             QS_LOG_WARN("Asset DB: missing prototype '%s'",
                         project->prototypes[i]);
             missing++;

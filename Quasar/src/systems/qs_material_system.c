@@ -348,3 +348,55 @@ void qs_material_set_texture(Qs_Material *mat, uint32_t slot, Qs_Texture *tex)
     };
     *has_flags[slot] = (tex != NULL) ? 1 : 0;
 }
+
+Qs_Texture *qs_material_get_texture(const Qs_Material *mat, uint32_t slot)
+{
+    if (!mat || !mat->in_use || slot >= QS_PBR_BINDING_COUNT) return NULL;
+    const Qs_Texture * const stored[] = {
+        mat->base_color_texture,
+        mat->metallic_roughness_texture,
+        mat->normal_texture,
+        mat->occlusion_texture,
+        mat->emissive_texture,
+    };
+    return (Qs_Texture *)stored[slot];
+}
+
+void qs_material_update_params(Qs_Material *mat, const Qs_PBRParams *params)
+{
+    if (!mat || !mat->in_use || !params) return;
+    /* Preserve has_*_tex flags — they are owned by set_texture, not by params. */
+    uint32_t has_base  = mat->params.has_base_color_tex;
+    uint32_t has_mr    = mat->params.has_metallic_roughness_tex;
+    uint32_t has_norm  = mat->params.has_normal_tex;
+    uint32_t has_occ   = mat->params.has_occlusion_tex;
+    uint32_t has_emit  = mat->params.has_emissive_tex;
+    mat->params = *params;
+    mat->params.has_base_color_tex         = has_base;
+    mat->params.has_metallic_roughness_tex = has_mr;
+    mat->params.has_normal_tex             = has_norm;
+    mat->params.has_occlusion_tex          = has_occ;
+    mat->params.has_emissive_tex           = has_emit;
+}
+
+uint32_t qs_material_count(void)
+{
+    if (!g_material_sys) return 0;
+    uint32_t n = 0;
+    for (uint32_t i = 0; i < QS_MAX_MATERIALS; i++)
+        if (g_material_sys->materials[i].in_use) n++;
+    return n;
+}
+
+Qs_Material *qs_material_at(uint32_t index)
+{
+    if (!g_material_sys) return NULL;
+    uint32_t seen = 0;
+    for (uint32_t i = 0; i < QS_MAX_MATERIALS; i++) {
+        if (g_material_sys->materials[i].in_use) {
+            if (seen == index) return &g_material_sys->materials[i];
+            seen++;
+        }
+    }
+    return NULL;
+}

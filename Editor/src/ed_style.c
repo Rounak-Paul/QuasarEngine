@@ -749,6 +749,35 @@ const char *g_editor_css =
     "  corner-radius: " ED_R_SM ";"
     "}"
 
+    /* ---- Material editor (inline in MeshComp inspector section) ---- */
+
+    ".mat-subsection-label {"
+    "  color: " ED_COL_TEXT_MEDIUM ";"
+    "  font-size: " ED_FS "px;"
+    "  font-weight: bold;"
+    "  width: 100%;"
+    "  padding: 4px 8px 2px 8px;"
+    "}"
+
+    ".mat-mesh-path-label {"
+    "  color: " ED_COL_TEXT_MUTED ";"
+    "  font-size: " ED_FS "px;"
+    "  width: 100%;"
+    "  text-align: left;"
+    "  padding-left: 2px;"
+    "}"
+
+    ".mat-tex-select {"
+    "  width: 100%;"
+    "  height: " ED_H_INPUT_SMALL "px;"
+    "  background: " ED_COL_VOID ";"
+    "  color: " ED_COL_TEXT_MUTED ";"
+    "  font-size: " ED_FS "px;"
+    "  padding-left: 6px;"
+    "  padding-right: 18px;"
+    "  corner-radius: " ED_R_SM ";"
+    "}"
+
     /* ---- Import Asset dialog ---- */
     ".import-root {"
     "  background: " ED_COL_ELEVATED ";"

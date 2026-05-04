@@ -216,3 +216,25 @@ void qs_texture_extents(const Qs_Texture *t, uint32_t *out_w, uint32_t *out_h)
     if (out_w) *out_w = t ? t->width  : 0;
     if (out_h) *out_h = t ? t->height : 0;
 }
+
+uint32_t qs_texture_count(void)
+{
+    if (!g_texture_sys) return 0;
+    uint32_t n = 0;
+    for (uint32_t i = 0; i < QS_MAX_TEXTURES; i++)
+        if (g_texture_sys->textures[i].in_use) n++;
+    return n;
+}
+
+Qs_Texture *qs_texture_at(uint32_t index)
+{
+    if (!g_texture_sys) return NULL;
+    uint32_t seen = 0;
+    for (uint32_t i = 0; i < QS_MAX_TEXTURES; i++) {
+        if (g_texture_sys->textures[i].in_use) {
+            if (seen == index) return &g_texture_sys->textures[i];
+            seen++;
+        }
+    }
+    return NULL;
+}

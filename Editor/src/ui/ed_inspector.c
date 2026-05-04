@@ -3,7 +3,9 @@
 #include "ed_layout.h"
 #include "ed_commands.h"
 #include "ca_theme.h"
+#include "qs_asset_pack.h"
 
+#include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -43,6 +45,11 @@ typedef struct InputBinding {
     bool              proto_had_before; ///< Override existed at focus-gain.
     uint8_t           before_buf[256];
     uint8_t           proto_before_buf[256];
+    /* ---- Material PBR param editing (comp_type == NULL when active) ---- */
+    bool              is_mat_param;
+    Qs_Material      *mat;              ///< Target material (non-NULL when is_mat_param).
+    uint32_t          mat_param_offset; ///< Byte offset into Qs_PBRParams.
+    uint32_t          mat_vec_index;    ///< Element index within a float vector field.
 } InputBinding;
 
 /* Resolves the source scene + entity for the inspector to display.  When
@@ -101,6 +108,39 @@ static const char *s_axis_style[4] = {
     "inspector-axis-z", "inspector-axis-w"
 };
 
+/* ================================================================
+   MATERIAL EDITOR STATE
+   ================================================================ */
+
+/* Material option list for the material-selector dropdown.
+   s_mat_paths — project-relative path to each .qsmat.
+   Materials are loaded on demand (not preloaded) to avoid holding refs. */
+static const char  **s_mat_options      = NULL;
+static char        **s_mat_paths        = NULL;
+static char         *s_mat_name_pool    = NULL;
+static uint32_t      s_mat_pool_used    = 0;
+static uint32_t      s_mat_pool_cap     = 0;
+static uint32_t      s_mat_option_count = 0;
+static uint32_t      s_mat_option_cap   = 0;
+
+/* Texture option list — stores project-relative paths to .qstex files.
+   Textures are loaded on demand (not preloaded) to avoid mass GPU uploads. */
+static const char  **s_tex_options      = NULL;
+static char        **s_tex_list         = NULL;   /* project-relative paths */
+static uint32_t      s_tex_option_count = 0;
+static uint32_t      s_tex_option_cap   = 0;
+
+/* Mesh option list — stores project-relative paths to .qsmesh files. */
+static const char  **s_mesh_options      = NULL;
+static char        **s_mesh_paths        = NULL;   /* project-relative paths */
+static uint32_t      s_mesh_option_count = 0;
+static uint32_t      s_mesh_option_cap   = 0;
+
+/* Per-slot context for on_texture_select (one entry per texture slot) */
+#define QS_MAT_SLOTS 5
+typedef struct { Qs_Material *mat; uint32_t slot; } TexPickCtx;
+static TexPickCtx s_tex_ctxs[QS_MAT_SLOTS];
+
 /* ---- Binding allocator ---- */
 
 static InputBinding *alloc_binding(void)
@@ -152,6 +192,21 @@ static uint32_t component_icon_color(const char *name)
 static void on_field_input(Ca_TextInput *input, void *user_data)
 {
     InputBinding *b = (InputBinding *)user_data;
+    if (!b) return;
+
+    /* ---- Material PBR param editing ---- */
+    if (b->is_mat_param) {
+        if (!b->mat) return;
+        const char *text = ca_get_text(input);
+        const Qs_PBRParams *p = qs_material_params(b->mat);
+        if (!p) return;
+        Qs_PBRParams copy = *p;
+        float *field = (float *)((char *)&copy + b->mat_param_offset);
+        field[b->mat_vec_index] = text ? strtof(text, NULL) : 0.0f;
+        qs_material_update_params(b->mat, &copy);
+        return;
+    }
+
     if (!s_editor || !b->comp_type) return;
 
     Qs_Scene *scene  = inspect_source_scene(s_editor);
@@ -731,6 +786,493 @@ static void on_edit_prototype(Ca_Button *btn, void *user_data)
     editor_open_prototype(s_editor, full_path);
 }
 
+/* ================================================================
+   MATERIAL EDITOR HELPERS
+   ================================================================ */
+
+/* Extract the filename stem (basename without extension) from a path.
+   E.g. "assets/ABeautifulGame/materials/King_Black_0.qsmat" → "King_Black_0" */
+static const char *path_stem(const char *path, char *buf, size_t bufsz)
+{
+    if (!path || !buf || bufsz == 0) return path;
+    const char *slash = strrchr(path, '/');
+#ifdef _WIN32
+    const char *bslash = strrchr(path, '\\');
+    if (bslash && (!slash || bslash > slash)) slash = bslash;
+#endif
+    const char *base = slash ? slash + 1 : path;
+    snprintf(buf, bufsz, "%s", base);
+    char *dot = strrchr(buf, '.');
+    if (dot) *dot = '\0';
+    return buf;
+}
+
+static void refresh_mat_options(void)
+{
+    s_mat_option_count = 0;
+    s_mat_pool_used    = 0;
+
+    Qs_Project *proj = s_editor ? editor_project(s_editor) : NULL;
+    uint32_t n = proj ? qs_project_material_count(proj) : 0;
+
+    uint32_t need = n + 1;
+    if (need > s_mat_option_cap) {
+        uint32_t cap = need < 16 ? 16 : need;
+        const char **a = realloc(s_mat_options, cap * sizeof(*a));
+        char       **c = realloc(s_mat_paths,   cap * sizeof(*c));
+        if (a) { s_mat_options = a; s_mat_option_cap = cap; }
+        if (c)   s_mat_paths   = c;
+    }
+    s_mat_options[s_mat_option_count++] = "(none)";
+
+    for (uint32_t i = 0; i < n; i++) {
+        const char *rel = qs_project_material_path(proj, i);
+        if (!rel) continue;
+
+        /* Display name: stem of the filename */
+        char stem[128];
+        path_stem(rel, stem, sizeof(stem));
+        size_t len = strlen(stem) + 1;
+        if (s_mat_pool_used + len > s_mat_pool_cap) {
+            uint32_t cap = s_mat_pool_cap ? s_mat_pool_cap * 2 : 512;
+            while (cap < s_mat_pool_used + len) cap *= 2;
+            char *tmp = realloc(s_mat_name_pool, cap);
+            if (tmp) { s_mat_name_pool = tmp; s_mat_pool_cap = cap; }
+        }
+        char *dst = s_mat_name_pool + s_mat_pool_used;
+        memcpy(dst, stem, len);
+        s_mat_pool_used += (uint32_t)len;
+
+        uint32_t idx = s_mat_option_count;
+        if (idx < s_mat_option_cap) {
+            s_mat_paths  [idx - 1] = (char *)rel;   /* project-relative, owned by project */
+            s_mat_options[idx]     = dst;
+            s_mat_option_count++;
+        }
+    }
+}
+
+static void refresh_tex_options(void)
+{
+    s_tex_option_count = 0;
+
+    Qs_Project *proj = s_editor ? editor_project(s_editor) : NULL;
+    uint32_t n = proj ? qs_project_texture_count(proj) : 0;
+
+    uint32_t need = n + 1;
+    if (need > s_tex_option_cap) {
+        uint32_t cap = need < 16 ? 16 : need;
+        const char **a = realloc(s_tex_options, cap * sizeof(*a));
+        char       **b = realloc(s_tex_list,    cap * sizeof(*b));
+        if (a) { s_tex_options = a; s_tex_option_cap = cap; }
+        if (b)   s_tex_list    = b;
+    }
+    if (!s_tex_options || !s_tex_list) return;
+    s_tex_options[s_tex_option_count++] = "(none)";
+
+    for (uint32_t i = 0; i < n; i++) {
+        const char *rel = qs_project_texture_path(proj, i);
+        if (!rel) continue;
+        if (s_tex_option_count < s_tex_option_cap) {
+            s_tex_list   [s_tex_option_count - 1] = (char *)rel;  /* project-relative */
+            s_tex_options[s_tex_option_count]     = rel;
+            s_tex_option_count++;
+        }
+    }
+}
+
+static void refresh_mesh_options(void)
+{
+    s_mesh_option_count = 0;
+
+    Qs_Project *proj = s_editor ? editor_project(s_editor) : NULL;
+    uint32_t n = proj ? qs_project_mesh_count(proj) : 0;
+
+    uint32_t need = n + 1;
+    if (need > s_mesh_option_cap) {
+        uint32_t cap = need < 16 ? 16 : need;
+        const char **a = realloc(s_mesh_options, cap * sizeof(*a));
+        char       **b = realloc(s_mesh_paths,   cap * sizeof(*b));
+        if (a) { s_mesh_options = a; s_mesh_option_cap = cap; }
+        if (b)   s_mesh_paths   = b;
+    }
+    if (!s_mesh_options || !s_mesh_paths) return;
+    s_mesh_options[s_mesh_option_count++] = "(none)";
+
+    for (uint32_t i = 0; i < n; i++) {
+        const char *rel = qs_project_mesh_path(proj, i);
+        if (!rel) continue;
+        if (s_mesh_option_count < s_mesh_option_cap) {
+            s_mesh_paths  [s_mesh_option_count - 1] = (char *)rel;
+            s_mesh_options[s_mesh_option_count]     = rel;
+            s_mesh_option_count++;
+        }
+    }
+}
+
+static void on_material_select(Ca_Select *sel, void *user_data)
+{
+    (void)user_data;
+    if (!s_editor || !sel) return;
+    Qs_Project *proj = editor_project(s_editor);
+    Qs_Engine  *eng  = editor_engine(s_editor);
+    if (!proj || !eng) return;
+    Qs_Scene  *scene  = inspect_source_scene(s_editor);
+    Qs_Entity  entity = editor_selected_entity(s_editor);
+    if (!scene || entity == QS_ENTITY_INVALID) return;
+    Qs_MeshComp *mc = (Qs_MeshComp *)qs_entity_get(scene, entity, qs_mesh_comp_type());
+    if (!mc) return;
+
+    /* Release the old material's ref before assigning a new one */
+    if (mc->material_path[0]) {
+        char abs[1024];
+        qs_project_resolve(proj, mc->material_path, abs, sizeof(abs));
+        qs_asset_cache_release_material(abs);
+        mc->material = NULL;
+    }
+
+    int idx = ca_select_get(sel);
+    if (idx <= 0) {
+        mc->material_path[0] = '\0';
+    } else if ((uint32_t)idx < s_mat_option_count) {
+        const char *rel = s_mat_paths[idx - 1];
+        char abs[1024];
+        qs_project_resolve(proj, rel, abs, sizeof(abs));
+        Qs_Material *m = qs_asset_cache_material(eng, abs);   /* acquires ref */
+        mc->material = m;
+        snprintf(mc->material_path, sizeof(mc->material_path), "%s", rel ? rel : "");
+    }
+    /* Force material editor rebuild */
+    s_displayed_entity = QS_ENTITY_INVALID;
+}
+
+static void on_texture_select(Ca_Select *sel, void *user_data)
+{
+    TexPickCtx *ctx = (TexPickCtx *)user_data;
+    if (!sel || !ctx || !ctx->mat) return;
+
+    /* Release ref on whatever texture is currently in this slot */
+    Qs_Texture *old_tex = qs_material_get_texture(ctx->mat, ctx->slot);
+    if (old_tex) {
+        const char *old_name = qs_texture_name(old_tex);
+        if (old_name && *old_name)
+            qs_asset_cache_release_texture(old_name);
+    }
+
+    int idx = ca_select_get(sel);
+    Qs_Texture *tex = NULL;
+    if (idx > 0 && (uint32_t)idx < s_tex_option_count && s_tex_list) {
+        Qs_Project *proj = s_editor ? editor_project(s_editor) : NULL;
+        Qs_Engine  *eng  = s_editor ? editor_engine(s_editor)  : NULL;
+        if (proj && eng) {
+            char abs[1024];
+            qs_project_resolve(proj, s_tex_list[idx - 1], abs, sizeof(abs));
+            tex = qs_asset_cache_texture(eng, abs);   /* acquires ref */
+        }
+    }
+    qs_material_set_texture(ctx->mat, ctx->slot, tex);
+}
+
+static void on_mesh_select(Ca_Select *sel, void *user_data)
+{
+    (void)user_data;
+    if (!s_editor || !sel) return;
+    Qs_Scene  *scene  = inspect_source_scene(s_editor);
+    Qs_Entity  entity = editor_selected_entity(s_editor);
+    if (!scene || entity == QS_ENTITY_INVALID) return;
+    Qs_MeshComp *mc = (Qs_MeshComp *)qs_entity_get(scene, entity, qs_mesh_comp_type());
+    if (!mc) return;
+
+    Qs_Project *proj = editor_project(s_editor);
+    Qs_Engine  *eng  = editor_engine(s_editor);
+    if (!proj || !eng) return;
+
+    /* Release old mesh ref before assigning a new one */
+    if (mc->mesh_path[0]) {
+        char abs[1024];
+        qs_project_resolve(proj, mc->mesh_path, abs, sizeof(abs));
+        qs_asset_cache_release_mesh(abs);
+        mc->mesh = NULL;
+        mc->mesh_path[0] = '\0';
+    }
+
+    int idx = ca_select_get(sel);
+    if (idx > 0 && (uint32_t)idx < s_mesh_option_count && s_mesh_paths) {
+        const char *rel = s_mesh_paths[idx - 1];
+        char abs[1024];
+        qs_project_resolve(proj, rel, abs, sizeof(abs));
+        Qs_Mesh *m = qs_asset_cache_mesh(eng, abs);   /* acquires ref */
+        if (m) {
+            mc->mesh = m;
+            snprintf(mc->mesh_path, sizeof(mc->mesh_path), "%s", rel);
+        }
+    }
+}
+
+/* Build a scalar float input bound to a material PBR param */
+static void build_mat_float_row(const char *label, Qs_Material *mat,
+                                size_t param_offset, uint32_t vec_idx,
+                                const char *id_sfx)
+{
+    char row_id[96];
+    snprintf(row_id, sizeof(row_id), "mat-row-%s", id_sfx);
+    ca_div_begin(&(Ca_DivDesc){ .direction = CA_VERTICAL, .id = row_id,
+                                .style = "inspector-field-row" });
+    {
+        ca_text(&(Ca_TextDesc){ .text = label, .style = "inspector-field-name" });
+        InputBinding *b = alloc_binding();
+        b->is_mat_param     = true;
+        b->mat              = mat;
+        b->mat_param_offset = (uint32_t)param_offset;
+        b->mat_vec_index    = vec_idx;
+        b->field_type       = QS_FIELD_FLOAT;
+        const Qs_PBRParams *p = qs_material_params(mat);
+        char vbuf[32];
+        if (p) {
+            const float *fld = (const float *)((const char *)p + param_offset);
+            snprintf(vbuf, sizeof(vbuf), "%.3f", fld[vec_idx]);
+        } else {
+            snprintf(vbuf, sizeof(vbuf), "0.000");
+        }
+        char input_id[96];
+        snprintf(input_id, sizeof(input_id), "mat-input-%s", id_sfx);
+        b->widget = ca_input(&(Ca_InputDesc){
+            .text        = vbuf,
+            .id          = input_id,
+            .style       = "inspector-scalar-input",
+            .on_change   = on_field_input,
+            .change_data = b,
+        });
+    }
+    ca_div_end();
+}
+
+/* Build a float vector (RGBA/RGB) row bound to a material PBR param */
+static void build_mat_vec_row(const char *label, Qs_Material *mat,
+                               size_t param_offset, uint32_t n_elems,
+                               const char *id_sfx)
+{
+    char row_id[96];
+    snprintf(row_id, sizeof(row_id), "mat-vrow-%s", id_sfx);
+    ca_div_begin(&(Ca_DivDesc){ .direction = CA_VERTICAL, .id = row_id,
+                                .style = "inspector-field-row" });
+    {
+        ca_text(&(Ca_TextDesc){ .text = label, .style = "inspector-field-name" });
+        const Qs_PBRParams *p = qs_material_params(mat);
+        char vec_row_id[96];
+        snprintf(vec_row_id, sizeof(vec_row_id), "mat-vec-%s", id_sfx);
+        ca_div_begin(&(Ca_DivDesc){ .direction = CA_HORIZONTAL, .id = vec_row_id,
+                                    .style = "inspector-vec-row" });
+        for (uint32_t i = 0; i < n_elems; i++) {
+            InputBinding *b = alloc_binding();
+            b->is_mat_param     = true;
+            b->mat              = mat;
+            b->mat_param_offset = (uint32_t)param_offset;
+            b->mat_vec_index    = i;
+            b->field_type       = QS_FIELD_FLOAT;
+            char vbuf[32];
+            if (p) {
+                const float *fld = (const float *)((const char *)p + param_offset);
+                snprintf(vbuf, sizeof(vbuf), "%.3f", fld[i]);
+            } else {
+                snprintf(vbuf, sizeof(vbuf), "0.000");
+            }
+            char grp_id[96], lbl_id[96], inp_id[96];
+            snprintf(grp_id, sizeof(grp_id), "mat-ax-grp-%s-%u", id_sfx, i);
+            snprintf(lbl_id, sizeof(lbl_id), "mat-ax-lbl-%s-%u", id_sfx, i);
+            snprintf(inp_id, sizeof(inp_id), "mat-ax-inp-%s-%u", id_sfx, i);
+            ca_div_begin(&(Ca_DivDesc){ .direction = CA_HORIZONTAL, .id = grp_id,
+                                        .style = "inspector-axis-group" });
+            ca_text(&(Ca_TextDesc){ .text  = s_axis_text[i],
+                                    .id    = lbl_id,
+                                    .style = s_axis_style[i] });
+            b->widget = ca_input(&(Ca_InputDesc){
+                .text        = vbuf,
+                .id          = inp_id,
+                .style       = "inspector-vec-input",
+                .on_change   = on_field_input,
+                .change_data = b,
+            });
+            ca_div_end();
+        }
+        ca_div_end();
+    }
+    ca_div_end();
+}
+
+/* Build a texture-slot row: label + dropdown of project textures */
+static void build_mat_texture_row(const char *label, Qs_Material *mat,
+                                   uint32_t slot)
+{
+    char row_id[96];
+    snprintf(row_id, sizeof(row_id), "mat-tex-row-%u", slot);
+    ca_div_begin(&(Ca_DivDesc){ .direction = CA_VERTICAL, .id = row_id,
+                                .style = "inspector-field-row" });
+    {
+        ca_text(&(Ca_TextDesc){ .text = label, .style = "inspector-field-name" });
+        /* Find current texture index by comparing the texture's abs path
+           (set as its name by qs_asset_cache_texture) against resolved paths */
+        Qs_Texture *cur_tex = qs_material_get_texture(mat, slot);
+        int selected = 0;
+        if (cur_tex && s_tex_list) {
+            Qs_Project *proj = s_editor ? editor_project(s_editor) : NULL;
+            const char *cur_name = qs_texture_name(cur_tex);
+            for (uint32_t i = 1; i < s_tex_option_count; i++) {
+                if (!s_tex_list[i - 1]) continue;
+                char abs[1024];
+                if (proj) qs_project_resolve(proj, s_tex_list[i - 1], abs, sizeof(abs));
+                else      snprintf(abs, sizeof(abs), "%s", s_tex_list[i - 1]);
+                if (cur_name && strcmp(cur_name, abs) == 0) { selected = (int)i; break; }
+            }
+        }
+        s_tex_ctxs[slot].mat  = mat;
+        s_tex_ctxs[slot].slot = slot;
+        char sel_id[96];
+        snprintf(sel_id, sizeof(sel_id), "mat-tex-sel-%u", slot);
+        ca_select(&(Ca_SelectDesc){
+            .options      = s_tex_options,
+            .option_count = s_tex_option_count > 0 ? (int)s_tex_option_count : 1,
+            .selected     = selected,
+            .id           = sel_id,
+            .style        = "mat-tex-select",
+            .on_change    = on_texture_select,
+            .change_data  = &s_tex_ctxs[slot],
+        });
+    }
+    ca_div_end();
+}
+
+/* Build a styled sub-section divider label */
+static void build_mat_subsection(const char *title, const char *id)
+{
+    ca_text(&(Ca_TextDesc){ .text = title, .id = id, .style = "mat-subsection-label" });
+}
+
+/* Build the full MeshComp inspector section with inline material editor */
+static void build_mesh_comp_section(Qs_Scene *scene, Qs_Entity entity,
+                                    Qs_ComponentType *ct, Qs_MeshComp *mc)
+{
+    (void)scene; (void)entity;
+
+    /* Ensure project assets are scanned (lazy, safe to call repeatedly) */
+    Qs_Project *proj = s_editor ? editor_project(s_editor) : NULL;
+    if (proj && qs_project_mesh_count(proj) == 0 &&
+                qs_project_material_count(proj) == 0 &&
+                qs_project_texture_count(proj) == 0) {
+        qs_project_scan_assets(proj);
+    }
+
+    /* ---- visible checkbox ---- */
+    const Qs_TypeInfo *info = qs_component_type_info(ct);
+    if (info) {
+        for (uint32_t f = 0; f < info->field_count; f++) {
+            if (strcmp(info->fields[f].name, "visible") == 0) {
+                build_field("MeshComp", ct, &info->fields[f], mc);
+                break;
+            }
+        }
+    }
+
+    /* ---- Mesh picker dropdown ---- */
+    ca_hr(&(Ca_HrDesc){ .color = 0xFF242430u });
+    build_mat_subsection(ICON_MESH "  Mesh", "mat-sub-mesh");
+
+    refresh_mesh_options();
+    int sel_mesh_idx = 0;
+    if (mc->mesh_path[0] != '\0' && s_mesh_paths) {
+        for (uint32_t i = 1; i < s_mesh_option_count; i++) {
+            if (s_mesh_paths[i - 1] &&
+                strcmp(mc->mesh_path, s_mesh_paths[i - 1]) == 0)
+            { sel_mesh_idx = (int)i; break; }
+        }
+    } else if (mc->mesh && s_mesh_paths) {
+        /* Fallback: match by mesh surface name */
+        const char *cur_name = qs_mesh_name(mc->mesh);
+        if (cur_name) {
+            Qs_Engine *eng = s_editor ? editor_engine(s_editor) : NULL;
+            for (uint32_t i = 1; i < s_mesh_option_count && eng; i++) {
+                if (!s_mesh_paths[i - 1]) continue;
+                char abs[1024];
+                qs_project_resolve(proj, s_mesh_paths[i - 1], abs, sizeof(abs));
+                Qs_Mesh *m = qs_asset_cache_mesh(eng, abs);
+                if (m && qs_mesh_name(m) && strcmp(qs_mesh_name(m), cur_name) == 0) {
+                    sel_mesh_idx = (int)i; break;
+                }
+            }
+        }
+    }
+    ca_div_begin(&(Ca_DivDesc){ .direction = CA_VERTICAL, .id = "mat-mesh-row",
+                                .style = "inspector-field-row" });
+    ca_select(&(Ca_SelectDesc){
+        .options      = s_mesh_options,
+        .option_count = s_mesh_option_count > 0 ? (int)s_mesh_option_count : 1,
+        .selected     = sel_mesh_idx,
+        .id           = "mat-mesh-select",
+        .style        = "inspector-select",
+        .on_change    = on_mesh_select,
+    });
+    ca_div_end();
+
+    /* ---- Material selector ---- */
+    ca_hr(&(Ca_HrDesc){ .color = 0xFF242430u });
+    build_mat_subsection(ICON_MESH "  Material", "mat-sub-material");
+
+    refresh_mat_options();
+    int sel_mat_idx = 0;
+    if (mc->material_path[0] && s_mat_paths) {
+        for (uint32_t i = 1; i < s_mat_option_count; i++) {
+            if (s_mat_paths[i - 1] && strcmp(s_mat_paths[i - 1], mc->material_path) == 0) {
+                sel_mat_idx = (int)i; break;
+            }
+        }
+    }
+    ca_div_begin(&(Ca_DivDesc){ .direction = CA_VERTICAL, .id = "mat-mat-row",
+                                .style = "inspector-field-row" });
+    ca_select(&(Ca_SelectDesc){
+        .options      = s_mat_options,
+        .option_count = s_mat_option_count > 0 ? (int)s_mat_option_count : 1,
+        .selected     = sel_mat_idx,
+        .id           = "mat-mat-select",
+        .style        = "inspector-select",
+        .on_change    = on_material_select,
+    });
+    ca_div_end();
+
+    if (!mc->material) return;
+
+    /* ---- PBR Properties ---- */
+    ca_hr(&(Ca_HrDesc){ .color = 0xFF242430u });
+    build_mat_subsection("  Properties", "mat-sub-props");
+
+    build_mat_vec_row("Base Color",  mc->material,
+                      offsetof(Qs_PBRParams, base_color_factor), 4, "base-col");
+    build_mat_float_row("Metallic",      mc->material,
+                        offsetof(Qs_PBRParams, metallic_factor),    0, "metallic");
+    build_mat_float_row("Roughness",     mc->material,
+                        offsetof(Qs_PBRParams, roughness_factor),   0, "roughness");
+    build_mat_float_row("Normal Scale",  mc->material,
+                        offsetof(Qs_PBRParams, normal_scale),       0, "nrm-scale");
+    build_mat_float_row("Occlusion",     mc->material,
+                        offsetof(Qs_PBRParams, occlusion_strength), 0, "occlusion");
+    build_mat_vec_row("Emissive",    mc->material,
+                      offsetof(Qs_PBRParams, emissive_factor), 3, "emissive");
+    const Qs_PBRParams *p = qs_material_params(mc->material);
+    if (p && p->alpha_mode == (uint32_t)QS_ALPHA_MODE_MASK) {
+        build_mat_float_row("Alpha Cutoff", mc->material,
+                            offsetof(Qs_PBRParams, alpha_cutoff), 0, "alpha-cut");
+    }
+
+    /* ---- Texture Slots ---- */
+    ca_hr(&(Ca_HrDesc){ .color = 0xFF242430u });
+    build_mat_subsection("  Textures", "mat-sub-tex");
+
+    refresh_tex_options();
+    static const char *s_slot_labels[QS_MAT_SLOTS] = {
+        "Albedo", "Metal / Rough", "Normal", "Occlusion", "Emissive"
+    };
+    for (uint32_t slot = 0; slot < QS_MAT_SLOTS; slot++)
+        build_mat_texture_row(s_slot_labels[slot], mc->material, slot);
+}
 static void build_add_component(Qs_Scene *scene, Qs_Entity entity);
 
 static void build_sections(Qs_Scene *scene, Qs_Entity entity)
@@ -801,7 +1343,9 @@ static void build_sections(Qs_Scene *scene, Qs_Entity entity)
         const Qs_TypeInfo *info = qs_component_type_info(ct);
         void *data = qs_entity_get(scene, entity, ct);
 
-        if (info && data) {
+        if (strcmp(comp_name, "MeshComp") == 0 && data) {
+            build_mesh_comp_section(scene, entity, ct, (Qs_MeshComp *)data);
+        } else if (info && data) {
             for (uint32_t f = 0; f < info->field_count; f++)
                 build_field(comp_name, ct, &info->fields[f], data);
         }
@@ -959,7 +1503,23 @@ void ed_inspector_update(void *editor)
 
         for (uint32_t i = 0; i < s_binding_count; i++) {
             InputBinding *b = &s_bindings[i];
-            if (!b->widget || !b->comp_type) continue;
+            if (!b->widget) continue;
+
+            /* ---- Material PBR param binding: update live float value ---- */
+            if (b->is_mat_param) {
+                if (!b->mat || ca_input_is_focused(b->widget)) continue;
+                const Qs_PBRParams *p = qs_material_params(b->mat);
+                if (!p) continue;
+                const float *fld = (const float *)((const char *)p + b->mat_param_offset);
+                char vbuf[32];
+                snprintf(vbuf, sizeof(vbuf), "%.3f", fld[b->mat_vec_index]);
+                const char *cur = ca_get_text(b->widget);
+                if (!cur || strcmp(cur, vbuf) != 0)
+                    ca_set_text(b->widget, vbuf);
+                continue;
+            }
+
+            if (!b->comp_type) continue;
             void *comp = qs_entity_get(scene, entity, b->comp_type);
             if (!comp) continue;
             void *field_ptr = (char *)comp + b->field_offset;
