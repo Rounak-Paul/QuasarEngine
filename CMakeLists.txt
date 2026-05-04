@@ -15,7 +15,6 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 if(MSVC)
     set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
     add_compile_definitions(_CRT_SECURE_NO_WARNINGS)
-    add_compile_options($<$<COMPILE_LANGUAGE:C>:/experimental:c11atomics>)
 endif()
 
 # Output directories
@@ -34,6 +33,13 @@ elseif(WIN32)
     add_compile_definitions(QS_PLATFORM_WINDOWS NOMINMAX WIN32_LEAN_AND_MEAN)
 elseif(UNIX)
     add_compile_definitions(QS_PLATFORM_LINUX)
+endif()
+
+# AddressSanitizer — enable with: cmake -DENABLE_ASAN=ON ..
+option(ENABLE_ASAN "Enable AddressSanitizer" OFF)
+if(ENABLE_ASAN AND NOT MSVC)
+    add_compile_options(-fsanitize=address -fno-omit-frame-pointer -g)
+    add_link_options(-fsanitize=address)
 endif()
 
 # Engine library (brings in causality and all vendors)

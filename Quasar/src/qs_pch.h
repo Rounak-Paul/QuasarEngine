@@ -20,8 +20,4 @@
 /* Vulkan */
 #include <vulkan/vulkan.h>
 
-/* Audio */
-#include <AL/al.h>
-#include <AL/alc.h>
-
 #endif

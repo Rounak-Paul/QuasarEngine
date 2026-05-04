@@ -2,16 +2,18 @@
 #include "ed_camera.h"
 #include "ed_gizmo.h"
 #include "ed_pick.h"
+#include "ed_commands.h"
 #include "qs_math.h"
 #include "ui/ed_menu_bar.h"
 #include "ui/ed_toolbar.h"
 #include "ui/ed_layout.h"
-#include "ui/ed_status_bar.h"
+#include "ed_style.h"
 #include "ui/ed_inspector.h"
 #include "ui/ed_hierarchy.h"
 #include "ui/ed_plugin_manager.h"
 
 #include "ui/ed_file_browser.h"
+#include "ui/ed_import_dialog.h"
 
 #include "quasar.h"
 #include "cJSON.h"
@@ -19,12 +21,13 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define MAX_LOADED_RESOURCES 32
+#define EDITOR_PROTO_STACK_DEPTH 8
 
-typedef struct {
-    Qs_Asset  *asset;
-    Qs_Entity  entity;
-} PendingEntity;
+/* ---- Forward decls used early in editor_create() ---- */
+static void kb_save_scene(void *u);
+static void kb_save_proj (void *u);
+static void kb_undo      (void *u);
+static void kb_redo      (void *u);
 
 struct Editor {
     Qs_Engine     *engine;
@@ -34,732 +37,34 @@ struct Editor {
     Qs_Entity      selected_entity;
     EditorCamera   cam;
 
-    /* Asset handles for the active scene */
-    Qs_Asset     *loaded_assets[MAX_LOADED_RESOURCES];
-    uint32_t      loaded_asset_count;
-
-    /* Prototype entities waiting for background loading to finish */
-    PendingEntity pending_entities[MAX_LOADED_RESOURCES];
-    uint32_t      pending_entity_count;
-
     /* ---- Prototype editor mode ---- */
     EditorMode    mode;
-    char          proto_path[1024];       ///< Path to the .qproto being edited.
-    char          proto_model_path[1024]; ///< Resolved model asset path.
-    Qs_Scene     *scene_backup;           ///< Saved scene while editing prototype.
-    Qs_Asset     *proto_asset;            ///< Model asset loaded for prototype preview.
-    Qs_Entity     proto_entity;           ///< Root entity in the prototype scene.
-    EditorCamera  cam_backup;             ///< Saved camera state.
+    char          proto_path[1024];   ///< Path to the .qproto being edited (top of stack).
+    /* When entering prototype mode, the current active scene + camera are
+       pushed.  Closing the prototype pops and restores. */
+    Qs_Scene     *proto_stack_scene[EDITOR_PROTO_STACK_DEPTH];
+    EditorCamera  proto_stack_cam[EDITOR_PROTO_STACK_DEPTH];
+    uint32_t      proto_stack_depth;
+
+    /* Editor-only preview light injected into the prototype scene so the
+       inner geometry is visible while editing.  Destroyed before save so
+       it is never baked into the .qproto file. */
+    Qs_Entity     proto_preview_light;
+
+    /* ---- Prototype-instance override editing context ----
+       When the user expands a prototype instance in the hierarchy and
+       selects one of its inner entities, these fields point to that
+       inner-scene context so the inspector can route field edits
+       through the PrototypeComp override system rather than mutating
+       the source .qproto file. */
+    Qs_Entity     proto_owner;          ///< QS_ENTITY_INVALID when inactive.
+    Qs_Scene     *proto_inner_scene;
+
+    /* ---- Persistence ---- */
+    char          current_scene_path[1024]; ///< Path of the loaded outer scene.
 };
 
-/* ---- Editor CSS theme (Quasar Dark) ---- */
-/*
- * Color palette — professional dark game engine aesthetic
- *
- * Background hierarchy (darkest → lightest):
- *   #0d0d0f  void        (deepest inset, inputs, viewport bg)
- *   #111114  base        (primary panel background)
- *   #16161a  elevated    (panel chrome, toolbars)
- *   #1c1c22  surface     (tab bars, headers, section dividers)
- *   #242430  overlay     (hover states, selected items)
- *   #2e2e3e  border      (dividers, input borders)
- *
- * Accent colors:
- *   #6e8aff  primary     (active tabs, primary buttons — blue-violet)
- *   #c8d0ff  text-bright (labels, interactive text)
- *   #8890b0  text-muted  (secondary labels, hints)
- *   #4a4e6a  text-dim    (disabled, placeholder)
- *   #ff6b6b  danger      (errors, destructive)
- *   #6bffb8  success     (play, confirm)
- *   #ffd166  warning     (warnings)
- *   #ff8c42  orange      (scene objects, mesh icons)
- *
- * Axis colors (XYZ):
- *   #ff5370  x-axis      (red)
- *   #80ff80  y-axis      (green)
- *   #5b9cff  z-axis      (blue)
- *   #bf80ff  w-axis      (purple)
- */
-
-static const char *g_editor_css =
-
-    /* Root */
-    ".editor-root {"
-    "  background: #111114;"
-    "  gap: 0px;"
-    "  overflow: hidden;"
-    "}"
-
-    /* ---- Toolbar ---- */
-    ".toolbar {"
-    "  background: #16161a;"
-    "  width: 100%;"
-    "  height: 20px;"
-    "  align-items: center;"
-    "  padding-left: 4px;"
-    "  padding-right: 4px;"
-    "  gap: 2px;"
-    "}"
-
-    ".toolbar-icon-btn {"
-    "  width: 20px;"
-    "  height: 20px;"
-    "  align-items: center;"
-    "  text-align: center;"
-    "  font-size: 14px;"
-    "  color: #8890b0;"
-    "  corner-radius: 3px;"
-    "  background: transparent;"
-    "}"
-
-    ".toolbar-icon-btn.active {"
-    "  color: #6e8aff;"
-    "}"
-
-    ".toolbar-separator {"
-    "  width: 1px;"
-    "  height: 14px;"
-    "  background: #2e2e3e;"
-    "}"
-
-    /* ---- Panels ---- */
-    ".panel {"
-    "  background: #111114;"
-    "  overflow: hidden;"
-    "}"
-
-    ".panel-viewport {"
-    "  background: #0d0d0f;"
-    "}"
-
-    ".panel-bottom {"
-    "  background: #111114;"
-    "}"
-
-    /* ---- Console ---- */
-    ".console-scroll {"
-    "  overflow-y: scroll;"
-    "  padding: 4px;"
-    "  flex-grow: 1;"
-    "  align-items: flex-start;"
-    "}"
-
-    ".console-line {"
-    "  font-size: 12px;"
-    "  height: 16px;"
-    "  width: 100%;"
-    "  text-align: left;"
-    "  color: #8890b0;"
-    "}"
-
-    /* ---- Panel tab bars ---- */
-    ".panel-tab-bar {"
-    "  background: #1c1c22;"
-    "  height: 22px;"
-    "  width: 100%;"
-    "  padding-left: 4px;"
-    "  gap: 2px;"
-    "  font-size: 12px;"
-    "}"
-
-    ".panel-tab {"
-    "  color: #4a4e6a;"
-    "  font-size: 12px;"
-    "  height: 22px;"
-    "  padding-left: 8px;"
-    "  padding-right: 8px;"
-    "}"
-
-    ".active {"
-    "  color: #6e8aff;"
-    "}"
-
-    /* ---- Status bar ---- */
-    ".status-bar {"
-    "  background: #0d0d0f;"
-    "  width: 100%;"
-    "  height: 20px;"
-    "  align-items: center;"
-    "  padding-left: 10px;"
-    "}"
-
-    ".status-text {"
-    "  color: #4a4e6a;"
-    "  font-size: 12px;"
-    "}"
-
-    /* ---- File browser ---- */
-    ".fb-root {"
-    "  width: 100%;"
-    "  overflow: hidden;"
-    "}"
-
-    ".fb-title-bar {"
-    "  background: #1c1c22;"
-    "  height: 36px;"
-    "  width: 100%;"
-    "  padding-left: 14px;"
-    "  padding-right: 6px;"
-    "  align-items: center;"
-    "}"
-
-    ".fb-title {"
-    "  color: #c8d0ff;"
-    "  font-size: 12px;"
-    "  font-weight: bold;"
-    "  flex-grow: 1;"
-    "}"
-
-    ".fb-spacer-grow {"
-    "  flex-grow: 1;"
-    "}"
-
-    ".fb-close-btn {"
-    "  width: 26px;"
-    "  height: 26px;"
-    "  background: transparent;"
-    "  color: #4a4e6a;"
-    "  font-size: 12px;"
-    "  corner-radius: 4px;"
-    "}"
-
-    ".fb-nav-bar {"
-    "  background: #111114;"
-    "  height: 38px;"
-    "  width: 100%;"
-    "  flex-shrink: 0;"
-    "  padding-left: 8px;"
-    "  padding-right: 8px;"
-    "  align-items: center;"
-    "  gap: 4px;"
-    "}"
-
-    ".fb-nav-btn {"
-    "  width: 28px;"
-    "  height: 24px;"
-    "  background: #1c1c22;"
-    "  color: #8890b0;"
-    "  font-size: 12px;"
-    "  corner-radius: 4px;"
-    "}"
-
-    ".fb-path-input {"
-    "  flex-grow: 1;"
-    "  height: 26px;"
-    "  background: #0d0d0f;"
-    "  color: #c8d0ff;"
-    "  font-size: 12px;"
-    "  padding-left: 8px;"
-    "  corner-radius: 4px;"
-    "}"
-
-    ".fb-col-header {"
-    "  width: 100%;"
-    "  height: 22px;"
-    "  flex-shrink: 0;"
-    "  padding-left: 14px;"
-    "  padding-right: 14px;"
-    "  align-items: center;"
-    "  background: #1c1c22;"
-    "}"
-
-    ".fb-col-name {"
-    "  color: #4a4e6a;"
-    "  font-size: 12px;"
-    "  flex-grow: 1;"
-    "  text-align: left;"
-    "}"
-
-    ".fb-col-size {"
-    "  color: #4a4e6a;"
-    "  font-size: 12px;"
-    "  width: 80px;"
-    "  text-align: right;"
-    "}"
-
-    ".fb-file-list {"
-    "  flex-grow: 1;"
-    "  overflow-y: scroll;"
-    "  padding: 4px;"
-    "  gap: 2px;"
-    "  align-items: flex-start;"
-    "  background: #111114;"
-    "}"
-
-    ".fb-entry {"
-    "  width: 100%;"
-    "  height: 26px;"
-    "  background: transparent;"
-    "  color: #8890b0;"
-    "  font-size: 12px;"
-    "  text-align: left;"
-    "  padding-left: 8px;"
-    "  corner-radius: 3px;"
-    "}"
-
-    ".fb-entry-selected {"
-    "  background: #242430;"
-    "}"
-
-    ".fb-entry-dir {"
-    "  color: #6e8aff;"
-    "}"
-
-    ".fb-empty {"
-    "  color: #4a4e6a;"
-    "  font-size: 12px;"
-    "  padding: 14px;"
-    "}"
-
-    ".fb-bottom {"
-    "  background: #1c1c22;"
-    "  width: 100%;"
-    "  min-height: 70px;"
-    "  flex-shrink: 0;"
-    "  padding: 6px 10px;"
-    "  gap: 6px;"
-    "}"
-
-    ".fb-bottom-row {"
-    "  width: 100%;"
-    "  height: 26px;"
-    "  align-items: center;"
-    "  gap: 8px;"
-    "}"
-
-    ".fb-label {"
-    "  color: #4a4e6a;"
-    "  font-size: 12px;"
-    "  width: 50px;"
-    "  text-align: right;"
-    "}"
-
-    ".fb-selected-name {"
-    "  color: #c8d0ff;"
-    "  font-size: 12px;"
-    "  flex-grow: 1;"
-    "  text-align: left;"
-    "}"
-
-    ".fb-filter-select {"
-    "  width: 200px;"
-    "}"
-
-    ".fb-btn {"
-    "  width: 80px;"
-    "  height: 26px;"
-    "  background: #242430;"
-    "  color: #8890b0;"
-    "  font-size: 12px;"
-    "  corner-radius: 4px;"
-    "}"
-
-    ".fb-btn-primary {"
-    "  background: #6e8aff;"
-    "  color: #0d0d0f;"
-    "}"
-
-    /* ---- Hierarchy panel ---- */
-
-    ".hierarchy-tree {"
-    "  overflow-y: scroll;"
-    "  padding-left: 6px;"
-    "  padding-right: 4px;"
-    "  padding-top: 2px;"
-    "  gap: 0px;"
-    "  flex-grow: 1;"
-    "  align-items: flex-start;"
-    "}"
-
-    ".hierarchy-scene {"
-    "  color: #6e8aff;"
-    "  font-size: 12px;"
-    "  height: 16px;"
-    "}"
-
-    ".hierarchy-entity {"
-    "  color: #8890b0;"
-    "  font-size: 12px;"
-    "  height: 16px;"
-    "}"
-
-    ".hierarchy-component {"
-    "  color: #4a4e6a;"
-    "  font-size: 12px;"
-    "  height: 16px;"
-    "}"
-
-    ".hierarchy-add-btn {"
-    "  width: 100%;"
-    "  height: 24px;"
-    "  background: transparent;"
-    "  color: #4a4e6a;"
-    "  font-size: 12px;"
-    "}"
-
-    /* ---- Inspector panel ---- */
-
-    ".inspector-scroll {"
-    "  overflow-y: scroll;"
-    "  padding: 4px 0px;"
-    "  gap: 1px;"
-    "  flex-grow: 1;"
-    "  width: 100%;"
-    "  align-items: flex-start;"
-    "}"
-
-    ".inspector-placeholder {"
-    "  color: #4a4e6a;"
-    "  font-size: 12px;"
-    "  padding: 14px 0px 0px 8px;"
-    "  width: 100%;"
-    "  text-align: left;"
-    "}"
-
-    ".inspector-header {"
-    "  width: 100%;"
-    "  gap: 4px;"
-    "  padding: 6px 8px;"
-    "  align-items: flex-start;"
-    "}"
-
-    ".inspector-entity-input {"
-    "  width: 100%;"
-    "  height: 22px;"
-    "  background: #0d0d0f;"
-    "  color: #c8d0ff;"
-    "  font-size: 12px;"
-    "  font-weight: bold;"
-    "  padding-left: 6px;"
-    "  corner-radius: 3px;"
-    "}"
-
-    ".inspector-meta-row {"
-    "  width: 100%;"
-    "  height: 18px;"
-    "  gap: 4px;"
-    "  align-items: center;"
-    "  padding-left: 0px;"
-    "}"
-
-    ".inspector-tag-input {"
-    "  height: 18px;"
-    "  flex-grow: 1;"
-    "  background: #0d0d0f;"
-    "  color: #8890b0;"
-    "  font-size: 12px;"
-    "  padding-left: 4px;"
-    "  corner-radius: 3px;"
-    "}"
-
-    ".inspector-section-header {"
-    "  background: #1c1c22;"
-    "  width: 100%;"
-    "  height: 20px;"
-    "  padding: 0px 8px;"
-    "  margin-top: 4px;"
-    "  align-items: center;"
-    "}"
-
-    ".inspector-section-label {"
-    "  font-size: 12px;"
-    "  font-weight: bold;"
-    "  color: #8890b0;"
-    "  width: 100%;"
-    "  text-align: left;"
-    "}"
-
-    ".inspector-field-row {"
-    "  width: 100%;"
-    "  padding: 2px 6px;"
-    "  gap: 2px;"
-    "  align-items: flex-start;"
-    "}"
-
-    ".inspector-field-name {"
-    "  color: #4a4e6a;"
-    "  font-size: 12px;"
-    "  text-align: left;"
-    "  width: 100%;"
-    "}"
-
-    ".inspector-vec-row {"
-    "  width: 100%;"
-    "  gap: 0px;"
-    "  align-items: center;"
-    "  flex-wrap: wrap;"
-    "}"
-
-    ".inspector-axis-x { color: #ff5370; font-size: 12px; font-weight: bold; width: 10px; }"
-    ".inspector-axis-y { color: #80ff80; font-size: 12px; font-weight: bold; width: 10px; }"
-    ".inspector-axis-z { color: #5b9cff; font-size: 12px; font-weight: bold; width: 10px; }"
-    ".inspector-axis-w { color: #bf80ff; font-size: 12px; font-weight: bold; width: 10px; }"
-
-    ".inspector-axis-group {"
-    "  width: 68px;"
-    "  padding-left: 4px;"
-    "  gap: 2px;"
-    "  align-items: center;"
-    "}"
-
-    ".inspector-vec-input {"
-    "  width: 50px;"
-    "  height: 17px;"
-    "  background: #0d0d0f;"
-    "  color: #c8d0ff;"
-    "  font-size: 12px;"
-    "  padding-left: 4px;"
-    "  corner-radius: 3px;"
-    "}"
-
-    ".inspector-scalar-input {"
-    "  width: 100%;"
-    "  height: 17px;"
-    "  background: #0d0d0f;"
-    "  color: #c8d0ff;"
-    "  font-size: 12px;"
-    "  padding-left: 4px;"
-    "  corner-radius: 3px;"
-    "}"
-
-    ".inspector-field-value {"
-    "  color: #8890b0;"
-    "  font-size: 12px;"
-    "}"
-
-    ".inspector-id-label {"
-    "  color: #4a4e6a;"
-    "  font-size: 12px;"
-    "  width: 100%;"
-    "  text-align: left;"
-    "  padding-left: 2px;"
-    "}"
-
-    ".inspector-tag-icon {"
-    "  color: #6bffb8;"
-    "  font-size: 12px;"
-    "  width: 16px;"
-    "  flex-shrink: 0;"
-    "}"
-
-    ".hierarchy-selected {"
-    "  background: #242430;"
-    "}"
-
-
-    /* ---- Plugin Manager window ---- */
-    ".pm-root {"
-    "  width: 100%;"
-    "  height: 100%;"
-    "  background: #111114;"
-    "}"
-
-    ".pm-spacer { flex-grow: 1; }"
-
-    ".pm-header {"
-    "  width: 100%;"
-    "  height: 32px;"
-    "  background: #16161c;"
-    "  align-items: center;"
-    "  padding: 0px 14px;"
-    "  gap: 0px;"
-    "}"
-
-    ".pm-hdr {"
-    "  color: #5a5e7a;"
-    "  font-size: 10px;"
-    "  font-weight: bold;"
-    "}"
-
-    ".pm-col-status  { width: 64px; }"
-    ".pm-col-name    { width: 140px; }"
-    ".pm-col-version { width: 60px; }"
-    ".pm-col-author  { width: 100px; }"
-    ".pm-col-actions { width: 80px; }"
-
-    ".pm-separator {"
-    "  width: 100%;"
-    "  height: 1px;"
-    "  background: #1e2030;"
-    "}"
-
-    ".pm-body {"
-    "  width: 100%;"
-    "  flex-grow: 1;"
-    "  overflow-y: scroll;"
-    "  gap: 0px;"
-    "}"
-
-    ".pm-empty {"
-    "  color: #4a4e6a;"
-    "  font-size: 12px;"
-    "  text-align: center;"
-    "  padding: 32px;"
-    "}"
-
-    ".pm-row {"
-    "  width: 100%;"
-    "  height: 28px;"
-    "  align-items: center;"
-    "  padding: 0px 14px;"
-    "  gap: 0px;"
-    "}"
-
-    ".pm-row-alt {"
-    "  background: #13131a;"
-    "}"
-
-    ".pm-status {"
-    "  width: 64px;"
-    "  font-size: 10px;"
-    "  font-weight: bold;"
-    "}"
-
-    ".pm-status-active   { color: #6bffb8; }"
-    ".pm-status-loading  { color: #ffd166; }"
-    ".pm-status-disabled { color: #4a4e6a; }"
-
-    ".pm-cell-name {"
-    "  width: 140px;"
-    "  color: #e0e4ff;"
-    "  font-size: 12px;"
-    "}"
-
-    ".pm-cell-version {"
-    "  width: 60px;"
-    "  color: #5a5e7a;"
-    "  font-size: 11px;"
-    "}"
-
-    ".pm-cell-author {"
-    "  width: 100px;"
-    "  color: #5a5e7a;"
-    "  font-size: 11px;"
-    "}"
-
-    ".pm-cell-actions {"
-    "  width: 80px;"
-    "  align-items: center;"
-    "  gap: 6px;"
-    "}"
-
-    ".pm-reload-btn {"
-    "  background: transparent;"
-    "  color: #6e8aff;"
-    "  font-size: 12px;"
-    "  width: 20px;"
-    "  height: 20px;"
-    "  align-items: center;"
-    "  text-align: center;"
-    "}"
-
-    ".pm-toggle {"
-    "  width: 30px;"
-    "  height: 16px;"
-    "}"
-
-    /* ---- Renderer Settings modal ---- */
-    ".renderer-settings-modal {"
-    "  width: 340px;"
-    "  height: auto;"
-    "  background: #16161a;"
-    "  corner-radius: 8px;"
-    "  padding: 0px;"
-    "  gap: 0px;"
-    "}"
-
-    ".renderer-settings-panel {"
-    "  width: 100%;"
-    "  padding: 0px;"
-    "}"
-
-    ".renderer-setting-row {"
-    "  width: 100%;"
-    "  padding: 8px 12px 4px 12px;"
-    "  gap: 4px;"
-    "}"
-
-    ".renderer-setting-label {"
-    "  color: #8890b0;"
-    "  font-size: 12px;"
-    "}"
-
-    ".renderer-section-label {"
-    "  color: #a0a8c8;"
-    "  font-size: 11px;"
-    "  padding: 8px 12px 2px 12px;"
-    "}"
-
-    /* ---- Renderer Stats modal ---- */
-    ".renderer-stats-modal {"
-    "  width: 260px;"
-    "  height: auto;"
-    "  background: #16161a;"
-    "  corner-radius: 8px;"
-    "  padding: 0px;"
-    "  gap: 0px;"
-    "}"
-
-    ".renderer-stats-panel {"
-    "  width: 100%;"
-    "  padding: 0px;"
-    "}"
-
-    ".renderer-stat-row {"
-    "  color: #c8d0ff;"
-    "  font-size: 12px;"
-    "  padding: 4px 12px;"
-    "  font-family: monospace;"
-    "}"
-
-    /* ---- Breadcrumb navigation bar ---- */
-    ".breadcrumb-bar {"
-    "  background: #16161a;"
-    "  width: 100%;"
-    "  height: 24px;"
-    "  align-items: center;"
-    "  padding-left: 8px;"
-    "  padding-right: 8px;"
-    "  gap: 6px;"
-    "}"
-
-    ".breadcrumb-back {"
-    "  height: 20px;"
-    "  background: transparent;"
-    "  color: #6e8aff;"
-    "  font-size: 12px;"
-    "  corner-radius: 3px;"
-    "  padding-left: 6px;"
-    "  padding-right: 6px;"
-    "}"
-
-    ".breadcrumb-text {"
-    "  color: #8890b0;"
-    "  font-size: 12px;"
-    "}"
-
-    ".breadcrumb-separator {"
-    "  color: #4a4e6a;"
-    "  font-size: 10px;"
-    "}"
-
-    ".breadcrumb-active {"
-    "  color: #c8d0ff;"
-    "  font-size: 12px;"
-    "  font-weight: bold;"
-    "}"
-
-    /* ---- Inspector edit button ---- */
-    ".inspector-edit-btn {"
-    "  height: 18px;"
-    "  background: #242430;"
-    "  color: #6e8aff;"
-    "  font-size: 11px;"
-    "  corner-radius: 3px;"
-    "  padding-left: 8px;"
-    "  padding-right: 8px;"
-    "}"
-;
+/* CSS is defined in ed_style.c via g_editor_css (see ed_style.h). */
 
 /* ---- Breadcrumb bar for prototype editor mode ---- */
 static Ca_Div   *s_breadcrumb_bar;
@@ -792,13 +97,14 @@ static void editor_build_ui(Editor *ed)
         .hidden    = true,
     });
     {
-        ca_btn(&(Ca_BtnDesc){
+        ca_btn_begin(&(Ca_BtnDesc){
             .text       = "\xEF\x81\x88 Back",  /* U+F048 step-backward */
             .id         = "breadcrumb-back",
             .style      = "breadcrumb-back",
             .on_click   = on_breadcrumb_back,
             .click_data = ed,
         });
+        ca_btn_end();
         s_breadcrumb_scene_label = ca_text(&(Ca_TextDesc){
             .text  = "",
             .id    = "breadcrumb-scene",
@@ -895,6 +201,10 @@ static void on_mouse_scroll(const Ca_Event *event, void *userdata)
 static void on_key_event(const Ca_Event *event, void *userdata)
 {
     (void)userdata;
+    /* Editor shortcuts win over input system polling so e.g. Ctrl+S
+       fires reliably while a viewport-bound key like W is also held. */
+    if (ed_keybinds_dispatch(event->key.key, event->key.action, event->key.mods))
+        return;
     qs_input_key_event((Qs_Key)event->key.key,
                        (Qs_KeyAction)event->key.action,
                        event->key.mods);
@@ -909,101 +219,16 @@ static void on_frame(Qs_Engine *engine, void *userdata)
     ed_camera_update(&ed->cam, ed->scene_renderer, qs_engine_dt(ed->engine));
     ed_gizmo_update(ed, qs_engine_dt(ed->engine));
 
-    /* Poll pending Prototype assets — store on component when READY */
-    {
-        Qs_Scene *s = qs_scene_active();
-        uint32_t i = 0;
-        while (s && i < ed->pending_entity_count) {
-            Qs_AssetState state = qs_asset_state(ed->pending_entities[i].asset);
-            if (state == QS_ASSET_READY) {
-                Qs_PrototypeComp *pc = (Qs_PrototypeComp *)qs_entity_get(
-                    s, ed->pending_entities[i].entity, qs_prototype_comp_type());
-                if (pc)
-                    pc->asset = ed->pending_entities[i].asset;
-                ed->pending_entities[i] = ed->pending_entities[--ed->pending_entity_count];
-            } else if (state == QS_ASSET_ERROR) {
-                QS_LOG_ERROR("Prototype asset failed: entity %u",
-                             ed->pending_entities[i].entity);
-                ed->pending_entities[i] = ed->pending_entities[--ed->pending_entity_count];
-            } else {
-                i++;
-            }
-        }
-    }
-
     /* Submit scene renderables and lights for this frame */
     Qs_Scene *scene = qs_scene_active();
     if (scene && ed->scene_renderer) {
         qs_renderer_clear_renderables(ed->scene_renderer);
         qs_renderer_clear_lights(ed->scene_renderer);
 
-        if (ed->mode == ED_MODE_PROTOTYPE) {
-            /* ---- Prototype editor: render the prototype model ---- */
-            if (ed->proto_asset &&
-                qs_asset_state(ed->proto_asset) == QS_ASSET_READY)
-            {
-                float world[16];
-                qs_scene_world_matrix(scene, ed->proto_entity, world);
-                qs_asset_model_submit(ed->proto_asset, ed->scene_renderer,
-                                      world, ed->proto_entity);
-            }
-
-            /* Submit lights from prototype scene */
-            for (Qs_Entity e = qs_scene_first(scene, qs_light_comp_type());
-                 e != QS_ENTITY_INVALID;
-                 e = qs_scene_next(scene, qs_light_comp_type(), e))
-            {
-                Qs_LightComp *lc = qs_entity_get(scene, e, qs_light_comp_type());
-                if (!lc || !lc->enabled) continue;
-                qs_renderer_submit_light_comp(ed->scene_renderer, lc);
-            }
-        } else {
-            /* ---- Scene mode: normal rendering ---- */
-
-            /* Submit MeshComp entities (inline geometry) */
-            for (Qs_Entity e = qs_scene_first(scene, qs_mesh_comp_type());
-                 e != QS_ENTITY_INVALID;
-                 e = qs_scene_next(scene, qs_mesh_comp_type(), e))
-            {
-                Qs_MeshComp  *mc = qs_entity_get(scene, e, qs_mesh_comp_type());
-                if (!mc || !mc->visible || !mc->mesh || !mc->material) continue;
-                Qs_RenderableDesc r;
-                r.mesh            = mc->mesh;
-                r.material        = mc->material;
-                r.entity          = e;
-                r.cast_shadows    = true;
-                r.receive_shadows = true;
-                r.bounds.min[0] = r.bounds.min[1] = r.bounds.min[2] = -100.0f;
-                r.bounds.max[0] = r.bounds.max[1] = r.bounds.max[2] =  100.0f;
-                qs_scene_world_matrix(scene, e, r.transform);
-                qs_renderer_submit_renderable(ed->scene_renderer, &r);
-            }
-
-            /* Submit Prototype entities (model assets rendered directly) */
-            for (Qs_Entity e = qs_scene_first(scene, qs_prototype_comp_type());
-                 e != QS_ENTITY_INVALID;
-                 e = qs_scene_next(scene, qs_prototype_comp_type(), e))
-            {
-                Qs_PrototypeComp *pc = qs_entity_get(scene, e, qs_prototype_comp_type());
-                if (!pc || !pc->asset) continue;
-
-                /* Compose: entity world × .qproto base transform */
-                float entity_world[16], composed[16];
-                qs_scene_world_matrix(scene, e, entity_world);
-                qs_m4_mul(entity_world, pc->base_transform, composed);
-
-                qs_asset_model_submit(pc->asset, ed->scene_renderer, composed, e);
-            }
-
-            for (Qs_Entity e = qs_scene_first(scene, qs_light_comp_type());
-                 e != QS_ENTITY_INVALID;
-                 e = qs_scene_next(scene, qs_light_comp_type(), e))
-            {
-                Qs_LightComp *lc = qs_entity_get(scene, e, qs_light_comp_type());
-                if (!lc || !lc->enabled) continue;
-                qs_renderer_submit_light_comp(ed->scene_renderer, lc);
-            }
-        }
+        /* Recursive submission walks the scene + every PrototypeComp's
+           inner scene, composing world transforms.  Lights are submitted
+           only at the top level. */
+        qs_scene_submit_renderables(scene, ed->engine, ed->scene_renderer, NULL);
     }
 
     ed_menu_bar_sync();
@@ -1039,142 +264,20 @@ static void scene_dir(const char *scene_path, char *out, size_t out_size)
 
 static bool editor_load_scene(Editor *ed, const char *path)
 {
-    FILE *f = fopen(path, "r");
-    if (!f) {
-        QS_LOG_ERROR("Failed to open scene: %s", path);
-        return false;
-    }
-    fseek(f, 0, SEEK_END);
-    long len = ftell(f);
-    fseek(f, 0, SEEK_SET);
-    if (len <= 0) { fclose(f); return false; }
-
-    char *buf = malloc((size_t)len + 1);
-    if (!buf) { fclose(f); return false; }
-    size_t nread = fread(buf, 1, (size_t)len, f);
-    buf[nread] = '\0';
-    fclose(f);
-
-    cJSON *root = cJSON_Parse(buf);
-    free(buf);
-    if (!root) {
-        QS_LOG_ERROR("Failed to parse scene: %s", path);
-        return false;
-    }
-
-    /* Scene name */
-    const cJSON *name_val = cJSON_GetObjectItemCaseSensitive(root, "name");
-    const char *scene_name = cJSON_IsString(name_val)
-                           ? name_val->valuestring : "Untitled";
-
+    /* Scene name will be populated from the file by qs_scene_load. */
     Qs_Scene *scene = qs_scene_create(ed->engine, &(Qs_SceneDesc){
-        .name = scene_name,
+        .name = "Scene",
     });
+    if (!scene) return false;
     qs_scene_set_active(scene);
 
-    /* Directory of the scene file — used for resolving relative asset paths */
-    char dir[1024];
-    scene_dir(path, dir, sizeof(dir));
-
-    /* ---- Load entities ---- */
-    qs_scene_from_json(scene, ed->engine, root);
-
-    /* ---- Dispatch async loading for Prototype entities ----
-       Each entity with a PrototypeComp references a .qproto file which
-       describes the model asset and its base (normalization) transform.
-       The on_frame callback stores the loaded asset on the component
-       when ready, and the render loop submits model meshes directly. */
-    for (Qs_Entity e = qs_scene_first(scene, qs_prototype_comp_type());
-         e != QS_ENTITY_INVALID;
-         e = qs_scene_next(scene, qs_prototype_comp_type(), e))
-    {
-        Qs_PrototypeComp *pc = (Qs_PrototypeComp *)qs_entity_get(
-                                    scene, e, qs_prototype_comp_type());
-        if (!pc || !pc->path[0]) continue;
-
-        /* Resolve .qproto path relative to scene dir */
-        char proto_path[1024];
-        if (pc->path[0] == '/' || pc->path[0] == '\\' ||
-            (pc->path[0] && pc->path[1] == ':'))
-            snprintf(proto_path, sizeof(proto_path), "%s", pc->path);
-        else
-            snprintf(proto_path, sizeof(proto_path), "%s/%s", dir, pc->path);
-
-        /* Read and parse the .qproto file */
-        FILE *ef = fopen(proto_path, "r");
-        if (!ef) {
-            QS_LOG_ERROR("Scene '%s': cannot open prototype file '%s'", path, proto_path);
-            continue;
-        }
-        fseek(ef, 0, SEEK_END);
-        long elen = ftell(ef);
-        fseek(ef, 0, SEEK_SET);
-        if (elen <= 0) { fclose(ef); continue; }
-        char *ebuf = malloc((size_t)elen + 1);
-        if (!ebuf) { fclose(ef); continue; }
-        size_t enread = fread(ebuf, 1, (size_t)elen, ef);
-        ebuf[enread] = '\0';
-        fclose(ef);
-
-        cJSON *proto_def = cJSON_Parse(ebuf);
-        free(ebuf);
-        if (!proto_def) {
-            QS_LOG_ERROR("Scene '%s': failed to parse prototype file '%s'", path, proto_path);
-            continue;
-        }
-
-        /* Build the base (normalization) transform from the .qproto
-           "components" block using the same reflection-based serialization
-           as scene entities.  Fields absent from JSON keep their defaults. */
-        qs_m4_identity(pc->base_transform);
-        const cJSON *comps = cJSON_GetObjectItemCaseSensitive(proto_def, "components");
-        const cJSON *tr_json = comps ? cJSON_GetObjectItemCaseSensitive(comps, "Transform") : NULL;
-        if (cJSON_IsObject(tr_json)) {
-            Qs_Transform base_tr = {
-                .position = {0, 0, 0},
-                .rotation = {0, 0, 0, 1},
-                .scale    = {1, 1, 1},
-            };
-            const Qs_TypeInfo *tr_type = qs_type_find("Transform");
-            if (tr_type)
-                qs_reflect_from_json(&base_tr, tr_type, tr_json);
-            qs_m4_from_trs(pc->base_transform,
-                           base_tr.position, base_tr.rotation, base_tr.scale);
-        }
-
-        /* Extract model path and resolve relative to .qproto location */
-        const cJSON *model_val = cJSON_GetObjectItemCaseSensitive(proto_def, "model");
-        if (!cJSON_IsString(model_val) || !model_val->valuestring[0]) {
-            cJSON_Delete(proto_def);
-            continue;
-        }
-
-        char proto_dir[1024];
-        scene_dir(proto_path, proto_dir, sizeof(proto_dir));
-
-        char model_path[1024];
-        const char *mstr = model_val->valuestring;
-        if (mstr[0] == '/' || mstr[0] == '\\' || (mstr[0] && mstr[1] == ':'))
-            snprintf(model_path, sizeof(model_path), "%s", mstr);
-        else
-            snprintf(model_path, sizeof(model_path), "%s/%s", proto_dir, mstr);
-
-        cJSON_Delete(proto_def);
-
-        Qs_Asset *asset = qs_asset_load(ed->engine, model_path);
-        if (!asset) {
-            QS_LOG_ERROR("Scene '%s': failed to start loading model '%s'", path, model_path);
-            continue;
-        }
-
-        if (ed->loaded_asset_count < MAX_LOADED_RESOURCES)
-            ed->loaded_assets[ed->loaded_asset_count++] = asset;
-
-        if (ed->pending_entity_count < MAX_LOADED_RESOURCES) {
-            ed->pending_entities[ed->pending_entity_count++] =
-                (PendingEntity){ .asset = asset, .entity = e };
-        }
+    if (!qs_scene_load(scene, ed->engine, path)) {
+        QS_LOG_ERROR("Failed to load scene: %s", path);
+        return false;
     }
+
+    /* Track the source path so Save Scene knows where to write. */
+    snprintf(ed->current_scene_path, sizeof(ed->current_scene_path), "%s", path);
 
     /* Add a default directional sun light if the scene has no lights */
     if (qs_scene_first(scene, qs_light_comp_type()) == QS_ENTITY_INVALID) {
@@ -1188,7 +291,6 @@ static bool editor_load_scene(Editor *ed, const char *path)
         }
     }
 
-    cJSON_Delete(root);
     QS_LOG_INFO("Scene loaded: %s", path);
     return true;
 }
@@ -1197,7 +299,10 @@ Editor *editor_create(const EditorDesc *desc)
 {
     Editor *ed = calloc(1, sizeof(Editor));
     if (!ed) return NULL;
-    ed->selected_entity = QS_ENTITY_INVALID;
+    ed->selected_entity     = QS_ENTITY_INVALID;
+    ed->proto_owner         = QS_ENTITY_INVALID;
+    ed->proto_inner_scene   = NULL;
+    ed->proto_preview_light = QS_ENTITY_INVALID;
 
     /* Open project */
     if (desc->project_path) {
@@ -1225,13 +330,17 @@ Editor *editor_create(const EditorDesc *desc)
         .version_patch = 0,
         .window_width  = desc->width,
         .window_height = desc->height,
+        .font_size_px  = ED_FONT_SIZE_PX,
     });
     if (!ed->engine) {
         free(ed);
         return NULL;
     }
 
+    ca_window_set_scale(qs_engine_window(ed->engine), ED_UI_SCALE);
     qs_engine_set_stylesheet(ed->engine, g_editor_css);
+    if (ed->project)
+        qs_engine_set_project(ed->engine, ed->project);
 
     ed_gizmo_init(ed->engine);
     ed_pick_init(ed->engine);
@@ -1277,6 +386,7 @@ Editor *editor_create(const EditorDesc *desc)
     ed_menu_bar_init(qs_engine_window(ed->engine), ed);
 
     ed_file_browser_init(ca_window_instance(qs_engine_window(ed->engine)));
+    ed_import_dialog_init(ed);
 
     qs_engine_set_event_handler(ed->engine, CA_EVENT_KEY,          on_key_event,    ed);
     qs_engine_set_event_handler(ed->engine, CA_EVENT_MOUSE_BUTTON, on_mouse_button, ed);
@@ -1284,6 +394,29 @@ Editor *editor_create(const EditorDesc *desc)
     qs_engine_set_event_handler(ed->engine, CA_EVENT_MOUSE_SCROLL, on_mouse_scroll, ed);
     qs_engine_set_on_frame(ed->engine, on_frame, ed);
     qs_log_set_listener(on_log, ed);
+
+    /* ---- Editor command stack + global keybinds ---- */
+    ed_undo_init();
+    ed_keybinds_init();
+#ifdef __APPLE__
+    /* On macOS, both Cmd (SUPER) and Ctrl are common save/undo modifiers. */
+    int primary_mod = QS_MOD_SUPER;
+#else
+    int primary_mod = QS_MOD_CONTROL;
+#endif
+    ed_keybinds_register(QS_KEY_S, primary_mod,                      kb_save_scene, ed, "Ctrl+S");
+    ed_keybinds_register(QS_KEY_S, primary_mod | QS_MOD_SHIFT,       kb_save_proj,  ed, "Ctrl+Shift+S");
+    ed_keybinds_register(QS_KEY_Z, primary_mod,                      kb_undo,       ed, "Ctrl+Z");
+    ed_keybinds_register(QS_KEY_Y, primary_mod,                      kb_redo,       ed, "Ctrl+Y");
+    ed_keybinds_register(QS_KEY_Z, primary_mod | QS_MOD_SHIFT,       kb_redo,       ed, "Ctrl+Shift+Z");
+    /* Cross-platform fallbacks: also accept literal Ctrl on macOS. */
+#ifdef __APPLE__
+    ed_keybinds_register(QS_KEY_S, QS_MOD_CONTROL,                   kb_save_scene, ed, "Ctrl+S");
+    ed_keybinds_register(QS_KEY_S, QS_MOD_CONTROL | QS_MOD_SHIFT,    kb_save_proj,  ed, "Ctrl+Shift+S");
+    ed_keybinds_register(QS_KEY_Z, QS_MOD_CONTROL,                   kb_undo,       ed, "Ctrl+Z");
+    ed_keybinds_register(QS_KEY_Y, QS_MOD_CONTROL,                   kb_redo,       ed, "Ctrl+Y");
+    ed_keybinds_register(QS_KEY_Z, QS_MOD_CONTROL | QS_MOD_SHIFT,    kb_redo,       ed, "Ctrl+Shift+Z");
+#endif
 
     /* Subscribe to plugin reload events to refresh the scene renderer */
     Qs_EventBus *bus = qs_engine_event_bus(ed->engine);
@@ -1329,6 +462,72 @@ Qs_Project *editor_project(const Editor *ed)
     return ed ? ed->project : NULL;
 }
 
+const char *editor_current_scene_path(const Editor *ed)
+{
+    return ed ? ed->current_scene_path : "";
+}
+
+bool editor_save_scene(Editor *ed)
+{
+    if (!ed) return false;
+    Qs_Scene *scene = qs_scene_active();
+    if (!scene) {
+        QS_LOG_WARN("Save Scene: no active scene");
+        return false;
+    }
+    /* In prototype mode, the active scene is the loaded .qproto. */
+    const char *path = (ed->mode == ED_MODE_PROTOTYPE && ed->proto_path[0])
+                           ? ed->proto_path
+                           : ed->current_scene_path;
+    if (!path || !*path) {
+        QS_LOG_WARN("Save Scene: no source path known for active scene");
+        return false;
+    }
+    if (!qs_scene_save(scene, path)) {
+        QS_LOG_ERROR("Save Scene failed: %s", path);
+        return false;
+    }
+    QS_LOG_INFO("Saved scene: %s", path);
+    return true;
+}
+
+bool editor_save_project(Editor *ed)
+{
+    if (!ed) return false;
+    bool ok = true;
+    if (ed->project) {
+        if (!qs_project_save(ed->project)) {
+            QS_LOG_ERROR("Save Project failed");
+            ok = false;
+        } else {
+            QS_LOG_INFO("Saved project: %s", qs_project_path(ed->project));
+        }
+    }
+    /* Also flush the active scene so Save Project is a one-step save-all. */
+    if (!editor_save_scene(ed)) ok = false;
+    return ok;
+}
+
+bool editor_undo(Editor *ed)
+{
+    (void)ed;
+    return ed_undo();
+}
+
+bool editor_redo(Editor *ed)
+{
+    (void)ed;
+    return ed_redo();
+}
+
+/* ---- Keybind action thunks ---- */
+
+static void kb_save_scene(void   *u) { editor_save_scene  ((Editor *)u); }
+static void kb_save_proj (void   *u) { editor_save_project((Editor *)u); }
+static void kb_undo      (void   *u) { editor_undo        ((Editor *)u); }
+static void kb_redo      (void   *u) { editor_redo        ((Editor *)u); }
+
+
 Ca_Viewport *editor_scene_viewport(const Editor *ed)
 {
     return ed ? ed->scene_viewport : NULL;
@@ -1342,7 +541,34 @@ Qs_Entity editor_selected_entity(const Editor *ed)
 void editor_set_selected_entity(Editor *ed, Qs_Entity entity)
 {
     if (!ed) return;
-    ed->selected_entity = entity;
+    ed->selected_entity   = entity;
+    ed->proto_owner       = QS_ENTITY_INVALID;
+    ed->proto_inner_scene = NULL;
+}
+
+void editor_set_proto_selection(Editor *ed,
+                                Qs_Entity owner,
+                                Qs_Scene *inner_scene,
+                                Qs_Entity inner_entity)
+{
+    if (!ed) return;
+    if (owner == QS_ENTITY_INVALID || !inner_scene) {
+        editor_set_selected_entity(ed, inner_entity);
+        return;
+    }
+    ed->selected_entity   = inner_entity;
+    ed->proto_owner       = owner;
+    ed->proto_inner_scene = inner_scene;
+}
+
+Qs_Entity editor_proto_owner(const Editor *ed)
+{
+    return ed ? ed->proto_owner : QS_ENTITY_INVALID;
+}
+
+Qs_Scene *editor_proto_inner_scene(const Editor *ed)
+{
+    return ed ? ed->proto_inner_scene : NULL;
 }
 
 EditorMode editor_mode(const Editor *editor)
@@ -1350,122 +576,103 @@ EditorMode editor_mode(const Editor *editor)
     return editor ? editor->mode : ED_MODE_SCENE;
 }
 
+const char *editor_current_proto_path(const Editor *editor)
+{
+    if (!editor || editor->mode != ED_MODE_PROTOTYPE) return "";
+    /* The stored proto_path is absolute (qs_scene_save needs it that way).
+       Cycle detection compares against project-relative paths from the
+       prototype dropdown / from PrototypeComp paths embedded in .qproto
+       JSON, so we convert here.  Static buffer is fine — only one
+       prototype is "current" at a time and this accessor is only read
+       on the UI thread. */
+    static char rel[1024];
+    qs_project_make_relative(editor->project, editor->proto_path,
+                             rel, sizeof(rel));
+    return rel[0] ? rel : editor->proto_path;
+}
+
 bool editor_open_prototype(Editor *editor, const char *proto_path)
 {
-    if (!editor || !proto_path || editor->mode == ED_MODE_PROTOTYPE)
-        return false;
-
-    /* Read and parse the .qproto file */
-    FILE *f = fopen(proto_path, "r");
-    if (!f) {
-        QS_LOG_ERROR("Cannot open prototype: %s", proto_path);
-        return false;
-    }
-    fseek(f, 0, SEEK_END);
-    long len = ftell(f);
-    fseek(f, 0, SEEK_SET);
-    if (len <= 0) { fclose(f); return false; }
-    char *buf = malloc((size_t)len + 1);
-    if (!buf) { fclose(f); return false; }
-    size_t nread = fread(buf, 1, (size_t)len, f);
-    buf[nread] = '\0';
-    fclose(f);
-
-    cJSON *root = cJSON_Parse(buf);
-    free(buf);
-    if (!root) {
-        QS_LOG_ERROR("Failed to parse prototype: %s", proto_path);
+    if (!editor || !proto_path) return false;
+    if (editor->proto_stack_depth >= EDITOR_PROTO_STACK_DEPTH) {
+        QS_LOG_ERROR("Prototype edit stack full (max depth %d)",
+                     EDITOR_PROTO_STACK_DEPTH);
         return false;
     }
 
-    /* Extract prototype name and model path */
-    const cJSON *name_val  = cJSON_GetObjectItemCaseSensitive(root, "name");
-    const cJSON *model_val = cJSON_GetObjectItemCaseSensitive(root, "model");
-    const char  *proto_name = cJSON_IsString(name_val)
-                            ? name_val->valuestring : "Prototype";
-
-    if (!cJSON_IsString(model_val) || !model_val->valuestring[0]) {
-        QS_LOG_ERROR("Prototype '%s' has no model field", proto_path);
-        cJSON_Delete(root);
+    /* Reject re-entry into a prototype that's already being edited.
+       Without this guard, opening A → A would push the same .qproto
+       repeatedly, exhaust the edit stack, and (worse) recursively load
+       the inner Qs_Scene for each entry. */
+    if (editor->mode == ED_MODE_PROTOTYPE &&
+        editor->proto_path[0] &&
+        strcmp(editor->proto_path, proto_path) == 0)
+    {
+        QS_LOG_WARN("Prototype '%s' is already open for edit at this level", proto_path);
         return false;
     }
-
-    /* Store path and resolve model path relative to .qproto location */
-    snprintf(editor->proto_path, sizeof(editor->proto_path), "%s", proto_path);
-
-    char proto_dir[1024];
-    scene_dir(proto_path, proto_dir, sizeof(proto_dir));
-
-    const char *mstr = model_val->valuestring;
-    if (mstr[0] == '/' || mstr[0] == '\\' || (mstr[0] && mstr[1] == ':'))
-        snprintf(editor->proto_model_path, sizeof(editor->proto_model_path),
-                 "%s", mstr);
-    else
-        snprintf(editor->proto_model_path, sizeof(editor->proto_model_path),
-                 "%s/%s", proto_dir, mstr);
-
-    /* Save current state */
-    editor->scene_backup = qs_scene_active();
-    editor->cam_backup   = editor->cam;
-    editor->selected_entity = QS_ENTITY_INVALID;
-
-    /* Create a temporary scene for the prototype */
-    char scene_name[256];
-    snprintf(scene_name, sizeof(scene_name), "Prototype: %s", proto_name);
-    Qs_Scene *proto_scene = qs_scene_create(editor->engine, &(Qs_SceneDesc){
-        .name = scene_name,
-    });
-    qs_scene_set_active(proto_scene);
-
-    /* Create root entity with the prototype's components */
-    Qs_Entity root_entity = qs_entity_create(proto_scene, proto_name);
-    editor->proto_entity = root_entity;
-
-    /* Deserialize components from the .qproto file */
-    const cJSON *comps = cJSON_GetObjectItemCaseSensitive(root, "components");
-    if (comps) {
-        const cJSON *item = NULL;
-        cJSON_ArrayForEach(item, comps) {
-            const char *comp_name = item->string;
-            if (!comp_name) continue;
-
-            /* Find the component type by name */
-            Qs_ComponentType *ct = NULL;
-            uint32_t type_count = qs_component_type_count();
-            for (uint32_t i = 0; i < type_count; i++) {
-                Qs_ComponentType *t = qs_component_type_at(i);
-                if (t && strcmp(qs_component_type_name(t), comp_name) == 0) {
-                    ct = t;
-                    break;
-                }
-            }
-            if (!ct) continue;
-
-            /* Add the component and deserialize from JSON */
-            void *comp = qs_entity_add(proto_scene, root_entity, ct);
-            if (comp) {
-                const Qs_TypeInfo *type_info = qs_component_type_info(ct);
-                if (type_info)
-                    qs_reflect_from_json(comp, type_info, item);
-            }
+    /* Also reject if the candidate appears anywhere up the open chain
+       (would-be cycle: editing A, then drilling A→B→A). */
+    {
+        const char *root = editor->project ? qs_project_path(editor->project) : NULL;
+        for (uint32_t i = 0; i < editor->proto_stack_depth; i++) {
+            (void)i;
+        }
+        if (qs_prototype_would_create_cycle(editor->project, editor->proto_path[0] ? editor->proto_path : "",
+                                            proto_path) && editor->proto_path[0])
+        {
+            QS_LOG_ERROR("Refusing to open '%s': would create cyclic prototype edit (root '%s')",
+                         proto_path, editor->proto_path);
+            (void)root;
+            return false;
         }
     }
 
-    cJSON_Delete(root);
+    /* Push current scene + camera onto the stack */
+    editor->proto_stack_scene[editor->proto_stack_depth] = qs_scene_active();
+    editor->proto_stack_cam  [editor->proto_stack_depth] = editor->cam;
+    editor->proto_stack_depth++;
 
-    /* Add a default light so the prototype is visible */
-    Qs_Entity sun = qs_entity_create(proto_scene, "Sun");
-    Qs_LightComp *lc = qs_entity_add(proto_scene, sun, qs_light_comp_type());
-    if (lc) {
-        lc->color[0]  = 1.0f;
-        lc->color[1]  = 0.95f;
-        lc->color[2]  = 0.9f;
-        lc->intensity = 3.0f;
+    /* Load the .qproto file into a fresh scene and activate it.
+       qs_scene_load handles parent restoration + asset cache resolution. */
+    Qs_Scene *proto_scene = qs_scene_create(editor->engine, &(Qs_SceneDesc){
+        .name = "Prototype",
+    });
+    if (!proto_scene ||
+        !qs_scene_load(proto_scene, editor->engine, proto_path))
+    {
+        if (proto_scene) qs_scene_destroy(proto_scene);
+        editor->proto_stack_depth--;
+        QS_LOG_ERROR("Failed to load prototype: %s", proto_path);
+        return false;
     }
+    qs_scene_set_active(proto_scene);
 
-    /* Load the model asset */
-    editor->proto_asset = qs_asset_load(editor->engine,
-                                        editor->proto_model_path);
+    snprintf(editor->proto_path, sizeof(editor->proto_path), "%s", proto_path);
+    editor->selected_entity   = QS_ENTITY_INVALID;
+    editor->proto_owner       = QS_ENTITY_INVALID;
+    editor->proto_inner_scene = NULL;
+
+    /* Inject an editor-only preview directional light if the prototype
+       has no lights of its own.  This is purely a viewport convenience —
+       it is destroyed before the prototype is saved so the .qproto file
+       never gains a stray light entity. */
+    editor->proto_preview_light = QS_ENTITY_INVALID;
+    if (qs_scene_first(proto_scene, qs_light_comp_type()) == QS_ENTITY_INVALID) {
+        Qs_Entity sun = qs_entity_create(proto_scene, "(Editor Preview Light)");
+        if (sun != QS_ENTITY_INVALID) {
+            Qs_LightComp *lc = qs_entity_add(proto_scene, sun, qs_light_comp_type());
+            if (lc) {
+                lc->color[0]  = 1.0f;
+                lc->color[1]  = 0.95f;
+                lc->color[2]  = 0.9f;
+                lc->intensity = 3.0f;
+                editor->proto_preview_light = sun;
+            } else {
+                qs_entity_destroy(proto_scene, sun);
+            }
+        }
+    }
 
     /* Reset camera for prototype view */
     ed_camera_init(&editor->cam);
@@ -1483,125 +690,69 @@ bool editor_open_prototype(Editor *editor, const char *proto_path)
 
     /* Update breadcrumb bar */
     if (s_breadcrumb_bar) {
-        const char *scene_name_str = editor->scene_backup
-            ? qs_scene_name(editor->scene_backup) : "Scene";
+        Qs_Scene *prev =
+            editor->proto_stack_scene[editor->proto_stack_depth - 1];
+        const char *scene_name_str = prev ? qs_scene_name(prev) : "Scene";
         ca_set_text(s_breadcrumb_scene_label, scene_name_str);
-        ca_set_text(s_breadcrumb_proto_label, proto_name);
+        ca_set_text(s_breadcrumb_proto_label, qs_scene_name(proto_scene));
         ca_set_hidden(s_breadcrumb_bar, false);
     }
 
     editor->mode = ED_MODE_PROTOTYPE;
-    QS_LOG_INFO("Editing prototype: %s", proto_name);
+    QS_LOG_INFO("Editing prototype: %s", proto_path);
     return true;
 }
 
 void editor_close_prototype(Editor *editor)
 {
-    if (!editor || editor->mode != ED_MODE_PROTOTYPE)
-        return;
+    if (!editor || editor->proto_stack_depth == 0) return;
 
-    /* Save the prototype before closing */
+    /* Save the current prototype scene back to its source path. */
     Qs_Scene *proto_scene = qs_scene_active();
-    if (proto_scene && editor->proto_entity != QS_ENTITY_INVALID) {
-        /* Build updated .qproto JSON */
-        cJSON *root = cJSON_CreateObject();
-
-        /* Extract prototype name from the entity */
-        const char *name = qs_entity_name(proto_scene, editor->proto_entity);
-        if (name && name[0])
-            cJSON_AddStringToObject(root, "name", name);
-
-        /* Re-extract the model filename from the stored path */
-        const char *slash = strrchr(editor->proto_model_path, '/');
-        const char *bslash = strrchr(editor->proto_model_path, '\\');
-        const char *model_name = slash ? slash + 1 : editor->proto_model_path;
-        if (bslash && bslash > model_name - 1) model_name = bslash + 1;
-        cJSON_AddStringToObject(root, "model", model_name);
-
-        /* Serialize components */
-        cJSON *comps_json = cJSON_CreateObject();
-        uint32_t type_count = qs_component_type_count();
-        for (uint32_t t = 0; t < type_count; t++) {
-            Qs_ComponentType *ct = qs_component_type_at(t);
-            if (!ct) continue;
-            if (!qs_entity_has(proto_scene, editor->proto_entity, ct))
-                continue;
-
-            const char *comp_name = qs_component_type_name(ct);
-            /* Skip internal components */
-            if (strcmp(comp_name, "IdComp") == 0 ||
-                strcmp(comp_name, "TagComp") == 0)
-                continue;
-
-            const Qs_TypeInfo *info = qs_component_type_info(ct);
-            void *data = qs_entity_get(proto_scene, editor->proto_entity, ct);
-            if (info && data) {
-                cJSON *comp_json = qs_reflect_to_json(data, info);
-                if (comp_json)
-                    cJSON_AddItemToObject(comps_json, comp_name, comp_json);
-            }
-        }
-        cJSON_AddItemToObject(root, "components", comps_json);
-
-        /* Write to disk */
-        char *json_str = cJSON_Print(root);
-        if (json_str) {
-            FILE *f = fopen(editor->proto_path, "w");
-            if (f) {
-                fputs(json_str, f);
-                fclose(f);
-                QS_LOG_INFO("Saved prototype: %s", editor->proto_path);
-            }
-            free(json_str);
-        }
-        cJSON_Delete(root);
+    /* Strip the editor-only preview light first so it never lands in
+       the saved .qproto. */
+    if (proto_scene && editor->proto_preview_light != QS_ENTITY_INVALID) {
+        if (qs_entity_valid(proto_scene, editor->proto_preview_light))
+            qs_entity_destroy(proto_scene, editor->proto_preview_light);
+        editor->proto_preview_light = QS_ENTITY_INVALID;
     }
-
-    /* Release prototype asset */
-    if (editor->proto_asset) {
-        qs_asset_release(editor->proto_asset);
-        editor->proto_asset = NULL;
-    }
-
-    /* Destroy the temporary scene and restore the saved one */
+    if (proto_scene && editor->proto_path[0])
+        qs_scene_save(proto_scene, editor->proto_path);
     if (proto_scene)
         qs_scene_destroy(proto_scene);
 
-    qs_scene_set_active(editor->scene_backup);
-    editor->scene_backup = NULL;
+    /* Pop the previous scene + camera */
+    editor->proto_stack_depth--;
+    Qs_Scene *prev = editor->proto_stack_scene[editor->proto_stack_depth];
+    qs_scene_set_active(prev);
+    editor->cam = editor->proto_stack_cam[editor->proto_stack_depth];
 
-    /* Restore camera and selection */
-    editor->cam = editor->cam_backup;
-    editor->selected_entity = QS_ENTITY_INVALID;
-    editor->proto_entity = QS_ENTITY_INVALID;
-    editor->proto_path[0] = '\0';
-    editor->proto_model_path[0] = '\0';
+    editor->selected_entity   = QS_ENTITY_INVALID;
+    editor->proto_owner       = QS_ENTITY_INVALID;
+    editor->proto_inner_scene = NULL;
+    editor->proto_path[0]     = '\0';
 
-    /* Hide breadcrumb */
-    if (s_breadcrumb_bar)
-        ca_set_hidden(s_breadcrumb_bar, true);
-
-    editor->mode = ED_MODE_SCENE;
-    QS_LOG_INFO("Returned to scene editing");
+    if (editor->proto_stack_depth == 0) {
+        if (s_breadcrumb_bar) ca_set_hidden(s_breadcrumb_bar, true);
+        editor->mode = ED_MODE_SCENE;
+    }
+    QS_LOG_INFO("Returned to %s", prev ? qs_scene_name(prev) : "(none)");
 }
 
 void editor_destroy(Editor *ed)
 {
     if (!ed) return;
-    /* Close prototype editing if active */
-    if (ed->mode == ED_MODE_PROTOTYPE) {
-        if (ed->proto_asset) {
-            qs_asset_release(ed->proto_asset);
-            ed->proto_asset = NULL;
-        }
-    }
-    /* Release loaded asset handles */
-    for (uint32_t i = 0; i < ed->loaded_asset_count; i++) {
-        if (ed->loaded_assets[i])
-            qs_asset_release(ed->loaded_assets[i]);
+    /* Pop and discard any prototype edit stack (don't auto-save). */
+    while (ed->proto_stack_depth > 0) {
+        Qs_Scene *cur = qs_scene_active();
+        if (cur) qs_scene_destroy(cur);
+        ed->proto_stack_depth--;
+        qs_scene_set_active(ed->proto_stack_scene[ed->proto_stack_depth]);
     }
     ed_pick_shutdown(ed->engine);
     ed_gizmo_shutdown(ed->engine);
+    ed_undo_shutdown();
+    ed_keybinds_shutdown();
     qs_engine_destroy(ed->engine);
     qs_project_destroy(ed->project);
     free(ed);

@@ -1,0 +1,18 @@
+{
+	"name":	"Castle_White",
+	"base_color_factor":	[1, 1, 1, 1],
+	"metallic_factor":	1,
+	"roughness_factor":	1,
+	"normal_scale":	1,
+	"occlusion_strength":	1,
+	"emissive_factor":	[0, 0, 0],
+	"alpha_mode":	0,
+	"alpha_cutoff":	0.5,
+	"double_sided":	false,
+	"textures":	{
+		"base_color":	"../textures/Castle_white_base_color_22.qstex",
+		"metallic_roughness":	"../textures/Castle_ORM_20.qstex",
+		"normal":	"../textures/Castle_normal_19.qstex",
+		"occlusion":	"../textures/Castle_ORM_20.qstex"
+	}
+}

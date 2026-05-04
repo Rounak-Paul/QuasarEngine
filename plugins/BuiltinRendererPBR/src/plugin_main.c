@@ -16,6 +16,7 @@ static Ca_Label     *s_lbl_fps         = NULL;
 static Ca_Label     *s_lbl_frametime   = NULL;
 static Ca_Label     *s_lbl_bloom       = NULL;
 static Ca_Label     *s_lbl_vignette    = NULL;
+static Ca_Label     *s_lbl_msaa        = NULL;
 
 /* ---- on_frame: update stat labels ---- */
 
@@ -40,6 +41,16 @@ static void renderer_win_frame(void *data)
 
         snprintf(buf, sizeof(buf), "Vignette:    %.3f", pp->vignette_strength);
         ca_set_text(s_lbl_vignette, buf);
+
+        PbrPassResources *ps = pbr_renderer_pass_resources();
+        uint32_t samples = ps ? ps->dev_max_samples : 1;
+        uint32_t cur = pp ? pp->msaa_sample_count : 1;
+        if (pp->msaa_sample_count > 1)
+            snprintf(buf, sizeof(buf), "MSAA:        %ux", pp->msaa_sample_count);
+        else
+            snprintf(buf, sizeof(buf), "MSAA:        off");
+        (void)samples;
+        ca_set_text(s_lbl_msaa, buf);
     }
 }
 
@@ -55,6 +66,15 @@ static void on_vignette_change(Ca_Slider *s, void *user_data)
 {
     (void)user_data;
     pbr_post_process_settings()->vignette_strength = ca_slider_get(s);
+}
+
+static void on_msaa_select(Ca_Select *sel, void *user_data)
+{
+    (void)user_data;
+    static const uint32_t k_counts[4] = {1, 2, 4, 8};
+    int idx = ca_select_get(sel);
+    if (idx >= 0 && idx < 4)
+        pbr_post_process_settings()->msaa_sample_count = k_counts[idx];
 }
 
 /* ---- Window builder ---- */
@@ -122,6 +142,35 @@ static void open_renderer_window(void *user_data)
         });
         ca_div_end();
 
+        {
+            static const char *k_labels[4] = {"Off (1x)", "2x", "4x", "8x"};
+            static const uint32_t k_counts[4] = {1, 2, 4, 8};
+            PbrPassResources *ps2 = pbr_renderer_pass_resources();
+            uint32_t dev_max = ps2 ? ps2->dev_max_samples : 1;
+            int n_opts = 1;
+            for (int i = 1; i < 4; i++) { if (k_counts[i] <= dev_max) n_opts = i + 1; }
+            uint32_t cur = pp ? pp->msaa_sample_count : 1;
+            int sel_idx = 0;
+            for (int i = 0; i < n_opts; i++) { if (k_counts[i] == cur) sel_idx = i; }
+            ca_div_begin(&(Ca_DivDesc){
+                .direction = CA_HORIZONTAL,
+                .style     = "renderer-setting-row",
+            });
+            ca_text(&(Ca_TextDesc){
+                .text  = "MSAA",
+                .style = "renderer-setting-label",
+            });
+            ca_div_begin(&(Ca_DivDesc){ .style = "pm-spacer" }); ca_div_end();
+            ca_select(&(Ca_SelectDesc){
+                .options      = k_labels,
+                .option_count = n_opts,
+                .selected     = sel_idx,
+                .on_change    = on_msaa_select,
+                .style        = "inspector-select",
+            });
+            ca_div_end();
+        }
+
         ca_hr(&(Ca_HrDesc){ .color = 0 });
 
         /* ---- Stats section ---- */
@@ -138,6 +187,7 @@ static void open_renderer_window(void *user_data)
         s_lbl_frametime = ca_text(&(Ca_TextDesc){ .text = "Frame Time:", .style = "renderer-stat-row" });
         s_lbl_bloom    = ca_text(&(Ca_TextDesc){ .text = "Bloom:",       .style = "renderer-stat-row" });
         s_lbl_vignette = ca_text(&(Ca_TextDesc){ .text = "Vignette:",    .style = "renderer-stat-row" });
+        s_lbl_msaa     = ca_text(&(Ca_TextDesc){ .text = "MSAA:",        .style = "renderer-stat-row" });
         ca_div_end();
     }
     ca_ui_end();
@@ -188,6 +238,7 @@ static void on_unload(Qs_Engine *engine)
     s_lbl_frametime  = NULL;
     s_lbl_bloom      = NULL;
     s_lbl_vignette   = NULL;
+    s_lbl_msaa       = NULL;
     s_engine         = NULL;
     qs_renderer_backend_unregister("PBRRenderer");
 }

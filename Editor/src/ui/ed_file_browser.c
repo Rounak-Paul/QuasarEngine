@@ -1,5 +1,6 @@
 #include "ed_file_browser.h"
 #include "ca_theme.h"
+#include "../ed_style.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -501,43 +502,49 @@ static void build_window_ui(void)
             .direction = CA_HORIZONTAL,
             .style     = "fb-nav-bar",
         });
-        s_fb.btn_back = ca_btn(&(Ca_BtnDesc){
+        s_fb.btn_back = ca_btn_begin(&(Ca_BtnDesc){
             .text     = ICON_ARROW_LEFT,
             .on_click = on_nav_back,
             .style    = "fb-nav-btn",
             .disabled = true,
         });
-        s_fb.btn_forward = ca_btn(&(Ca_BtnDesc){
+        ca_btn_end();
+        s_fb.btn_forward = ca_btn_begin(&(Ca_BtnDesc){
             .text     = ICON_ARROW_RIGHT,
             .on_click = on_nav_forward,
             .style    = "fb-nav-btn",
             .disabled = true,
         });
-        ca_btn(&(Ca_BtnDesc){
+        ca_btn_end();
+        ca_btn_begin(&(Ca_BtnDesc){
             .text     = ICON_LEVEL_UP,
             .on_click = on_nav_up,
             .style    = "fb-nav-btn",
         });
-        ca_btn(&(Ca_BtnDesc){
+        ca_btn_end();
+        ca_btn_begin(&(Ca_BtnDesc){
             .text     = ICON_HOME,
             .on_click = on_nav_home,
             .style    = "fb-nav-btn",
         });
-        ca_btn(&(Ca_BtnDesc){
+        ca_btn_end();
+        ca_btn_begin(&(Ca_BtnDesc){
             .text     = ICON_REFRESH,
             .on_click = on_nav_refresh,
             .style    = "fb-nav-btn",
         });
+        ca_btn_end();
         s_fb.path_input = ca_input(&(Ca_InputDesc){
             .text        = s_fb.current_path,
             .placeholder = "Enter path...",
             .style       = "fb-path-input",
         });
-        ca_btn(&(Ca_BtnDesc){
+        ca_btn_begin(&(Ca_BtnDesc){
             .text     = "Go",
             .on_click = on_nav_go,
             .style    = "fb-nav-btn",
         });
+        ca_btn_end();
         ca_div_end();
 
         /* ---- Column headers ---- */
@@ -564,13 +571,14 @@ static void build_window_ui(void)
         });
 
         for (int i = 0; i < FB_MAX_ENTRIES; ++i) {
-            s_fb.entry_btns[i] = ca_btn(&(Ca_BtnDesc){
+            s_fb.entry_btns[i] = ca_btn_begin(&(Ca_BtnDesc){
                 .text       = "",
                 .on_click   = on_entry_click,
                 .click_data = (void *)(intptr_t)i,
                 .style      = "fb-entry",
                 .hidden     = true,
             });
+            ca_btn_end();
         }
         ca_div_end();
 
@@ -600,17 +608,19 @@ static void build_window_ui(void)
                 .style     = "fb-bottom-row",
             });
             ca_spacer(&(Ca_SpacerDesc){ .style = "fb-spacer-grow" });
-            ca_btn(&(Ca_BtnDesc){
+            ca_btn_begin(&(Ca_BtnDesc){
                 .text     = "Cancel",
                 .on_click = on_cancel,
                 .style    = "fb-btn",
             });
-            s_fb.confirm_btn = ca_btn(&(Ca_BtnDesc){
+            ca_btn_end();
+            s_fb.confirm_btn = ca_btn_begin(&(Ca_BtnDesc){
                 .text     = "Open",
                 .on_click = on_confirm_btn,
                 .style    = "fb-btn fb-btn-primary",
                 .disabled = true,
             });
+            ca_btn_end();
             ca_div_end();
         }
         ca_div_end();
@@ -691,6 +701,8 @@ void ed_file_browser_open(const EdFBDesc *desc)
         s_fb.open = false;
         return;
     }
+
+    ca_window_set_scale(s_fb.window, ED_UI_SCALE);
 
     /* Build UI tree in the new window */
     build_window_ui();

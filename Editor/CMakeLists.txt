@@ -9,3 +9,7 @@ target_include_directories(QuasarEditor
 )
 
 target_link_libraries(QuasarEditor PRIVATE Quasar causality)
+
+if(MSVC)
+    target_compile_options(QuasarEditor PRIVATE /experimental:c11atomics)
+endif()

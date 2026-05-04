@@ -6,6 +6,7 @@
 #include <stddef.h>
 
 #include "qs_light.h"
+#include "qs_reflect.h"
 
 typedef struct Qs_Engine         Qs_Engine;
 typedef struct Qs_Scene          Qs_Scene;
@@ -13,6 +14,7 @@ typedef struct Qs_ComponentType  Qs_ComponentType;
 typedef struct Qs_TypeInfo       Qs_TypeInfo;
 typedef struct Qs_Mesh           Qs_Mesh;
 typedef struct Qs_Material       Qs_Material;
+typedef struct Qs_Project        Qs_Project;
 struct cJSON;
 
 /* ================================================================
@@ -81,12 +83,15 @@ typedef struct Qs_Transform {
 } Qs_Transform;
 
 /// Renderable mesh reference.
+/// Both `mesh_path` and `material_path` are stored relative to the file the
+/// component lives in (a .qscene or .qproto).  Resolution happens at scene
+/// load time via the runtime asset cache.
 typedef struct Qs_MeshComp {
-    Qs_Mesh     *mesh;
-    Qs_Material *material;
+    Qs_Mesh     *mesh;             ///< Resolved at load (runtime-only).
+    Qs_Material *material;         ///< Resolved at load (runtime-only).
     bool         visible;          ///< Default: true.
-    char         mesh_name[64];    ///< Resource name for serialization.
-    char         material_name[64];///< Resource name for serialization.
+    char         mesh_path[256];   ///< Project-relative or scene-relative .qsmesh path.
+    char         material_path[256];///< Project-relative or scene-relative .qsmat path.
 } Qs_MeshComp;
 
 /// Light component — all parameters stored inline for reflection, serialization,
@@ -115,15 +120,117 @@ typedef struct Qs_TagComp {
 } Qs_TagComp;
 
 /// References a prototype file (.qproto) — a reusable entity template
-/// analogous to a Unity prefab.  Prototypes are scenes that can be nested
-/// inside other scenes or other prototypes.  Imported models (e.g. glTF)
-/// are automatically converted to prototypes.
+/// analogous to a Unity prefab.  A prototype is itself a full scene:
+/// it owns its own ECS world (`inner`) and is rendered by recursively
+/// composing its entities' world transforms with the parent entity's
+/// world matrix.  Imported models (e.g. glTF) are automatically
+/// represented as prototypes by the asset import pipeline.
+///
+/// Per-instance overrides:
+///   When a prototype is placed in a scene, individual fields of inner-scene
+///   entities can be customised without modifying the source .qproto file.
+///   Overrides are keyed by (inner_entity_id, comp_name, field_name) and
+///   applied to the inner scene each frame before rendering.  See the
+///   qs_prototype_*_override API below.
+typedef struct Qs_PrototypeOverride {
+    uint32_t       inner_entity_id;     ///< Stable IdComp.id within the inner scene.
+    char           comp_name[32];       ///< Component type name, e.g. "Transform".
+    char           field_name[32];      ///< Field name, e.g. "position".
+    Qs_FieldType   type;                ///< Value type tag.
+    union {
+        float    fv[4];                 ///< FLOAT / FLOAT2 / FLOAT3 / FLOAT4.
+        int32_t  iv;                    ///< INT32.
+        uint32_t uv;                    ///< UINT32 / ENTITY.
+        bool     bv;                    ///< BOOL.
+        char     sv[256];               ///< STRING (truncated if larger).
+    } value;
+} Qs_PrototypeOverride;
+
 typedef struct Qs_PrototypeComp {
-    char            path[256];           ///< Path to the .qproto file (serialized).
-    /* ---- runtime fields (not serialized) ---- */
-    struct Qs_Asset *asset;              ///< Loaded asset handle.
-    float            base_transform[16]; ///< Normalization matrix from .qproto.
+    char            path[256];           ///< Project- or scene-relative .qproto path.
+    /* ---- runtime fields (not serialized via reflection) ---- */
+    Qs_Scene       *inner;               ///< Inner ECS world (lazy-loaded on first use).
+    bool            load_failed;         ///< Set after a failed lazy load to avoid retries.
+    Qs_PrototypeOverride *overrides;     ///< Heap-allocated; may be NULL.
+    uint32_t        override_count;
+    uint32_t        override_cap;
 } Qs_PrototypeComp;
+
+/* ---- Prototype override API ----------------------------------------- */
+
+/// Sets (or replaces) an override on the prototype instance.  `value` must
+/// point to data matching `type` (e.g. float[3] for FLOAT3, char* for
+/// STRING).  Returns true on success.  The override is applied to the
+/// inner scene immediately if it is loaded, and re-applied each frame.
+bool qs_prototype_set_override(Qs_PrototypeComp *pc,
+                               uint32_t inner_entity_id,
+                               const char *comp_name,
+                               const char *field_name,
+                               Qs_FieldType type,
+                               const void *value);
+
+/// Removes an override.  Returns true if one existed.  After clearing, the
+/// inner-scene field reverts to its source-prototype value on the next
+/// override-apply pass; if you need an immediate revert, reload the inner
+/// scene via qs_prototype_reload().
+bool qs_prototype_clear_override(Qs_PrototypeComp *pc,
+                                 uint32_t inner_entity_id,
+                                 const char *comp_name,
+                                 const char *field_name);
+
+/// Returns the override matching the key, or NULL if none.
+const Qs_PrototypeOverride *qs_prototype_find_override(
+    const Qs_PrototypeComp *pc,
+    uint32_t inner_entity_id,
+    const char *comp_name,
+    const char *field_name);
+
+/// Number of overrides currently stored on the instance.
+uint32_t qs_prototype_override_count(const Qs_PrototypeComp *pc);
+
+/// Indexed access to the overrides list (0 .. count-1).
+const Qs_PrototypeOverride *qs_prototype_override_at(
+    const Qs_PrototypeComp *pc, uint32_t index);
+
+/// Applies all stored overrides to the inner scene's component data.
+/// Safe to call when inner is NULL (no-op).  Called automatically before
+/// rendering, but can be invoked manually after editing for an
+/// immediate UI refresh.
+void qs_prototype_apply_overrides(Qs_PrototypeComp *pc);
+
+/// Drops the lazy-loaded inner scene so it will be reloaded fresh from
+/// disk on the next render.  Useful after clearing overrides to discard
+/// any side-effects in the inner ECS data.
+void qs_prototype_reload(Qs_PrototypeComp *pc);
+
+/* ---- Prototype dependency / cycle detection ----------------------- */
+
+/// Returns true if the .qproto file at `subject_path` directly or
+/// transitively contains a `Qs_PrototypeComp` whose `path` resolves to
+/// `target_path`.  Used by the editor to reject would-be edits that
+/// would create a cyclic prototype reference (e.g. dropping prototype
+/// A as a child of A's own hierarchy, or routing A→B→A).
+///
+/// Path arguments are project-relative (the same form stored in
+/// `Qs_PrototypeComp.path`).  An equal subject/target counts as a cycle.
+/// The check is bounded; cycles in already-corrupted files are detected
+/// via an internal visited set rather than recursing forever.
+bool qs_prototype_path_depends_on(Qs_Project *project,
+                                  const char *subject_path,
+                                  const char *target_path);
+
+/// Convenience: returns true if assigning `candidate_inner_path` as a
+/// `PrototypeComp.path` inside `host_path` would create a cycle.
+/// Equivalent to:
+///   candidate == host || qs_prototype_path_depends_on(candidate, host)
+bool qs_prototype_would_create_cycle(Qs_Project *project,
+                                     const char *host_path,
+                                     const char *candidate_inner_path);
+
+/// Looks up an inner-scene entity by its stable IdComp.id.  Returns
+/// QS_ENTITY_INVALID if no entity with that id exists.
+Qs_Entity qs_scene_find_by_id(Qs_Scene *scene, uint32_t id);
+
 
 /// Returns the built-in Transform component type handle.
 Qs_ComponentType *qs_transform_type(void);
@@ -272,5 +379,25 @@ bool qs_scene_load(Qs_Scene *scene, Qs_Engine *engine, const char *path);
 /// local transforms up the parent chain.  Result is column-major 4×4.
 void qs_scene_world_matrix(const Qs_Scene *scene, Qs_Entity entity,
                            float out[16]);
+
+/* ================================================================
+   RENDERING SUBMISSION
+   ================================================================
+   Scenes know how to submit their renderables and lights to a
+   renderer.  PrototypeComp entities recurse into their inner scene,
+   composing the parent's world matrix so nested prototypes render
+   correctly.
+   ================================================================ */
+
+typedef struct Qs_Renderer Qs_Renderer;
+
+/// Submit every visible MeshComp + LightComp entity in `scene` (and
+/// recursively in nested PrototypeComp scenes) to `renderer`.
+/// `parent_world` is the world matrix to compose with each entity's
+/// local transform — pass an identity matrix for top-level scenes.
+void qs_scene_submit_renderables(Qs_Scene *scene,
+                                 Qs_Engine *engine,
+                                 Qs_Renderer *renderer,
+                                 const float parent_world[16]);
 
 #endif

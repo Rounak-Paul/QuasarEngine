@@ -1,5 +1,6 @@
 #include "ed_plugin_manager.h"
 #include "editor.h"
+#include "../ed_style.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -162,13 +163,14 @@ static void plugin_manager_frame(void *data)
                 snprintf(toggle_id, sizeof(toggle_id), "pm-tgl-%s", pid);
 
                 if (loaded) {
-                    ca_btn(&(Ca_BtnDesc){
+                    ca_btn_begin(&(Ca_BtnDesc){
                         .text       = ICON_RELOAD,
                         .id         = reload_id,
                         .style      = "pm-reload-btn",
                         .on_click   = on_reload,
                         .click_data = &s_reload_ctx[ci],
                     });
+                    ca_btn_end();
                 }
 
                 ca_toggle(&(Ca_ToggleDesc){
@@ -205,6 +207,8 @@ void ed_plugin_manager_open(void)
         .height = 360,
     });
     if (!s_win) return;
+
+    ca_window_set_scale(s_win, ED_UI_SCALE);
 
     ca_ui_begin(s_win, &(Ca_DivDesc){
         .direction = CA_VERTICAL,

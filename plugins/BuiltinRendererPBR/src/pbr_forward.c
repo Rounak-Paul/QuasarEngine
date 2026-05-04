@@ -34,6 +34,7 @@
 static PbrPostProcessSettings g_pp_settings = {
     .bloom_strength    = 0.04f,
     .vignette_strength = 0.35f,
+    .msaa_sample_count = PBR_MSAA_SAMPLES,
 };
 
 PbrPostProcessSettings *pbr_post_process_settings(void) { return &g_pp_settings; }
@@ -408,6 +409,25 @@ static bool create_samplers(Qs_GpuContext *gpu, PbrPassResources *ps)
     return ps->linear_sampler && ps->point_sampler && ps->shadow_sampler;
 }
 
+/* Maps a sample count {1,2,4,8} to its tier index {0,1,2,3}. */
+static int sample_count_to_idx(uint32_t s)
+{
+    switch (s) { case 2: return 1; case 4: return 2; case 8: return 3; default: return 0; }
+}
+
+/* Clamps a requested sample count to what the device supports and the pipeline
+   arrays contain, snapping down to the next lower supported tier. */
+static uint32_t effective_sample_count(uint32_t want, uint32_t dev_max)
+{
+    static const uint32_t tiers[PBR_MSAA_TIER_COUNT] = {1, 2, 4, 8};
+    uint32_t result = 1;
+    for (int i = 0; i < PBR_MSAA_TIER_COUNT; i++) {
+        if (tiers[i] <= dev_max && tiers[i] <= want)
+            result = tiers[i];
+    }
+    return result;
+}
+
 static bool create_frame_set_layout(Qs_GpuContext *gpu, PbrPassResources *ps)
 {
     Qs_GpuDescriptorBinding b[6] = {
@@ -469,16 +489,30 @@ static bool create_forward_pipeline(Qs_GpuContext *gpu, PbrPassResources *ps)
         {3,QS_GPU_VERTEX_FORMAT_FLOAT2,offsetof(Qs_Vertex,uv)},
     };
     Qs_GpuVertexBinding vb={0,sizeof(Qs_Vertex),attrs,4};
-    ps->forward_pipeline=qs_gpu_create_graphics_pipeline(gpu,&(Qs_GpuGraphicsPipelineDesc){
-        ps->forward_layout,vs,fs,&vb,1,
-        QS_GPU_TOPOLOGY_TRIANGLES,QS_GPU_CULL_BACK,true,true,
-        QS_GPU_FORMAT_RGBA16_SFLOAT,QS_GPU_FORMAT_DEPTH_AUTO,.wireframe=false});
-    ps->forward_wireframe_pipeline=qs_gpu_create_graphics_pipeline(gpu,&(Qs_GpuGraphicsPipelineDesc){
-        ps->forward_layout,vs,fs,&vb,1,
-        QS_GPU_TOPOLOGY_TRIANGLES,QS_GPU_CULL_NONE,true,true,
-        QS_GPU_FORMAT_RGBA16_SFLOAT,QS_GPU_FORMAT_DEPTH_AUTO,.wireframe=true});
+
+    /* Create one pipeline pair per supported MSAA tier (0=1×, 1=2×, 2=4×, 3=8×) */
+    static const uint32_t k_tiers[PBR_MSAA_TIER_COUNT] = {1, 2, 4, 8};
+    ps->dev_max_samples = qs_gpu_max_sample_count(gpu);
+    for (int i = 0; i < PBR_MSAA_TIER_COUNT; i++) {
+        uint32_t sc = k_tiers[i];
+        if (sc > ps->dev_max_samples) break;
+        ps->forward_pipelines[i] = qs_gpu_create_graphics_pipeline(gpu,&(Qs_GpuGraphicsPipelineDesc){
+            ps->forward_layout,vs,fs,&vb,1,
+            QS_GPU_TOPOLOGY_TRIANGLES,QS_GPU_CULL_BACK,true,true,
+            QS_GPU_FORMAT_RGBA16_SFLOAT,QS_GPU_FORMAT_DEPTH_AUTO,
+            .wireframe=false,.sample_count=sc});
+        ps->forward_wireframe_pipelines[i] = qs_gpu_create_graphics_pipeline(gpu,&(Qs_GpuGraphicsPipelineDesc){
+            ps->forward_layout,vs,fs,&vb,1,
+            QS_GPU_TOPOLOGY_TRIANGLES,QS_GPU_CULL_NONE,true,true,
+            QS_GPU_FORMAT_RGBA16_SFLOAT,QS_GPU_FORMAT_DEPTH_AUTO,
+            .wireframe=true,.sample_count=sc});
+        if (!ps->forward_pipelines[i] || !ps->forward_wireframe_pipelines[i]) {
+            qs_gpu_destroy_shader(gpu,vs); qs_gpu_destroy_shader(gpu,fs);
+            return false;
+        }
+    }
     qs_gpu_destroy_shader(gpu,vs);qs_gpu_destroy_shader(gpu,fs);
-    return ps->forward_pipeline!=NULL && ps->forward_wireframe_pipeline!=NULL;
+    return ps->forward_pipelines[0] != NULL;
 }
 
 static bool create_bloom_pipelines(Qs_GpuContext *gpu, PbrPassResources *ps)
@@ -541,8 +575,10 @@ void pbr_pass_resources_shutdown(Qs_GpuContext *gpu, PbrPassResources *ps)
 {
     qs_gpu_destroy_pipeline(gpu, ps->shadow_pipeline);
     qs_gpu_destroy_pipeline_layout(gpu, ps->shadow_layout);
-    qs_gpu_destroy_pipeline(gpu, ps->forward_pipeline);
-    qs_gpu_destroy_pipeline(gpu, ps->forward_wireframe_pipeline);
+    for (int i = 0; i < PBR_MSAA_TIER_COUNT; i++) {
+        qs_gpu_destroy_pipeline(gpu, ps->forward_pipelines[i]);
+        qs_gpu_destroy_pipeline(gpu, ps->forward_wireframe_pipelines[i]);
+    }
     qs_gpu_destroy_pipeline_layout(gpu, ps->forward_layout);
     qs_gpu_destroy_descriptor_set_layout(gpu, ps->frame_set_layout);
     qs_gpu_destroy_pipeline(gpu, ps->bloom_down_pipeline);
@@ -647,34 +683,82 @@ static void shadow_pass_execute(const Qs_RenderContext *ctx, void *user_data)
     }
 }
 
-/* Pass 1: Forward lit (HDR target) */
+/* Pass 1: Forward lit (HDR target).  When MSAA is active the scene is rendered
+   into a transient MSAA color + depth target and automatically resolved into the
+   single-sample hdr_att at vkCmdEndRendering.  Bloom and composite then read
+   the resolved hdr_att as usual; no changes are needed in those passes. */
 static void forward_pass_execute(const Qs_RenderContext *ctx, void *user_data)
 {
     PbrRenderer      *r  = user_data;
     PbrPassResources *ps = pbr_renderer_pass_resources();
     if (!ps || !ps->ok || !r->ok) return;
 
-    Qs_GpuImageView *hdr_view  = qs_attachment_view(r->hdr_att);
-    Qs_GpuImage     *hdr_img   = qs_attachment_image(r->hdr_att);
-    Qs_GpuImageView *depth_view = qs_renderer_depth_view(ctx->renderer);
+    /* Lazy MSAA rebuild when the user changes the sample-count setting */
+    {
+        uint32_t want = effective_sample_count(
+            g_pp_settings.msaa_sample_count, ps->dev_max_samples);
+        if (want != r->current_msaa_samples && r->last_w > 0)
+            pbr_forward_on_resize(r, r->last_w, r->last_h);
+    }
+
+    Qs_GpuImageView *hdr_view = qs_attachment_view(r->hdr_att);
+    Qs_GpuImage     *hdr_img  = qs_attachment_image(r->hdr_att);
     if (!hdr_view || !hdr_img) return;
 
     const float *cc = qs_renderer_clear_color(ctx->renderer);
     float clear[4] = { cc ? cc[0]:0.0f, cc ? cc[1]:0.0f,
                         cc ? cc[2]:0.0f, cc ? cc[3]:1.0f };
 
+    /* Transition HDR image to COLOR_ATTACHMENT — acts as render or resolve target */
     qs_cmd_image_barrier(ctx->cmd, &(Qs_GpuImageBarrier){
         .image=hdr_img,.old_layout=QS_GPU_IMAGE_LAYOUT_SHADER_READ,
         .new_layout=QS_GPU_IMAGE_LAYOUT_COLOR_ATTACHMENT,
         .aspect=QS_GPU_IMAGE_ASPECT_COLOR,.base_mip=0,.mip_count=1});
 
-    qs_cmd_begin_rendering(ctx->cmd, &(Qs_GpuRenderTarget){
-        .color=hdr_view,.depth=depth_view,
-        .clear_color={clear[0],clear[1],clear[2],clear[3]},
-        .clear_depth=1.0f,.width=ctx->width,.height=ctx->height});
+    bool use_msaa = (r->current_msaa_samples > 1)
+                 && r->msaa_color_image && r->msaa_color_view
+                 && r->msaa_depth_image && r->msaa_depth_view;
+    int tier_idx = sample_count_to_idx(r->current_msaa_samples);
+
+    Qs_GpuPipeline *fwd_pipeline;
+    if (use_msaa) {
+        /* Transition transient MSAA images.  Always clear (UNDEFINED old layout
+           discards previous content; this is safe since loadOp=CLEAR). */
+        qs_cmd_image_barrier(ctx->cmd, &(Qs_GpuImageBarrier){
+            .image=r->msaa_color_image,
+            .old_layout=QS_GPU_IMAGE_LAYOUT_UNDEFINED,
+            .new_layout=QS_GPU_IMAGE_LAYOUT_COLOR_ATTACHMENT,
+            .aspect=QS_GPU_IMAGE_ASPECT_COLOR,.base_mip=0,.mip_count=1});
+        qs_cmd_image_barrier(ctx->cmd, &(Qs_GpuImageBarrier){
+            .image=r->msaa_depth_image,
+            .old_layout=QS_GPU_IMAGE_LAYOUT_UNDEFINED,
+            .new_layout=QS_GPU_IMAGE_LAYOUT_DEPTH_ATTACHMENT,
+            .aspect=QS_GPU_IMAGE_ASPECT_DEPTH,.base_mip=0,.mip_count=1});
+        qs_cmd_begin_rendering(ctx->cmd, &(Qs_GpuRenderTarget){
+            .color          = r->msaa_color_view,
+            .depth          = r->msaa_depth_view,
+            .resolve_target = hdr_view,
+            .clear_color    = {clear[0],clear[1],clear[2],clear[3]},
+            .clear_depth    = 1.0f,
+            .width          = ctx->width,
+            .height         = ctx->height});
+        fwd_pipeline = qs_renderer_wireframe(ctx->renderer)
+            ? ps->forward_wireframe_pipelines[tier_idx]
+            : ps->forward_pipelines[tier_idx];
+    } else {
+        /* Non-MSAA fallback — render directly to the single-sample HDR attachment */
+        qs_cmd_begin_rendering(ctx->cmd, &(Qs_GpuRenderTarget){
+            .color      = hdr_view,
+            .depth      = qs_renderer_depth_view(ctx->renderer),
+            .clear_color = {clear[0],clear[1],clear[2],clear[3]},
+            .clear_depth = 1.0f,
+            .width       = ctx->width,
+            .height      = ctx->height});
+        fwd_pipeline = qs_renderer_wireframe(ctx->renderer)
+            ? ps->forward_wireframe_pipelines[0]
+            : ps->forward_pipelines[0];
+    }
     qs_cmd_set_viewport(ctx->cmd, ctx->width, ctx->height);
-    Qs_GpuPipeline *fwd_pipeline = qs_renderer_wireframe(ctx->renderer)
-        ? ps->forward_wireframe_pipeline : ps->forward_pipeline;
     qs_cmd_bind_pipeline(ctx->cmd, fwd_pipeline);
     qs_cmd_bind_descriptor_set(ctx->cmd, ps->forward_layout, 0, r->frame_desc_set);
 
@@ -810,6 +894,8 @@ void pbr_forward_attach(Qs_Engine *engine, PbrRenderer *r, Qs_Renderer *handle)
         QS_LOG_ERROR("PBR Renderer: pass resources init failed"); return;
     }
 
+    r->current_msaa_samples = 0; /* force rebuild on first resize */
+
     /* --- Declare engine-managed attachments --- */
 
     r->hdr_att = qs_renderer_add_attachment(handle, &(Qs_RenderAttachmentDesc){
@@ -894,6 +980,12 @@ void pbr_forward_detach(PbrRenderer *r)
         if (r->composite_node) qs_renderer_remove_node(handle, r->composite_node);
     }
 
+    /* Destroy plugin-owned MSAA transient resources */
+    if (r->msaa_color_view)  { qs_gpu_destroy_image_view(gpu, r->msaa_color_view);  r->msaa_color_view  = NULL; }
+    if (r->msaa_color_image) { qs_gpu_destroy_image(gpu, r->msaa_color_image);      r->msaa_color_image = NULL; }
+    if (r->msaa_depth_view)  { qs_gpu_destroy_image_view(gpu, r->msaa_depth_view);  r->msaa_depth_view  = NULL; }
+    if (r->msaa_depth_image) { qs_gpu_destroy_image(gpu, r->msaa_depth_image);      r->msaa_depth_image = NULL; }
+
     /* Destroy plugin-owned shadow sample views */
     for (int i=0; i<QS_CSM_CASCADES; i++) {
         if (r->shadow_sample_views[i]) {
@@ -921,11 +1013,54 @@ void pbr_forward_detach(PbrRenderer *r)
 
 void pbr_forward_on_resize(PbrRenderer *r, uint32_t w, uint32_t h)
 {
-    (void)w; (void)h;
     PbrPassResources *ps = pbr_renderer_pass_resources();
     if (!r || !ps || !ps->ok) return;
 
     Qs_GpuContext *gpu = r->gpu;
+    r->last_w = w;
+    r->last_h = h;
+
+    /* Compute the effective MSAA sample count from the current setting */
+    uint32_t want = effective_sample_count(
+        g_pp_settings.msaa_sample_count, ps->dev_max_samples);
+
+    /* Destroy old MSAA images whenever dimensions or sample count change */
+    if (r->msaa_color_view)  { qs_gpu_destroy_image_view(gpu, r->msaa_color_view);  r->msaa_color_view  = NULL; }
+    if (r->msaa_color_image) { qs_gpu_destroy_image(gpu, r->msaa_color_image);      r->msaa_color_image = NULL; }
+    if (r->msaa_depth_view)  { qs_gpu_destroy_image_view(gpu, r->msaa_depth_view);  r->msaa_depth_view  = NULL; }
+    if (r->msaa_depth_image) { qs_gpu_destroy_image(gpu, r->msaa_depth_image);      r->msaa_depth_image = NULL; }
+    r->current_msaa_samples = want;
+
+    if (want > 1) {
+        r->msaa_color_image = qs_gpu_create_image(gpu, &(Qs_GpuImageDesc){
+            .width = w, .height = h, .mip_levels = 1,
+            .format = QS_GPU_FORMAT_RGBA16_SFLOAT,
+            .usage  = QS_GPU_IMAGE_COLOR_ATTACHMENT,
+            .sample_count = want,
+        });
+        if (r->msaa_color_image)
+            r->msaa_color_view = qs_gpu_create_image_view_for(
+                gpu, r->msaa_color_image, QS_GPU_IMAGE_ASPECT_COLOR);
+
+        r->msaa_depth_image = qs_gpu_create_image(gpu, &(Qs_GpuImageDesc){
+            .width = w, .height = h, .mip_levels = 1,
+            .format = QS_GPU_FORMAT_DEPTH_AUTO,
+            .usage  = QS_GPU_IMAGE_DEPTH_ATTACHMENT,
+            .sample_count = want,
+        });
+        if (r->msaa_depth_image)
+            r->msaa_depth_view = qs_gpu_create_image_view_for(
+                gpu, r->msaa_depth_image, QS_GPU_IMAGE_ASPECT_DEPTH);
+
+        if (!r->msaa_color_view || !r->msaa_depth_view) {
+            QS_LOG_ERROR("PBR Renderer: MSAA image creation failed at %ux%u with %ux", w, h, want);
+            if (r->msaa_color_view)  { qs_gpu_destroy_image_view(gpu, r->msaa_color_view);  r->msaa_color_view  = NULL; }
+            if (r->msaa_color_image) { qs_gpu_destroy_image(gpu, r->msaa_color_image);      r->msaa_color_image = NULL; }
+            if (r->msaa_depth_view)  { qs_gpu_destroy_image_view(gpu, r->msaa_depth_view);  r->msaa_depth_view  = NULL; }
+            if (r->msaa_depth_image) { qs_gpu_destroy_image(gpu, r->msaa_depth_image);      r->msaa_depth_image = NULL; }
+            r->current_msaa_samples = 1;
+        }
+    }
 
     /* Get current attachment views (engine just resized them) */
     Qs_GpuImageView *hdr_view    = qs_attachment_view(r->hdr_att);
@@ -951,5 +1086,6 @@ void pbr_forward_on_resize(PbrRenderer *r, uint32_t w, uint32_t h)
                                    ps->linear_sampler, bloom0_view);
 
     r->ok = true;
-    QS_LOG_INFO("PBR Renderer: on_resize %ux%u — descriptors updated", w, h);
+    QS_LOG_INFO("PBR Renderer: on_resize %ux%u — descriptors updated (MSAA %ux)",
+                w, h, r->current_msaa_samples);
 }

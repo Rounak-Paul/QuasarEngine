@@ -221,6 +221,17 @@ static VkImageAspectFlags aspect_to_vk(Qs_GpuImageAspect aspect)
         : VK_IMAGE_ASPECT_COLOR_BIT;
 }
 
+static VkSampleCountFlagBits sample_count_to_vk(uint32_t samples)
+{
+    switch (samples) {
+    case 2:  return VK_SAMPLE_COUNT_2_BIT;
+    case 4:  return VK_SAMPLE_COUNT_4_BIT;
+    case 8:  return VK_SAMPLE_COUNT_8_BIT;
+    case 16: return VK_SAMPLE_COUNT_16_BIT;
+    default: return VK_SAMPLE_COUNT_1_BIT;
+    }
+}
+
 static Qs_GpuBuffer *create_buffer_raw(VkDevice device, VkPhysicalDevice pd,
                                         VkDeviceSize size, VkBufferUsageFlags usage,
                                         VkMemoryPropertyFlags mem_flags)
@@ -409,6 +420,18 @@ Qs_GpuContext *qs_engine_gpu(Qs_Engine *engine)
     return (Qs_GpuContext *)qs_engine_ca_instance(engine);
 }
 
+uint32_t qs_gpu_max_sample_count(Qs_GpuContext *gpu)
+{
+    VkPhysicalDeviceProperties props;
+    vkGetPhysicalDeviceProperties(ca_gpu_physical_device(to_ca(gpu)), &props);
+    VkSampleCountFlags counts = props.limits.framebufferColorSampleCounts
+                              & props.limits.framebufferDepthSampleCounts;
+    if (counts & VK_SAMPLE_COUNT_8_BIT)  return 8;
+    if (counts & VK_SAMPLE_COUNT_4_BIT)  return 4;
+    if (counts & VK_SAMPLE_COUNT_2_BIT)  return 2;
+    return 1;
+}
+
 /* ================================================================
    BUFFER IMPLEMENTATION
    ================================================================ */
@@ -536,7 +559,7 @@ Qs_GpuImage *qs_gpu_create_image(Qs_GpuContext *gpu, const Qs_GpuImageDesc *desc
         .extent        = { desc->width, desc->height, 1 },
         .mipLevels     = mip_levels,
         .arrayLayers   = 1,
-        .samples       = VK_SAMPLE_COUNT_1_BIT,
+        .samples       = sample_count_to_vk(desc->sample_count),
         .tiling        = VK_IMAGE_TILING_OPTIMAL,
         .usage         = usage,
         .sharingMode   = VK_SHARING_MODE_EXCLUSIVE,
@@ -1104,7 +1127,7 @@ Qs_GpuPipeline *qs_gpu_create_graphics_pipeline(Qs_GpuContext *gpu,
 
     VkPipelineMultisampleStateCreateInfo multisample = {
         .sType                = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
-        .rasterizationSamples = VK_SAMPLE_COUNT_1_BIT,
+        .rasterizationSamples = sample_count_to_vk(desc->sample_count),
     };
 
     VkPipelineDepthStencilStateCreateInfo depth_stencil = {
@@ -1212,6 +1235,11 @@ void qs_cmd_begin_rendering(Qs_GpuCmd *cmd, const Qs_GpuRenderTarget *target)
             target->clear_color[2], target->clear_color[3],
         }}},
     };
+    if (target->resolve_target) {
+        color_att.resolveMode        = VK_RESOLVE_MODE_AVERAGE_BIT;
+        color_att.resolveImageView   = target->resolve_target->view;
+        color_att.resolveImageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    }
     VkRenderingAttachmentInfo depth_att = {
         .sType       = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
         .imageView   = target->depth ? target->depth->view : VK_NULL_HANDLE,

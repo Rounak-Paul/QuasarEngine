@@ -16,7 +16,6 @@
 #include "qs_scene.h"
 #include "qs_reflect.h"
 #include "qs_project.h"
-#include "qs_primitives.h"
 #include "qs_input.h"
 #include "qs_dylib.h"
 #include "qs_plugin.h"
@@ -82,6 +81,14 @@ Qs_SystemManager* qs_engine_systems(Qs_Engine* engine);
 
 /// Returns the engine's plugin manager.
 Qs_PluginManager* qs_engine_plugin_manager(Qs_Engine* engine);
+
+/// Sets the active project handle on the engine.  Used by qs_scene to
+/// resolve project-relative asset paths (e.g. PrototypeComp.path) against
+/// the project root.  The engine does NOT take ownership.
+void qs_engine_set_project(Qs_Engine* engine, Qs_Project* project);
+
+/// Returns the active project handle, or NULL if none is set.
+Qs_Project* qs_engine_project(Qs_Engine* engine);
 
 /// Wakes the event loop from another thread.
 void qs_engine_wake(void);

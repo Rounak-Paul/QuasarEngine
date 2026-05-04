@@ -39,6 +39,22 @@ Qs_Engine *editor_engine(Editor *editor);
 /// Returns the editor's project.
 Qs_Project *editor_project(const Editor *editor);
 
+/// Returns the path of the currently loaded scene file, or "" if none.
+const char *editor_current_scene_path(const Editor *editor);
+
+/// Saves the active scene to its source path on disk.  When in prototype
+/// edit mode, saves to the .qproto path instead.
+bool editor_save_scene(Editor *editor);
+
+/// Saves the project file (.quasar) and the active scene.
+bool editor_save_project(Editor *editor);
+
+/// Performs an undo step against the editor's command stack.
+bool editor_undo(Editor *editor);
+
+/// Performs a redo step against the editor's command stack.
+bool editor_redo(Editor *editor);
+
 /// Returns the editor's scene viewport.
 Ca_Viewport *editor_scene_viewport(const Editor *editor);
 
@@ -48,8 +64,30 @@ Qs_Entity editor_selected_entity(const Editor *editor);
 /// Sets the selected entity.
 void editor_set_selected_entity(Editor *editor, Qs_Entity entity);
 
+/// Selects an entity inside a prototype instance for editing through
+/// the override system.  `owner` is the outer-scene entity that holds
+/// the PrototypeComp; `inner_scene` and `inner_entity` identify the
+/// entity inside the loaded inner scene.  Pass QS_ENTITY_INVALID for
+/// `owner` to clear (equivalent to `editor_set_selected_entity`).
+void editor_set_proto_selection(Editor *editor,
+                                Qs_Entity owner,
+                                Qs_Scene *inner_scene,
+                                Qs_Entity inner_entity);
+
+/// Returns the outer-scene entity owning the active prototype-override
+/// editing context, or QS_ENTITY_INVALID when not editing into a prototype.
+Qs_Entity editor_proto_owner(const Editor *editor);
+
+/// Returns the inner scene currently being edited via overrides, or NULL.
+Qs_Scene *editor_proto_inner_scene(const Editor *editor);
+
 /// Returns the current editor mode.
 EditorMode editor_mode(const Editor *editor);
+
+/// Returns the project-relative path of the .qproto currently being
+/// edited (top of the prototype edit stack), or "" if not in prototype
+/// edit mode.
+const char *editor_current_proto_path(const Editor *editor);
 
 /// Opens a prototype for isolated editing.  Saves the current scene context
 /// and creates a temporary scene for the prototype.

@@ -1,0 +1,18 @@
+{
+	"name":	"King_Black",
+	"base_color_factor":	[1, 1, 1, 1],
+	"metallic_factor":	1,
+	"roughness_factor":	1,
+	"normal_scale":	1,
+	"occlusion_strength":	1,
+	"emissive_factor":	[0, 0, 0],
+	"alpha_mode":	0,
+	"alpha_cutoff":	0.5,
+	"double_sided":	false,
+	"textures":	{
+		"base_color":	"../textures/King_black_base_color_2.qstex",
+		"metallic_roughness":	"../textures/King_black_ORM_1.qstex",
+		"normal":	"../textures/King_black_normal_0.qstex",
+		"occlusion":	"../textures/King_black_ORM_1.qstex"
+	}
+}

@@ -1,41 +1,75 @@
 {
-    "name": "TestScene",
-    "entities": [
-        {
-            "name": "Sun",
-            "enabled": true,
-            "components": {
-                "Transform": {
-                    "position": [0.0, 0.0, 0.0],
-                    "rotation": [0.0, 0.0, 0.0, 1.0],
-                    "scale":    [1.0, 1.0, 1.0]
-                },
-                "LightComp": {
-                    "type": 0,
-                    "direction": [-0.577, -0.577, -0.577],
-                    "color": [1.0, 0.95, 0.9],
-                    "intensity": 3.0,
-                    "range": 0.0,
-                    "inner_cone_deg": 0.0,
-                    "outer_cone_deg": 30.0,
-                    "cast_shadows": true,
-                    "enabled": true
-                }
-            }
-        },
-        {
-            "name": "Sponza",
-            "enabled": true,
-            "components": {
-                "Transform": {
-                    "position": [0.0, 0.0, 0.0],
-                    "rotation": [0.0, 0.0, 0.0, 1.0],
-                    "scale":    [1.0, 1.0, 1.0]
-                },
-                "Prototype": {
-                    "path": "../assets/sponza/Sponza.qproto"
-                }
-            }
-        }
-    ]
+	"name":	"Scene",
+	"next_entity_id":	9,
+	"entities":	[{
+			"name":	"Sun",
+			"enabled":	true,
+			"parent":	-1,
+			"components":	{
+				"IdComp":	{
+					"id":	0
+				},
+				"TagComp":	{
+					"tag":	"Untagged"
+				},
+				"Transform":	{
+					"position":	[0, 0, 0],
+					"rotation":	[0, 0, 0, 1],
+					"scale":	[1, 1, 1]
+				},
+				"LightComp":	{
+					"type":	0,
+					"direction":	[-0.57700002193450928, -0.57700002193450928, -0.57700002193450928],
+					"color":	[1, 0.949999988079071, 0.899999976158142],
+					"intensity":	3,
+					"range":	0,
+					"inner_cone_deg":	0,
+					"outer_cone_deg":	30,
+					"cast_shadows":	true,
+					"enabled":	true
+				}
+			}
+		}, {
+			"name":	"Entity",
+			"enabled":	true,
+			"parent":	-1,
+			"components":	{
+				"IdComp":	{
+					"id":	1
+				},
+				"TagComp":	{
+					"tag":	"Untagged"
+				},
+				"Transform":	{
+					"position":	[0, 0.34139478206634521, 0],
+					"rotation":	[0, 0, 0, 1],
+					"scale":	[1, 1, 1]
+				},
+				"Prototype":	{
+					"path":	"Assets/ABeautifulGame/ABeautifulGame.qproto"
+				}
+			}
+		}, {
+			"name":	"Entity",
+			"enabled":	true,
+			"parent":	-1,
+			"components":	{
+				"IdComp":	{
+					"id":	8
+				},
+				"TagComp":	{
+					"tag":	"Untagged"
+				},
+				"Transform":	{
+					"position":	[0, 0, 0],
+					"rotation":	[0, 0, 0, 1],
+					"scale":	[1, 1, 1]
+				},
+				"MeshComp":	{
+					"visible":	true,
+					"mesh_path":	"assets/ABeautifulGame/meshes/Chessboard_4.qsmesh",
+					"material_path":	"assets/ABeautifulGame/materials/Chessboard_4.qsmat"
+				}
+			}
+		}]
 }

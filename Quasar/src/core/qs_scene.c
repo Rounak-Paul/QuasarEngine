@@ -3,6 +3,12 @@
 #include "qs_log.h"
 #include "qs_system.h"
 #include "qs_math.h"
+#include "qs_asset_pack.h"
+#include "qs_renderer.h"
+#include "qs_mesh.h"
+#include "qs_material.h"
+#include "qs_project.h"
+#include "quasar.h"
 #include "cJSON.h"
 
 #include <stdlib.h>
@@ -12,6 +18,10 @@
 #ifdef _MSC_VER
 #include <intrin.h>
 #endif
+
+/* Forward declaration — defined later in the file */
+static void resolve_path(const Qs_Scene *scene, const char *rel,
+                         char *abs, size_t abs_size);
 
 /* ================================================================
    LIMITS
@@ -60,6 +70,7 @@ static inline void *store_get(const ComponentStore *store,
 
 struct Qs_Scene {
     char              name[64];
+    char              source_path[512];   /* Absolute path to the .qscene/.qproto this was loaded from. Empty if never loaded. */
     bool              in_use;
 
     /* Entity slots */
@@ -251,6 +262,24 @@ static void mesh_comp_init(void *comp, Qs_Scene *scene, Qs_Entity entity)
     mc->visible = true;
 }
 
+static void mesh_comp_destroy(void *comp, Qs_Scene *scene, Qs_Entity entity)
+{
+    (void)entity;
+    Qs_MeshComp *mc = (Qs_MeshComp *)comp;
+    if (mc->mesh_path[0]) {
+        char abs[1024];
+        resolve_path(scene, mc->mesh_path, abs, sizeof(abs));
+        qs_asset_cache_release_mesh(abs);
+        mc->mesh = NULL;
+    }
+    if (mc->material_path[0]) {
+        char abs[1024];
+        resolve_path(scene, mc->material_path, abs, sizeof(abs));
+        qs_asset_cache_release_material(abs);
+        mc->material = NULL;
+    }
+}
+
 static void light_comp_init(void *comp, Qs_Scene *scene, Qs_Entity entity)
 {
     (void)scene; (void)entity;
@@ -288,7 +317,226 @@ static void prototype_comp_init(void *comp, Qs_Scene *scene, Qs_Entity entity)
 {
     (void)scene; (void)entity;
     Qs_PrototypeComp *pc = (Qs_PrototypeComp *)comp;
-    qs_m4_identity(pc->base_transform);
+    pc->inner          = NULL;
+    pc->load_failed    = false;
+    pc->overrides      = NULL;
+    pc->override_count = 0;
+    pc->override_cap   = 0;
+}
+
+static void prototype_comp_destroy(void *comp, Qs_Scene *scene, Qs_Entity entity)
+{
+    (void)scene; (void)entity;
+    Qs_PrototypeComp *pc = (Qs_PrototypeComp *)comp;
+    if (pc->inner) {
+        qs_scene_destroy(pc->inner);
+        pc->inner = NULL;
+    }
+    free(pc->overrides);
+    pc->overrides      = NULL;
+    pc->override_count = 0;
+    pc->override_cap   = 0;
+}
+
+/* ================================================================
+   PROTOTYPE OVERRIDE API
+   ================================================================ */
+
+static size_t field_type_byte_size(Qs_FieldType t)
+{
+    switch (t) {
+    case QS_FIELD_FLOAT:   return sizeof(float);
+    case QS_FIELD_FLOAT2:  return sizeof(float) * 2;
+    case QS_FIELD_FLOAT3:  return sizeof(float) * 3;
+    case QS_FIELD_FLOAT4:  return sizeof(float) * 4;
+    case QS_FIELD_INT32:   return sizeof(int32_t);
+    case QS_FIELD_UINT32:  return sizeof(uint32_t);
+    case QS_FIELD_BOOL:    return sizeof(bool);
+    case QS_FIELD_ENTITY:  return sizeof(uint32_t);
+    case QS_FIELD_STRING:  return 0; /* string handled specially */
+    }
+    return 0;
+}
+
+static int find_override_index(const Qs_PrototypeComp *pc,
+                               uint32_t inner_entity_id,
+                               const char *comp_name,
+                               const char *field_name)
+{
+    if (!pc || !comp_name || !field_name) return -1;
+    for (uint32_t i = 0; i < pc->override_count; i++) {
+        const Qs_PrototypeOverride *o = &pc->overrides[i];
+        if (o->inner_entity_id == inner_entity_id &&
+            strcmp(o->comp_name, comp_name) == 0 &&
+            strcmp(o->field_name, field_name) == 0)
+            return (int)i;
+    }
+    return -1;
+}
+
+static Qs_PrototypeOverride *override_alloc_or_replace(
+    Qs_PrototypeComp *pc,
+    uint32_t inner_entity_id,
+    const char *comp_name,
+    const char *field_name)
+{
+    int idx = find_override_index(pc, inner_entity_id, comp_name, field_name);
+    if (idx >= 0) return &pc->overrides[idx];
+
+    if (pc->override_count == pc->override_cap) {
+        uint32_t cap = pc->override_cap ? pc->override_cap * 2 : 8;
+        Qs_PrototypeOverride *tmp = (Qs_PrototypeOverride *)realloc(
+            pc->overrides, cap * sizeof(*tmp));
+        if (!tmp) return NULL;
+        pc->overrides    = tmp;
+        pc->override_cap = cap;
+    }
+    Qs_PrototypeOverride *o = &pc->overrides[pc->override_count++];
+    memset(o, 0, sizeof(*o));
+    o->inner_entity_id = inner_entity_id;
+    snprintf(o->comp_name,  sizeof(o->comp_name),  "%s", comp_name);
+    snprintf(o->field_name, sizeof(o->field_name), "%s", field_name);
+    return o;
+}
+
+bool qs_prototype_set_override(Qs_PrototypeComp *pc,
+                               uint32_t inner_entity_id,
+                               const char *comp_name,
+                               const char *field_name,
+                               Qs_FieldType type,
+                               const void *value)
+{
+    if (!pc || !comp_name || !field_name || !value) return false;
+    Qs_PrototypeOverride *o = override_alloc_or_replace(
+        pc, inner_entity_id, comp_name, field_name);
+    if (!o) return false;
+    o->type = type;
+    if (type == QS_FIELD_STRING) {
+        snprintf(o->value.sv, sizeof(o->value.sv), "%s", (const char *)value);
+    } else {
+        size_t sz = field_type_byte_size(type);
+        if (sz > 0 && sz <= sizeof(o->value)) {
+            memset(&o->value, 0, sizeof(o->value));
+            memcpy(&o->value, value, sz);
+        }
+    }
+    qs_prototype_apply_overrides(pc);
+    return true;
+}
+
+bool qs_prototype_clear_override(Qs_PrototypeComp *pc,
+                                 uint32_t inner_entity_id,
+                                 const char *comp_name,
+                                 const char *field_name)
+{
+    if (!pc) return false;
+    int idx = find_override_index(pc, inner_entity_id, comp_name, field_name);
+    if (idx < 0) return false;
+    /* Swap-remove */
+    if ((uint32_t)idx != pc->override_count - 1)
+        pc->overrides[idx] = pc->overrides[pc->override_count - 1];
+    pc->override_count--;
+    return true;
+}
+
+const Qs_PrototypeOverride *qs_prototype_find_override(
+    const Qs_PrototypeComp *pc,
+    uint32_t inner_entity_id,
+    const char *comp_name,
+    const char *field_name)
+{
+    int idx = find_override_index(pc, inner_entity_id, comp_name, field_name);
+    return idx >= 0 ? &pc->overrides[idx] : NULL;
+}
+
+uint32_t qs_prototype_override_count(const Qs_PrototypeComp *pc)
+{
+    return pc ? pc->override_count : 0;
+}
+
+const Qs_PrototypeOverride *qs_prototype_override_at(
+    const Qs_PrototypeComp *pc, uint32_t index)
+{
+    if (!pc || index >= pc->override_count) return NULL;
+    return &pc->overrides[index];
+}
+
+Qs_Entity qs_scene_find_by_id(Qs_Scene *scene, uint32_t id)
+{
+    Qs_ComponentType *idt = qs_id_comp_type();
+    if (!scene || !idt) return QS_ENTITY_INVALID;
+    for (Qs_Entity e = qs_scene_first(scene, idt);
+         e != QS_ENTITY_INVALID;
+         e = qs_scene_next(scene, idt, e))
+    {
+        Qs_IdComp *idc = (Qs_IdComp *)qs_entity_get(scene, e, idt);
+        if (idc && idc->id == id) return e;
+    }
+    return QS_ENTITY_INVALID;
+}
+
+static const Qs_FieldInfo *find_field_info(const Qs_TypeInfo *info,
+                                           const char *field_name)
+{
+    if (!info || !field_name) return NULL;
+    for (uint32_t i = 0; i < info->field_count; i++) {
+        if (strcmp(info->fields[i].name, field_name) == 0)
+            return &info->fields[i];
+    }
+    return NULL;
+}
+
+void qs_prototype_apply_overrides(Qs_PrototypeComp *pc)
+{
+    if (!pc || !pc->inner || pc->override_count == 0) return;
+
+    /* Cache entity lookups within this call to avoid O(N*M) scans when
+       multiple overrides share the same inner_entity_id. */
+    enum { CACHE_CAP = 16 };
+    struct { uint32_t id; Qs_Entity e; } cache[CACHE_CAP];
+    uint32_t cn = 0;
+
+    for (uint32_t i = 0; i < pc->override_count; i++) {
+        const Qs_PrototypeOverride *o = &pc->overrides[i];
+
+        Qs_Entity e = QS_ENTITY_INVALID;
+        for (uint32_t c = 0; c < cn; c++) {
+            if (cache[c].id == o->inner_entity_id) { e = cache[c].e; break; }
+        }
+        if (e == QS_ENTITY_INVALID) {
+            e = qs_scene_find_by_id(pc->inner, o->inner_entity_id);
+            if (cn < CACHE_CAP) { cache[cn].id = o->inner_entity_id; cache[cn].e = e; cn++; }
+        }
+        if (e == QS_ENTITY_INVALID) continue;
+
+        Qs_ComponentType *ct = qs_component_find(o->comp_name);
+        if (!ct) continue;
+        const Qs_TypeInfo *info = qs_component_type_info(ct);
+        if (!info) continue;
+        const Qs_FieldInfo *fi = find_field_info(info, o->field_name);
+        if (!fi || fi->type != o->type) continue;
+
+        void *comp = qs_entity_get(pc->inner, e, ct);
+        if (!comp) continue;
+        char *dst = (char *)comp + fi->offset;
+
+        if (o->type == QS_FIELD_STRING) {
+            snprintf(dst, fi->size, "%s", o->value.sv);
+        } else {
+            size_t sz = field_type_byte_size(o->type);
+            if (sz > 0 && sz <= fi->size) memcpy(dst, &o->value, sz);
+        }
+    }
+}
+
+void qs_prototype_reload(Qs_PrototypeComp *pc)
+{
+    if (!pc) return;
+    if (pc->inner) {
+        qs_scene_destroy(pc->inner);
+        pc->inner = NULL;
+    }
+    pc->load_failed = false;
 }
 
 /* ================================================================
@@ -310,8 +558,8 @@ static const Qs_TypeInfo s_transform_type_info = {
 
 static const Qs_FieldInfo s_mesh_comp_fields[] = {
     QS_FIELD(Qs_MeshComp, visible,       QS_FIELD_BOOL),
-    QS_FIELD(Qs_MeshComp, mesh_name,     QS_FIELD_STRING),
-    QS_FIELD(Qs_MeshComp, material_name, QS_FIELD_STRING),
+    QS_FIELD(Qs_MeshComp, mesh_path,     QS_FIELD_STRING),
+    QS_FIELD(Qs_MeshComp, material_path, QS_FIELD_STRING),
 };
 
 static const Qs_TypeInfo s_mesh_comp_type_info = {
@@ -427,6 +675,7 @@ static void register_builtin_types(Qs_Engine *engine)
         .data_size = sizeof(Qs_MeshComp),
         .type_info = &s_mesh_comp_type_info,
         .init      = mesh_comp_init,
+        .destroy   = mesh_comp_destroy,
     });
 
     s_light_comp_type = qs_component_register(engine, &(Qs_ComponentTypeDesc){
@@ -441,6 +690,7 @@ static void register_builtin_types(Qs_Engine *engine)
         .data_size = sizeof(Qs_PrototypeComp),
         .type_info = &s_prototype_comp_type_info,
         .init      = prototype_comp_init,
+        .destroy   = prototype_comp_destroy,
     });
 }
 
@@ -502,11 +752,13 @@ void qs_scene_destroy(Qs_Scene *scene)
         qs_entity_destroy(scene, e);
     }
 
-    /* Free component store buffers */
+    /* Free component store buffers — null each pointer after freeing so that
+       a stale second call to qs_scene_destroy on the same pointer (use-after-
+       free) degrades to free(NULL) no-ops rather than a double-free crash. */
     for (uint32_t t = 0; t < QS_MAX_COMPONENT_TYPES; t++) {
-        free(scene->stores[t].data);
-        free(scene->stores[t].sparse);
-        free(scene->stores[t].dense);
+        free(scene->stores[t].data);    scene->stores[t].data   = NULL;
+        free(scene->stores[t].sparse);  scene->stores[t].sparse = NULL;
+        free(scene->stores[t].dense);   scene->stores[t].dense  = NULL;
     }
 
     /* Remove from system array */
@@ -517,6 +769,10 @@ void qs_scene_destroy(Qs_Scene *scene)
         }
     }
 
+    /* Mark as not-in-use before the final free so that any use-after-free
+       that re-enters qs_scene_destroy with this pointer hits the in_use
+       guard (if the OS hasn't yet reclaimed the page). */
+    scene->in_use = false;
     QS_LOG_INFO("Scene '%s' destroyed", scene->name);
     free(scene);
 }
@@ -665,6 +921,10 @@ bool qs_entity_enabled(const Qs_Scene *scene, Qs_Entity entity)
 void qs_entity_set_parent(Qs_Scene *scene, Qs_Entity entity, Qs_Entity parent)
 {
     if (!scene || entity >= QS_MAX_ENTITIES) return;
+    if (parent == entity) {
+        QS_LOG_WARN("qs_entity_set_parent: entity %u cannot be its own parent", entity);
+        return;
+    }
     scene->parent_entity[entity] = parent;
 }
 
@@ -820,6 +1080,19 @@ cJSON *qs_scene_to_json(const Qs_Scene *scene)
     cJSON *entities = cJSON_CreateArray();
     cJSON_AddItemToObject(root, "entities", entities);
 
+    /* Build entity → array-index map for parent indices.
+       Use heap to avoid a ~16 KB stack allocation. */
+    int *entity_to_index = calloc(QS_MAX_ENTITIES, sizeof(int));
+    if (!entity_to_index) { cJSON_Delete(root); return NULL; }
+    for (int i = 0; i < QS_MAX_ENTITIES; i++) entity_to_index[i] = -1;
+    int idx = 0;
+    for (uint32_t e = bit_next_set(scene->alive, 0);
+         e < QS_MAX_ENTITIES;
+         e = bit_next_set(scene->alive, e + 1))
+    {
+        entity_to_index[e] = idx++;
+    }
+
     for (uint32_t e = bit_next_set(scene->alive, 0);
          e < QS_MAX_ENTITIES;
          e = bit_next_set(scene->alive, e + 1))
@@ -827,6 +1100,10 @@ cJSON *qs_scene_to_json(const Qs_Scene *scene)
         cJSON *ent = cJSON_CreateObject();
         cJSON_AddStringToObject(ent, "name", scene->entity_names[e]);
         cJSON_AddBoolToObject(ent, "enabled", bit_test(scene->enabled, e));
+
+        Qs_Entity p = scene->parent_entity[e];
+        int parent_idx = (p < QS_MAX_ENTITIES) ? entity_to_index[p] : -1;
+        cJSON_AddNumberToObject(ent, "parent", (double)parent_idx);
 
         cJSON *comps = cJSON_CreateObject();
         cJSON_AddItemToObject(ent, "components", comps);
@@ -840,8 +1117,51 @@ cJSON *qs_scene_to_json(const Qs_Scene *scene)
                 void *comp = store_get(&scene->stores[t], e,
                                        type->data_size);
                 cJSON *comp_json = qs_reflect_to_json(comp, type->type_info);
-                if (comp_json)
+                if (comp_json) {
+                    /* Attach Prototype overrides as a sibling array on the
+                       component object so they round-trip through JSON. */
+                    if (type == s_prototype_comp_type) {
+                        Qs_PrototypeComp *pc = (Qs_PrototypeComp *)comp;
+                        if (pc->override_count > 0) {
+                            cJSON *ov_arr = cJSON_CreateArray();
+                            for (uint32_t i = 0; i < pc->override_count; i++) {
+                                const Qs_PrototypeOverride *o = &pc->overrides[i];
+                                cJSON *ov = cJSON_CreateObject();
+                                cJSON_AddNumberToObject(ov, "entity_id", (double)o->inner_entity_id);
+                                cJSON_AddStringToObject(ov, "comp",  o->comp_name);
+                                cJSON_AddStringToObject(ov, "field", o->field_name);
+                                cJSON_AddNumberToObject(ov, "type",  (double)o->type);
+                                switch (o->type) {
+                                case QS_FIELD_FLOAT:
+                                    cJSON_AddNumberToObject(ov, "value", o->value.fv[0]); break;
+                                case QS_FIELD_FLOAT2:
+                                case QS_FIELD_FLOAT3:
+                                case QS_FIELD_FLOAT4: {
+                                    int n = (o->type == QS_FIELD_FLOAT2) ? 2
+                                          : (o->type == QS_FIELD_FLOAT3) ? 3 : 4;
+                                    cJSON *a = cJSON_CreateArray();
+                                    for (int k = 0; k < n; k++)
+                                        cJSON_AddItemToArray(a, cJSON_CreateNumber(o->value.fv[k]));
+                                    cJSON_AddItemToObject(ov, "value", a);
+                                    break;
+                                }
+                                case QS_FIELD_INT32:
+                                    cJSON_AddNumberToObject(ov, "value", (double)o->value.iv); break;
+                                case QS_FIELD_UINT32:
+                                case QS_FIELD_ENTITY:
+                                    cJSON_AddNumberToObject(ov, "value", (double)o->value.uv); break;
+                                case QS_FIELD_BOOL:
+                                    cJSON_AddBoolToObject(ov, "value", o->value.bv); break;
+                                case QS_FIELD_STRING:
+                                    cJSON_AddStringToObject(ov, "value", o->value.sv); break;
+                                }
+                                cJSON_AddItemToArray(ov_arr, ov);
+                            }
+                            cJSON_AddItemToObject(comp_json, "__overrides", ov_arr);
+                        }
+                    }
                     cJSON_AddItemToObject(comps, type->name, comp_json);
+                }
             } else {
                 cJSON_AddItemToObject(comps, type->name,
                                       cJSON_CreateObject());
@@ -851,6 +1171,7 @@ cJSON *qs_scene_to_json(const Qs_Scene *scene)
         cJSON_AddItemToArray(entities, ent);
     }
 
+    free(entity_to_index);
     return root;
 }
 
@@ -869,6 +1190,15 @@ bool qs_scene_from_json(Qs_Scene *scene, Qs_Engine *engine,
     if (cJSON_IsNumber(next_id_json))
         scene->next_entity_id = (uint32_t)next_id_json->valueint;
 
+    /* Pass 1: create all entities and remember array-index → entity map */
+    int total = cJSON_GetArraySize(entities);
+    Qs_Entity *idx_to_entity = NULL;
+    if (total > 0) {
+        idx_to_entity = (Qs_Entity *)malloc(sizeof(Qs_Entity) * (size_t)total);
+        for (int i = 0; i < total; i++) idx_to_entity[i] = QS_ENTITY_INVALID;
+    }
+
+    int i = 0;
     const cJSON *ent_json;
     cJSON_ArrayForEach(ent_json, entities) {
         const cJSON *name_val =
@@ -877,6 +1207,8 @@ bool qs_scene_from_json(Qs_Scene *scene, Qs_Engine *engine,
             cJSON_IsString(name_val) ? name_val->valuestring : NULL;
 
         Qs_Entity entity = qs_entity_create(scene, name);
+        if (idx_to_entity) idx_to_entity[i] = entity;
+        i++;
         if (entity == QS_ENTITY_INVALID) continue;
 
         const cJSON *enabled_val =
@@ -906,7 +1238,93 @@ bool qs_scene_from_json(Qs_Scene *scene, Qs_Engine *engine,
 
             if (type->type_info)
                 qs_reflect_from_json(comp, type->type_info, comp_json);
+
+            /* Read Prototype overrides if present. */
+            if (type == s_prototype_comp_type) {
+                Qs_PrototypeComp *pc = (Qs_PrototypeComp *)comp;
+                const cJSON *ov_arr =
+                    cJSON_GetObjectItemCaseSensitive(comp_json, "__overrides");
+                if (cJSON_IsArray(ov_arr)) {
+                    const cJSON *ov;
+                    cJSON_ArrayForEach(ov, ov_arr) {
+                        const cJSON *eid_j = cJSON_GetObjectItemCaseSensitive(ov, "entity_id");
+                        const cJSON *cn_j  = cJSON_GetObjectItemCaseSensitive(ov, "comp");
+                        const cJSON *fn_j  = cJSON_GetObjectItemCaseSensitive(ov, "field");
+                        const cJSON *tp_j  = cJSON_GetObjectItemCaseSensitive(ov, "type");
+                        const cJSON *vl_j  = cJSON_GetObjectItemCaseSensitive(ov, "value");
+                        if (!cJSON_IsNumber(eid_j) ||
+                            !cJSON_IsString(cn_j) ||
+                            !cJSON_IsString(fn_j) ||
+                            !cJSON_IsNumber(tp_j))
+                            continue;
+                        Qs_FieldType ft = (Qs_FieldType)tp_j->valueint;
+                        uint32_t eid = (uint32_t)eid_j->valuedouble;
+                        const char *cn = cn_j->valuestring;
+                        const char *fn = fn_j->valuestring;
+                        switch (ft) {
+                        case QS_FIELD_FLOAT: {
+                            float v = (float)cJSON_GetNumberValue(vl_j);
+                            qs_prototype_set_override(pc, eid, cn, fn, ft, &v); break;
+                        }
+                        case QS_FIELD_FLOAT2:
+                        case QS_FIELD_FLOAT3:
+                        case QS_FIELD_FLOAT4: {
+                            int n = (ft == QS_FIELD_FLOAT2) ? 2
+                                  : (ft == QS_FIELD_FLOAT3) ? 3 : 4;
+                            float v[4] = {0};
+                            if (cJSON_IsArray(vl_j)) {
+                                int k = 0;
+                                const cJSON *it;
+                                cJSON_ArrayForEach(it, vl_j) {
+                                    if (k >= n) break;
+                                    if (cJSON_IsNumber(it)) v[k] = (float)it->valuedouble;
+                                    k++;
+                                }
+                            }
+                            qs_prototype_set_override(pc, eid, cn, fn, ft, v); break;
+                        }
+                        case QS_FIELD_INT32: {
+                            int32_t v = cJSON_IsNumber(vl_j) ? vl_j->valueint : 0;
+                            qs_prototype_set_override(pc, eid, cn, fn, ft, &v); break;
+                        }
+                        case QS_FIELD_UINT32:
+                        case QS_FIELD_ENTITY: {
+                            uint32_t v = cJSON_IsNumber(vl_j) ? (uint32_t)vl_j->valuedouble : 0;
+                            qs_prototype_set_override(pc, eid, cn, fn, ft, &v); break;
+                        }
+                        case QS_FIELD_BOOL: {
+                            bool v = cJSON_IsTrue(vl_j);
+                            qs_prototype_set_override(pc, eid, cn, fn, ft, &v); break;
+                        }
+                        case QS_FIELD_STRING: {
+                            const char *v = cJSON_IsString(vl_j) ? vl_j->valuestring : "";
+                            qs_prototype_set_override(pc, eid, cn, fn, ft, v); break;
+                        }
+                        }
+                    }
+                }
+            }
         }
+    }
+
+    /* Pass 2: assign parents from "parent" indices */
+    if (idx_to_entity) {
+        i = 0;
+        cJSON_ArrayForEach(ent_json, entities) {
+            Qs_Entity child = idx_to_entity[i++];
+            if (child == QS_ENTITY_INVALID) continue;
+            const cJSON *parent_val =
+                cJSON_GetObjectItemCaseSensitive(ent_json, "parent");
+            if (cJSON_IsNumber(parent_val)) {
+                int pi = parent_val->valueint;
+                if (pi >= 0 && pi < total &&
+                    idx_to_entity[pi] != QS_ENTITY_INVALID)
+                {
+                    qs_entity_set_parent(scene, child, idx_to_entity[pi]);
+                }
+            }
+        }
+        free(idx_to_entity);
     }
 
     /* Sync next_entity_id past the highest loaded ID */
@@ -1032,6 +1450,10 @@ bool qs_scene_save(const Qs_Scene *scene, const char *path)
     fclose(f);
     free(str);
 
+    /* Record source path so subsequent saves & path resolution work. */
+    snprintf(((Qs_Scene *)scene)->source_path,
+             sizeof(((Qs_Scene *)scene)->source_path), "%s", path);
+
     QS_LOG_INFO("Scene saved: %s", path);
     return true;
 }
@@ -1040,7 +1462,7 @@ bool qs_scene_load(Qs_Scene *scene, Qs_Engine *engine, const char *path)
 {
     if (!scene || !engine || !path) return false;
 
-    FILE *f = fopen(path, "r");
+    FILE *f = fopen(path, "rb");
     if (!f) {
         QS_LOG_ERROR("Failed to open scene file: %s", path);
         return false;
@@ -1064,13 +1486,21 @@ bool qs_scene_load(Qs_Scene *scene, Qs_Engine *engine, const char *path)
         return false;
     }
 
+    /* Record source path BEFORE from_json so path resolution can use it. */
+    snprintf(scene->source_path, sizeof(scene->source_path), "%s", path);
+
     bool ok = qs_scene_from_json(scene, engine, json);
     cJSON_Delete(json);
 
-    if (ok)
+    /* Forward declaration: defined later in this file. */
+    void qs_scene_resolve_assets(Qs_Scene *scene, Qs_Engine *engine);
+
+    if (ok) {
+        qs_scene_resolve_assets(scene, engine);
         QS_LOG_INFO("Scene loaded: %s", path);
-    else
+    } else {
         QS_LOG_ERROR("Failed to deserialize scene: %s", path);
+    }
 
     return ok;
 }
@@ -1106,4 +1536,607 @@ void qs_scene_world_matrix(const Qs_Scene *scene, Qs_Entity entity,
         qs_m4_mul(out, local, tmp);
         memcpy(out, tmp, sizeof(float) * 16);
     }
+}
+
+/* ================================================================
+   ASSET RESOLUTION + RENDERABLE SUBMISSION
+   ================================================================ */
+
+static void scene_dir(const Qs_Scene *scene, char *out, size_t out_size)
+{
+    const char *p = scene->source_path;
+    const char *last = NULL;
+    for (const char *c = p; *c; c++)
+        if (*c == '/' || *c == '\\') last = c;
+    if (!last) {
+        snprintf(out, out_size, ".");
+        return;
+    }
+    size_t len = (size_t)(last - p);
+    if (len >= out_size) len = out_size - 1;
+    memcpy(out, p, len);
+    out[len] = '\0';
+}
+
+static bool path_is_abs_(const char *p)
+{
+    if (!p || !*p) return false;
+    if (p[0] == '/' || p[0] == '\\') return true;
+#ifdef _WIN32
+    if (p[1] == ':') return true;
+#endif
+    return false;
+}
+
+static void resolve_path(const Qs_Scene *scene, const char *rel,
+                         char *abs, size_t abs_size)
+{
+    if (!rel || !*rel) { abs[0] = '\0'; return; }
+    if (path_is_abs_(rel)) {
+        snprintf(abs, abs_size, "%s", rel);
+        return;
+    }
+
+    /* Prefer project-relative resolution: paths registered in the asset
+       DB (e.g. "Assets/Foo/Foo.qproto") are stored relative to the
+       project root.  Fall back to scene-dir for legacy scenes that
+       reference siblings without an Assets/ prefix.  */
+    Qs_Engine *engine = g_scene_system ? g_scene_system->engine : NULL;
+    Qs_Project *project = engine ? qs_engine_project(engine) : NULL;
+    if (project) {
+        const char *proot = qs_project_path(project);
+        if (proot && proot[0]) {
+            char candidate[1024];
+            snprintf(candidate, sizeof(candidate), "%s/%s", proot, rel);
+            FILE *f = fopen(candidate, "rb");
+            if (f) {
+                fclose(f);
+                snprintf(abs, abs_size, "%s", candidate);
+                return;
+            }
+        }
+    }
+
+    char dir[512];
+    scene_dir(scene, dir, sizeof(dir));
+    snprintf(abs, abs_size, "%s/%s", dir, rel);
+}
+
+/// Walk every MeshComp entity in `scene` and resolve mesh_path / material_path
+/// against the scene's source directory through the runtime asset cache.
+/// Called automatically by qs_scene_load.  PrototypeComp entries are
+/// resolved lazily by qs_scene_submit_renderables on first use.
+void qs_scene_resolve_assets(Qs_Scene *scene, Qs_Engine *engine)
+{
+    if (!scene || !engine || !s_mesh_comp_type) return;
+
+    for (Qs_Entity e = qs_scene_first(scene, s_mesh_comp_type);
+         e != QS_ENTITY_INVALID;
+         e = qs_scene_next(scene, s_mesh_comp_type, e))
+    {
+        Qs_MeshComp *mc = (Qs_MeshComp *)qs_entity_get(scene, e, s_mesh_comp_type);
+        if (!mc) continue;
+
+        if (!mc->mesh && mc->mesh_path[0]) {
+            char abs[1024];
+            resolve_path(scene, mc->mesh_path, abs, sizeof(abs));
+            mc->mesh = qs_asset_cache_mesh(engine, abs);
+            if (!mc->mesh)
+                QS_LOG_WARN("Scene: failed to load mesh '%s'", abs);
+        }
+        if (!mc->material && mc->material_path[0]) {
+            char abs[1024];
+            resolve_path(scene, mc->material_path, abs, sizeof(abs));
+            mc->material = qs_asset_cache_material(engine, abs);
+            if (!mc->material)
+                QS_LOG_WARN("Scene: failed to load material '%s'", abs);
+        }
+    }
+}
+
+void qs_scene_submit_renderables(Qs_Scene *scene,
+                                 Qs_Engine *engine,
+                                 Qs_Renderer *renderer,
+                                 const float parent_world[16])
+{
+    if (!scene || !renderer) return;
+
+    /* Hard cap on prototype recursion depth.  This is a defense-in-depth
+       guard: cyclic prototype references are supposed to be rejected at
+       edit time (see qs_prototype_would_create_cycle) and at save time,
+       but a corrupted file on disk could still bring the runtime down
+       without this safety net. */
+    enum { QS_PROTO_RUNTIME_DEPTH_MAX = 16 };
+    static int s_proto_recursion_depth;
+    if (s_proto_recursion_depth >= QS_PROTO_RUNTIME_DEPTH_MAX) {
+        static bool warned;
+        if (!warned) {
+            QS_LOG_ERROR("Prototype recursion depth exceeded (%d) — "
+                         "cyclic .qproto reference detected, aborting submit",
+                         QS_PROTO_RUNTIME_DEPTH_MAX);
+            warned = true;
+        }
+        return;
+    }
+
+    float identity[16];
+    if (!parent_world) {
+        qs_m4_identity(identity);
+        parent_world = identity;
+    }
+
+    /* Mesh components */
+    if (s_mesh_comp_type) {
+        for (Qs_Entity e = qs_scene_first(scene, s_mesh_comp_type);
+             e != QS_ENTITY_INVALID;
+             e = qs_scene_next(scene, s_mesh_comp_type, e))
+        {
+            Qs_MeshComp *mc = (Qs_MeshComp *)qs_entity_get(scene, e, s_mesh_comp_type);
+            if (!mc || !mc->visible || !mc->mesh || !mc->material) continue;
+
+            float local_world[16];
+            qs_scene_world_matrix(scene, e, local_world);
+            float world[16];
+            qs_m4_mul(parent_world, local_world, world);
+
+            Qs_RenderableDesc r;
+            r.mesh            = mc->mesh;
+            r.material        = mc->material;
+            r.entity          = e;
+            r.cast_shadows    = true;
+            r.receive_shadows = true;
+            r.bounds.min[0] = r.bounds.min[1] = r.bounds.min[2] = -100.0f;
+            r.bounds.max[0] = r.bounds.max[1] = r.bounds.max[2] =  100.0f;
+            memcpy(r.transform, world, sizeof(world));
+            qs_renderer_submit_renderable(renderer, &r);
+        }
+    }
+
+    /* Light components — only submit at the top level (not inside a prototype
+       recursion) to avoid duplicating lights from every prototype instance. */
+    if (s_light_comp_type) {
+        bool top_level = (s_proto_recursion_depth == 0);
+        if (top_level) {
+            for (Qs_Entity e = qs_scene_first(scene, s_light_comp_type);
+                 e != QS_ENTITY_INVALID;
+                 e = qs_scene_next(scene, s_light_comp_type, e))
+            {
+                Qs_LightComp *lc = (Qs_LightComp *)qs_entity_get(scene, e, s_light_comp_type);
+                if (lc) qs_renderer_submit_light_comp(renderer, lc);
+            }
+        }
+    }
+
+    /* Prototype components — recurse into nested scenes */
+    if (s_prototype_comp_type && engine) {
+        for (Qs_Entity e = qs_scene_first(scene, s_prototype_comp_type);
+             e != QS_ENTITY_INVALID;
+             e = qs_scene_next(scene, s_prototype_comp_type, e))
+        {
+            Qs_PrototypeComp *pc =
+                (Qs_PrototypeComp *)qs_entity_get(scene, e, s_prototype_comp_type);
+            if (!pc || pc->load_failed || !pc->path[0]) continue;
+
+            /* Lazy-load the inner scene on first use. */
+            if (!pc->inner) {
+                char abs[1024];
+                resolve_path(scene, pc->path, abs, sizeof(abs));
+
+                /* Use the file basename (without extension) as the inner
+                   scene's name so logs read "Scene 'ABeautifulGame'…"
+                   rather than the full project-relative path. */
+                const char *base = strrchr(pc->path, '/');
+                base = base ? base + 1 : pc->path;
+                char inner_name[64];
+                snprintf(inner_name, sizeof(inner_name), "%s", base);
+                char *dot = strrchr(inner_name, '.');
+                if (dot) *dot = '\0';
+
+                Qs_Scene *inner = qs_scene_create(engine, &(Qs_SceneDesc){
+                    .name = inner_name,
+                });
+                if (!inner) { pc->load_failed = true; continue; }
+                if (!qs_scene_load(inner, engine, abs)) {
+                    qs_scene_destroy(inner);
+                    pc->load_failed = true;
+                    continue;
+                }
+                pc->inner = inner;
+            }
+
+            /* Apply per-instance overrides each frame so user edits are
+               immediately reflected in the rendered prototype.  Overrides
+               are kept on the outer-scene component, never written to the
+               source .qproto file. */
+            qs_prototype_apply_overrides(pc);
+
+            float local_world[16];
+            qs_scene_world_matrix(scene, e, local_world);
+            float world[16];
+            qs_m4_mul(parent_world, local_world, world);
+
+            s_proto_recursion_depth++;
+            qs_scene_submit_renderables(pc->inner, engine, renderer, world);
+            s_proto_recursion_depth--;
+        }
+    }
+}
+
+/* ================================================================
+   PROTOTYPE DEPENDENCY / CYCLE DETECTION
+   ================================================================
+   Walks .qproto JSON files on disk to determine whether one prototype
+   transitively references another. The inner Qs_Scene is never
+   instantiated, so this is cheap enough to call from UI handlers.
+   A bounded visited set + depth cap guarantees termination even on
+   corrupt cyclic files. ================================================ */
+
+#define QS_PROTO_VISITED_MAX 128
+#define QS_PROTO_DEPTH_MAX   32
+
+typedef struct {
+    char paths[QS_PROTO_VISITED_MAX][256];
+    uint32_t count;
+} ProtoVisitedSet;
+
+static void proto_normalise_path(Qs_Project *project,
+                                 const char *in, char *out, size_t out_size)
+{
+    if (!in || !out || out_size == 0) return;
+    if (!*in) { out[0] = '\0'; return; }
+
+    /* If `in` is an absolute path that lies under the project root,
+       strip the root + trailing slash so callers can pass either
+       absolute (e.g. editor->proto_path) or project-relative
+       (e.g. dropdown values, paths embedded in .qproto JSON) and have
+       them compare equal. */
+    const char *src = in;
+    if ((src[0] == '/' || (src[0] && src[1] == ':')) && project) {
+        const char *root = qs_project_path(project);
+        if (root && *root) {
+            size_t rl = strlen(root);
+            if (strncmp(src, root, rl) == 0) {
+                src += rl;
+                while (*src == '/' || *src == '\\') src++;
+            }
+        }
+    }
+
+    while (src[0] == '.' && src[1] == '/') src += 2;
+    size_t w = 0;
+    char prev = '\0';
+    for (size_t i = 0; src[i] && w + 1 < out_size; i++) {
+        char c = src[i];
+        if (c == '\\') c = '/';
+        if (c == '/' && prev == '/') continue;
+        out[w++] = c;
+        prev = c;
+    }
+    out[w] = '\0';
+}
+
+static bool proto_paths_equal(Qs_Project *project, const char *a, const char *b)
+{
+    char na[512], nb[512];
+    proto_normalise_path(project, a, na, sizeof(na));
+    proto_normalise_path(project, b, nb, sizeof(nb));
+    return strcmp(na, nb) == 0;
+}
+
+static bool proto_visited_contains(const ProtoVisitedSet *vs,
+                                   Qs_Project *project, const char *path)
+{
+    char n[256];
+    proto_normalise_path(project, path, n, sizeof(n));
+    for (uint32_t i = 0; i < vs->count; i++)
+        if (strcmp(vs->paths[i], n) == 0) return true;
+    return false;
+}
+
+static void proto_visited_add(ProtoVisitedSet *vs,
+                              Qs_Project *project, const char *path)
+{
+    if (vs->count >= QS_PROTO_VISITED_MAX) return;
+    proto_normalise_path(project, path, vs->paths[vs->count], sizeof(vs->paths[0]));
+    vs->count++;
+}
+
+static cJSON *proto_read_json_file(const char *abs_path)
+{
+    FILE *f = fopen(abs_path, "rb");
+    if (!f) return NULL;
+    fseek(f, 0, SEEK_END);
+    long len = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    if (len <= 0) { fclose(f); return NULL; }
+    char *buf = (char *)malloc((size_t)len + 1);
+    if (!buf) { fclose(f); return NULL; }
+    size_t n = fread(buf, 1, (size_t)len, f);
+    buf[n] = '\0';
+    fclose(f);
+    cJSON *json = cJSON_Parse(buf);
+    free(buf);
+    return json;
+}
+
+static void proto_resolve_path(Qs_Project *project,
+                               const char *rel,
+                               char *abs, size_t abs_size)
+{
+    if (!rel || !*rel) { if (abs_size) abs[0] = '\0'; return; }
+    if (rel[0] == '/' || (rel[0] && rel[1] == ':')) {
+        snprintf(abs, abs_size, "%s", rel);
+        return;
+    }
+    const char *root = project ? qs_project_path(project) : NULL;
+    if (root && *root) snprintf(abs, abs_size, "%s/%s", root, rel);
+    else               snprintf(abs, abs_size, "%s", rel);
+}
+
+static bool proto_depends_on_recursive(Qs_Project *project,
+                                       const char *subject_rel,
+                                       const char *target_norm,
+                                       ProtoVisitedSet *visited,
+                                       uint32_t depth)
+{
+    if (!subject_rel || !*subject_rel) return false;
+    if (depth >= QS_PROTO_DEPTH_MAX) {
+        QS_LOG_WARN("Prototype dep walk hit depth %d at '%s'", QS_PROTO_DEPTH_MAX, subject_rel);
+        return false;
+    }
+    if (proto_visited_contains(visited, project, subject_rel)) return false;
+    proto_visited_add(visited, project, subject_rel);
+
+    char abs[1024];
+    proto_resolve_path(project, subject_rel, abs, sizeof(abs));
+    cJSON *json = proto_read_json_file(abs);
+    if (!json) return false;
+
+    bool hit = false;
+    const cJSON *entities = cJSON_GetObjectItemCaseSensitive(json, "entities");
+    if (cJSON_IsArray(entities)) {
+        const cJSON *ent;
+        cJSON_ArrayForEach(ent, entities) {
+            if (hit) break;
+            const cJSON *comps = cJSON_GetObjectItemCaseSensitive(ent, "components");
+            if (!cJSON_IsObject(comps)) continue;
+            const cJSON *proto = cJSON_GetObjectItemCaseSensitive(comps, "Prototype");
+            if (!cJSON_IsObject(proto)) continue;
+            const cJSON *path_j = cJSON_GetObjectItemCaseSensitive(proto, "path");
+            if (!cJSON_IsString(path_j) || !path_j->valuestring) continue;
+            const char *child_path = path_j->valuestring;
+            if (!*child_path) continue;
+
+            char child_norm[512];
+            proto_normalise_path(project, child_path, child_norm, sizeof(child_norm));
+            if (strcmp(child_norm, target_norm) == 0) { hit = true; break; }
+
+            if (proto_depends_on_recursive(project, child_path,
+                                           target_norm, visited, depth + 1))
+            {
+                hit = true;
+                break;
+            }
+        }
+    }
+    cJSON_Delete(json);
+    return hit;
+}
+
+bool qs_prototype_path_depends_on(Qs_Project *project,
+                                  const char *subject_path,
+                                  const char *target_path)
+{
+    if (!subject_path || !*subject_path) return false;
+    if (!target_path  || !*target_path)  return false;
+    if (proto_paths_equal(project, subject_path, target_path)) return true;
+
+    char target_norm[512];
+    proto_normalise_path(project, target_path, target_norm, sizeof(target_norm));
+
+    ProtoVisitedSet visited = {0};
+    return proto_depends_on_recursive(project, subject_path,
+                                      target_norm, &visited, 0);
+}
+
+bool qs_prototype_would_create_cycle(Qs_Project *project,
+                                     const char *host_path,
+                                     const char *candidate_inner_path)
+{
+    if (!host_path || !candidate_inner_path) return false;
+    if (!*host_path || !*candidate_inner_path) return false;
+    if (proto_paths_equal(project, host_path, candidate_inner_path)) return true;
+    return qs_prototype_path_depends_on(project, candidate_inner_path, host_path);
+}
+
+/* ================================================================
+   REFLECTION  (was qs_reflect.c)
+   ================================================================ */
+
+#include "qs_log.h"
+#include "cJSON.h"
+
+#include <string.h>
+
+/* ================================================================
+   REGISTRY
+   ================================================================ */
+
+#define QS_MAX_TYPES 128
+
+static struct {
+    Qs_TypeInfo entries[QS_MAX_TYPES];
+    uint32_t    count;
+} s_registry;
+
+const Qs_TypeInfo *qs_type_register(const Qs_TypeInfo *info)
+{
+    if (!info || !info->name) return NULL;
+
+    for (uint32_t i = 0; i < s_registry.count; i++) {
+        if (strcmp(s_registry.entries[i].name, info->name) == 0)
+            return &s_registry.entries[i];
+    }
+
+    if (s_registry.count >= QS_MAX_TYPES) {
+        QS_LOG_ERROR("Type registry full (%d)", QS_MAX_TYPES);
+        return NULL;
+    }
+
+    Qs_TypeInfo *slot = &s_registry.entries[s_registry.count++];
+    *slot = *info;
+    QS_LOG_INFO("Reflect type '%s' registered (%u fields)",
+                info->name, info->field_count);
+    return slot;
+}
+
+const Qs_TypeInfo *qs_type_find(const char *name)
+{
+    if (!name) return NULL;
+    for (uint32_t i = 0; i < s_registry.count; i++) {
+        if (strcmp(s_registry.entries[i].name, name) == 0)
+            return &s_registry.entries[i];
+    }
+    return NULL;
+}
+
+/* ================================================================
+   SERIALIZATION — field → cJSON value
+   ================================================================ */
+
+static cJSON *serialize_field(const void *base, const Qs_FieldInfo *f)
+{
+    const uint8_t *ptr = (const uint8_t *)base + f->offset;
+
+    switch (f->type) {
+    case QS_FIELD_FLOAT:
+        return cJSON_CreateNumber(*(const float *)ptr);
+
+    case QS_FIELD_FLOAT2: {
+        const float *v = (const float *)ptr;
+        cJSON *arr = cJSON_CreateArray();
+        cJSON_AddItemToArray(arr, cJSON_CreateNumber(v[0]));
+        cJSON_AddItemToArray(arr, cJSON_CreateNumber(v[1]));
+        return arr;
+    }
+
+    case QS_FIELD_FLOAT3: {
+        const float *v = (const float *)ptr;
+        cJSON *arr = cJSON_CreateArray();
+        cJSON_AddItemToArray(arr, cJSON_CreateNumber(v[0]));
+        cJSON_AddItemToArray(arr, cJSON_CreateNumber(v[1]));
+        cJSON_AddItemToArray(arr, cJSON_CreateNumber(v[2]));
+        return arr;
+    }
+
+    case QS_FIELD_FLOAT4: {
+        const float *v = (const float *)ptr;
+        cJSON *arr = cJSON_CreateArray();
+        cJSON_AddItemToArray(arr, cJSON_CreateNumber(v[0]));
+        cJSON_AddItemToArray(arr, cJSON_CreateNumber(v[1]));
+        cJSON_AddItemToArray(arr, cJSON_CreateNumber(v[2]));
+        cJSON_AddItemToArray(arr, cJSON_CreateNumber(v[3]));
+        return arr;
+    }
+
+    case QS_FIELD_INT32:
+        return cJSON_CreateNumber(*(const int32_t *)ptr);
+
+    case QS_FIELD_UINT32:
+    case QS_FIELD_ENTITY:
+        return cJSON_CreateNumber(*(const uint32_t *)ptr);
+
+    case QS_FIELD_BOOL:
+        return cJSON_CreateBool(*(const bool *)ptr);
+
+    case QS_FIELD_STRING:
+        return cJSON_CreateString((const char *)ptr);
+    }
+
+    return cJSON_CreateNull();
+}
+
+cJSON *qs_reflect_to_json(const void *data, const Qs_TypeInfo *type)
+{
+    if (!data || !type) return NULL;
+
+    cJSON *obj = cJSON_CreateObject();
+    for (uint32_t i = 0; i < type->field_count; i++) {
+        cJSON *val = serialize_field(data, &type->fields[i]);
+        if (val)
+            cJSON_AddItemToObject(obj, type->fields[i].name, val);
+    }
+    return obj;
+}
+
+/* ================================================================
+   DESERIALIZATION — cJSON value → field
+   ================================================================ */
+
+static bool deserialize_field(void *base, const Qs_FieldInfo *f,
+                              const cJSON *val)
+{
+    uint8_t *ptr = (uint8_t *)base + f->offset;
+
+    switch (f->type) {
+    case QS_FIELD_FLOAT:
+        if (!cJSON_IsNumber(val)) return false;
+        *(float *)ptr = (float)val->valuedouble;
+        return true;
+
+    case QS_FIELD_FLOAT2:
+    case QS_FIELD_FLOAT3:
+    case QS_FIELD_FLOAT4: {
+        if (!cJSON_IsArray(val)) return false;
+        int count = (f->type == QS_FIELD_FLOAT2) ? 2 :
+                    (f->type == QS_FIELD_FLOAT3) ? 3 : 4;
+        float *v = (float *)ptr;
+        int idx = 0;
+        const cJSON *elem;
+        cJSON_ArrayForEach(elem, val) {
+            if (idx >= count) break;
+            if (cJSON_IsNumber(elem))
+                v[idx] = (float)elem->valuedouble;
+            idx++;
+        }
+        return true;
+    }
+
+    case QS_FIELD_INT32:
+        if (!cJSON_IsNumber(val)) return false;
+        *(int32_t *)ptr = (int32_t)val->valuedouble;
+        return true;
+
+    case QS_FIELD_UINT32:
+    case QS_FIELD_ENTITY:
+        if (!cJSON_IsNumber(val)) return false;
+        *(uint32_t *)ptr = (uint32_t)val->valuedouble;
+        return true;
+
+    case QS_FIELD_BOOL:
+        if (!cJSON_IsBool(val)) return false;
+        *(bool *)ptr = cJSON_IsTrue(val);
+        return true;
+
+    case QS_FIELD_STRING:
+        if (!cJSON_IsString(val)) return false;
+        snprintf((char *)ptr, f->size, "%s", val->valuestring);
+        return true;
+    }
+
+    return false;
+}
+
+bool qs_reflect_from_json(void *data, const Qs_TypeInfo *type,
+                          const cJSON *json)
+{
+    if (!data || !type || !json) return false;
+
+    for (uint32_t i = 0; i < type->field_count; i++) {
+        const cJSON *val = cJSON_GetObjectItemCaseSensitive(
+            json, type->fields[i].name);
+        if (val)
+            deserialize_field(data, &type->fields[i], val);
+    }
+    return true;
 }

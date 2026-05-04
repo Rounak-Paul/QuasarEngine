@@ -2,6 +2,7 @@
 #include "ed_pick.h"
 #include "ui/ed_toolbar.h"
 #include "editor.h"
+#include "ed_commands.h"
 #include "qs_input.h"
 #include "qs_math.h"
 #include "qs_renderer.h"
@@ -147,6 +148,11 @@ static float s_drag_start_pos[3]; /* entity world position at drag start */
 static float s_drag_start_rot[4]; /* entity rotation at drag start */
 static float s_drag_origin_val;   /* initial projection / angle */
 static float s_drag_start_comp;   /* initial transform component value */
+
+/* Full transform snapshot taken at drag begin so we can push a single
+   undo command on release, regardless of which axis / mode was used. */
+static Qs_Transform s_drag_start_xform;
+static Qs_Entity    s_drag_entity;
 
 /* Per-frame camera position for geometry builders */
 static float s_cam_pos[3];
@@ -679,6 +685,8 @@ void ed_gizmo_update(void *editor, float dt)
                     s_hover_axis = axis;
                     v3_copy(sel_tr->position, s_drag_start_pos);
                     memcpy(s_drag_start_rot, sel_tr->rotation, 16);
+                    s_drag_start_xform = *sel_tr;
+                    s_drag_entity      = editor_selected_entity(ed);
 
                     if (s_mode == ED_GIZMO_ROTATE) {
                         s_drag_origin_val = rotation_angle(ray_o, ray_d,
@@ -751,8 +759,16 @@ void ed_gizmo_update(void *editor, float dt)
             }
         }
 
-        if (qs_input_mouse_released(QS_MOUSE_LEFT))
+        if (qs_input_mouse_released(QS_MOUSE_LEFT)) {
+            /* Push a single undo command for the entire drag. */
+            if (s_drag_axis >= 0 && sel_tr &&
+                s_drag_entity != QS_ENTITY_INVALID) {
+                Qs_Scene *scene = qs_scene_active();
+                ed_undo_push_transform(scene, s_drag_entity,
+                                       &s_drag_start_xform, sel_tr);
+            }
             s_drag_axis = -1;
+        }
 
     } else if (cam_active) {
         s_drag_axis = -1;

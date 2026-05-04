@@ -128,4 +128,20 @@ bool qs_material_double_sided(const Qs_Material *material);
 /// Pass NULL to revert the slot to its default fallback texture.
 void qs_material_set_texture(Qs_Material *mat, uint32_t slot, Qs_Texture *tex);
 
+/// Returns the currently assigned texture for a slot, or NULL if the slot
+/// uses the default fallback.  Slot indices same as qs_material_set_texture.
+Qs_Texture *qs_material_get_texture(const Qs_Material *mat, uint32_t slot);
+
+/// Overwrites the material's PBR scalar parameter block.  The new values
+/// take effect on the next rendered frame (params are copied per-frame into
+/// each Qs_Renderable).  Does NOT affect texture bindings.
+void qs_material_update_params(Qs_Material *mat, const Qs_PBRParams *params);
+
+/// Returns the number of live (in-use) materials managed by the material system.
+uint32_t qs_material_count(void);
+
+/// Returns the i-th live material (0-based, dense order).
+/// Returns NULL if index >= qs_material_count().
+Qs_Material *qs_material_at(uint32_t index);
+
 #endif

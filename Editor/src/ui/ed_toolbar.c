@@ -1,5 +1,5 @@
 #include "ed_toolbar.h"
-#include "ed_icon_btn.h"
+#include "ed_layout.h"
 #include "ed_gizmo.h"
 #include "editor.h"
 
@@ -169,8 +169,10 @@ void ed_toolbar(Ca_Window *window, void *editor)
     s_toolbar_engine = engine;
     if (!engine) { ca_div_end(); return; }
 
+    /* set_builder runs the builder immediately to capture deps, so the
+       toolbar is populated as part of registration — do not call
+       toolbar_populate manually here, or every button is rendered twice. */
     ca_div_set_builder(s_toolbar_div, toolbar_builder, engine);
-    toolbar_populate(engine);
 
     ca_div_end();
 }
