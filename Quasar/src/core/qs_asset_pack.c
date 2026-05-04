@@ -1027,3 +1027,51 @@ Qs_Material *qs_asset_cache_material(Qs_Engine *engine, const char *abs_path)
     e->data.material = mat;
     return mat;
 }
+
+/* ================================================================
+   IMPORT RESULT CLEANUP  (was qs_asset.c)
+   ================================================================ */
+
+void qs_import_result_free(Qs_ImportResult *result)
+{
+    if (!result) return;
+    for (uint32_t i = 0; i < result->texture_count; i++)
+        free(result->textures[i].pixels);
+    free(result->textures);
+    for (uint32_t i = 0; i < result->mesh_count; i++) {
+        free(result->meshes[i].vertices);
+        free(result->meshes[i].indices);
+    }
+    free(result->meshes);
+    free(result->materials);
+    free(result->nodes);
+    memset(result, 0, sizeof(*result));
+}
+
+/* ================================================================
+   ASSET ENGINE SYSTEM  (was qs_asset.c)
+   ================================================================ */
+
+static bool asset_system_init(Qs_System *system, Qs_Engine *engine)
+{
+    (void)system;
+    qs_pack_set_active_engine(engine);
+    return true;
+}
+
+static void asset_system_shutdown(Qs_System *system, Qs_Engine *engine)
+{
+    (void)system; (void)engine;
+    qs_asset_cache_clear();
+    qs_pack_set_active_engine(NULL);
+}
+
+Qs_SystemDesc qs_asset_system_desc(void)
+{
+    return (Qs_SystemDesc){
+        .name      = "Asset",
+        .data_size = 0,
+        .init      = asset_system_init,
+        .shutdown  = asset_system_shutdown,
+    };
+}

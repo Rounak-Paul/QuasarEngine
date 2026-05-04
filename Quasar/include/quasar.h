@@ -16,7 +16,6 @@
 #include "qs_scene.h"
 #include "qs_reflect.h"
 #include "qs_project.h"
-#include "qs_primitives.h"
 #include "qs_input.h"
 #include "qs_dylib.h"
 #include "qs_plugin.h"
