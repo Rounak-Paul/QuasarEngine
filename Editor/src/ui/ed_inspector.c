@@ -138,7 +138,7 @@ static uint32_t      s_mesh_option_cap   = 0;
 
 /* Per-slot context for on_texture_select (one entry per texture slot) */
 #define QS_MAT_SLOTS 5
-typedef struct { Qs_Material *mat; uint32_t slot; } TexPickCtx;
+typedef struct { Qs_Material *mat; uint32_t slot; char abs_mat_path[1024]; } TexPickCtx;
 static TexPickCtx s_tex_ctxs[QS_MAT_SLOTS];
 
 /* ---- Binding allocator ---- */
@@ -949,28 +949,23 @@ static void on_material_select(Ca_Select *sel, void *user_data)
 static void on_texture_select(Ca_Select *sel, void *user_data)
 {
     TexPickCtx *ctx = (TexPickCtx *)user_data;
-    if (!sel || !ctx || !ctx->mat) return;
+    if (!sel || !ctx || !ctx->mat || !ctx->abs_mat_path[0]) return;
 
-    /* Release ref on whatever texture is currently in this slot */
-    Qs_Texture *old_tex = qs_material_get_texture(ctx->mat, ctx->slot);
-    if (old_tex) {
-        const char *old_name = qs_texture_name(old_tex);
-        if (old_name && *old_name)
-            qs_asset_cache_release_texture(old_name);
-    }
+    Qs_Engine *eng = s_editor ? editor_engine(s_editor) : NULL;
+    if (!eng) return;
 
     int idx = ca_select_get(sel);
-    Qs_Texture *tex = NULL;
+    const char *new_tex_abs = NULL;
+    char abs[1024] = {0};
     if (idx > 0 && (uint32_t)idx < s_tex_option_count && s_tex_list) {
-        Qs_Project *proj = s_editor ? editor_project(s_editor) : NULL;
-        Qs_Engine  *eng  = s_editor ? editor_engine(s_editor)  : NULL;
-        if (proj && eng) {
-            char abs[1024];
+        Qs_Project *proj = editor_project(s_editor);
+        if (proj) {
             qs_project_resolve(proj, s_tex_list[idx - 1], abs, sizeof(abs));
-            tex = qs_asset_cache_texture(eng, abs);   /* acquires ref */
+            new_tex_abs = abs;
         }
     }
-    qs_material_set_texture(ctx->mat, ctx->slot, tex);
+    /* Atomically releases old ref, acquires new ref, updates tracked slot path */
+    qs_asset_cache_material_swap_texture(eng, ctx->abs_mat_path, ctx->slot, new_tex_abs);
 }
 
 static void on_mesh_select(Ca_Select *sel, void *user_data)
@@ -1102,7 +1097,7 @@ static void build_mat_vec_row(const char *label, Qs_Material *mat,
 
 /* Build a texture-slot row: label + dropdown of project textures */
 static void build_mat_texture_row(const char *label, Qs_Material *mat,
-                                   uint32_t slot)
+                                   const char *abs_mat_path, uint32_t slot)
 {
     char row_id[96];
     snprintf(row_id, sizeof(row_id), "mat-tex-row-%u", slot);
@@ -1127,6 +1122,8 @@ static void build_mat_texture_row(const char *label, Qs_Material *mat,
         }
         s_tex_ctxs[slot].mat  = mat;
         s_tex_ctxs[slot].slot = slot;
+        snprintf(s_tex_ctxs[slot].abs_mat_path, sizeof(s_tex_ctxs[slot].abs_mat_path),
+                 "%s", abs_mat_path ? abs_mat_path : "");
         char sel_id[96];
         snprintf(sel_id, sizeof(sel_id), "mat-tex-sel-%u", slot);
         ca_select(&(Ca_SelectDesc){
@@ -1270,8 +1267,11 @@ static void build_mesh_comp_section(Qs_Scene *scene, Qs_Entity entity,
     static const char *s_slot_labels[QS_MAT_SLOTS] = {
         "Albedo", "Metal / Rough", "Normal", "Occlusion", "Emissive"
     };
+    char abs_mat[1024] = {0};
+    if (proj && mc->material_path[0])
+        qs_project_resolve(proj, mc->material_path, abs_mat, sizeof(abs_mat));
     for (uint32_t slot = 0; slot < QS_MAT_SLOTS; slot++)
-        build_mat_texture_row(s_slot_labels[slot], mc->material, slot);
+        build_mat_texture_row(s_slot_labels[slot], mc->material, abs_mat, slot);
 }
 static void build_add_component(Qs_Scene *scene, Qs_Entity entity);
 

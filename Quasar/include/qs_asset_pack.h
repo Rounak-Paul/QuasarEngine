@@ -165,6 +165,17 @@ void qs_asset_cache_release_material(const char *abs_path);
 /// The GPU resource is destroyed when the ref count reaches zero.
 void qs_asset_cache_release_texture(const char *abs_path);
 
+/// Swap one texture slot of a cached material.  Releases the ref for the old
+/// texture at that slot, acquires one for the new texture, updates the material's
+/// internal tracking, and calls qs_material_set_texture.
+/// abs_mat_path must be the exact path passed to qs_asset_cache_material.
+/// Pass NULL/empty abs_new_tex_path to clear the slot (reverts to default fallback).
+/// Slot indices: 0=base_color, 1=metallic_roughness, 2=normal, 3=occlusion, 4=emissive.
+Qs_Texture *qs_asset_cache_material_swap_texture(Qs_Engine  *engine,
+                                                  const char *abs_mat_path,
+                                                  uint32_t    slot,
+                                                  const char *abs_new_tex_path);
+
 /// Drop and destroy every cached entry.  Called at asset-system shutdown.
 void qs_asset_cache_clear(void);
 

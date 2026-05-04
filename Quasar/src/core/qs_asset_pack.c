@@ -727,10 +727,9 @@ typedef struct CacheEntry {
     char       path[QS_PACK_MAX_PATH];
     CacheKind  kind;
     uint32_t   ref_count;
-    /* For CACHE_MAT: absolute paths of textures loaded via qs_asset_cache_texture
-       at material creation time.  Each holds a ref; released when mat ref hits 0. */
+    /* For CACHE_MAT: slot-indexed texture paths (slots 0-4 = base_color, mr, normal,
+       occlusion, emissive).  Each non-empty slot holds one texture ref. */
     char       mat_tex_paths[5][QS_PACK_MAX_PATH];
-    uint32_t   mat_tex_count;
     union {
         Qs_Mesh     *mesh;
         Qs_Material *material;
@@ -790,9 +789,11 @@ static void cache_release(const char *abs_path, CacheKind kind)
         if (e->ref_count > 0) e->ref_count--;
         if (e->ref_count == 0) {
             if (kind == CACHE_MAT) {
-                /* Release owned texture refs before destroying material */
-                for (uint32_t t = 0; t < e->mat_tex_count; t++)
-                    cache_release(e->mat_tex_paths[t], CACHE_TEX);
+                /* Release all tracked texture refs (slots 0-4) */
+                for (uint32_t t = 0; t < 5; t++) {
+                    if (e->mat_tex_paths[t][0])
+                        cache_release(e->mat_tex_paths[t], CACHE_TEX);
+                }
             }
             switch (kind) {
             case CACHE_MESH: qs_mesh_destroy(e->data.mesh);         break;
@@ -819,6 +820,37 @@ void qs_asset_cache_release_material(const char *abs_path)
 void qs_asset_cache_release_texture(const char *abs_path)
 {
     cache_release(abs_path, CACHE_TEX);
+}
+
+/// Atomically swap the texture in one slot of a cached material.
+/// Releases the ref for the old texture at that slot, acquires one for the new,
+/// updates the material's tracked slot path, and binds it via qs_material_set_texture.
+/// abs_mat_path must be the same absolute path passed to qs_asset_cache_material.
+/// Pass NULL/empty abs_new_tex_path to clear the slot (revert to default fallback).
+Qs_Texture *qs_asset_cache_material_swap_texture(
+    Qs_Engine  *engine,
+    const char *abs_mat_path,
+    uint32_t    slot,
+    const char *abs_new_tex_path)
+{
+    if (!engine || !abs_mat_path || slot >= 5) return NULL;
+    CacheEntry *mat_e = cache_find(abs_mat_path, CACHE_MAT);
+    if (!mat_e) return NULL;
+
+    /* Release the currently tracked texture for this slot */
+    if (mat_e->mat_tex_paths[slot][0])
+        cache_release(mat_e->mat_tex_paths[slot], CACHE_TEX);
+
+    Qs_Texture *new_tex = NULL;
+    if (abs_new_tex_path && *abs_new_tex_path) {
+        new_tex = qs_asset_cache_texture(engine, abs_new_tex_path);   /* acquires ref */
+        snprintf(mat_e->mat_tex_paths[slot], QS_PACK_MAX_PATH, "%s", abs_new_tex_path);
+    } else {
+        mat_e->mat_tex_paths[slot][0] = '\0';
+    }
+
+    qs_material_set_texture(mat_e->data.material, slot, new_tex);
+    return new_tex;
 }
 
 Qs_Texture *qs_asset_cache_texture(Qs_Engine *engine, const char *abs_path)
@@ -939,15 +971,15 @@ Qs_Material *qs_asset_cache_material(Qs_Engine *engine, const char *abs_path)
     md.alpha_cutoff  = (float)json_num(root, "alpha_cutoff", 0.5);
     md.double_sided  = json_bool(root, "double_sided", false);
 
-    /* Resolve texture refs — collect abs paths so we can release them later */
+    /* Resolve texture refs — store by slot index so they can be swapped later */
     char mat_dir[QS_PACK_MAX_PATH];
     path_dirname(abs_path, mat_dir, sizeof(mat_dir));
     const cJSON *texs = cJSON_GetObjectItemCaseSensitive(root, "textures");
 
-    char collected_tex_paths[5][QS_PACK_MAX_PATH];
-    uint32_t collected_tex_count = 0;
+    char slot_tex_paths[5][QS_PACK_MAX_PATH];
+    memset(slot_tex_paths, 0, sizeof(slot_tex_paths));
 
-    #define RESOLVE_TEX(field, json_key)                                        \
+    #define RESOLVE_TEX(field, json_key, slot_idx)                              \
     do {                                                                        \
         const cJSON *v = cJSON_GetObjectItemCaseSensitive(texs, json_key);      \
         if (cJSON_IsString(v) && v->valuestring[0]) {                           \
@@ -957,18 +989,18 @@ Qs_Material *qs_asset_cache_material(Qs_Engine *engine, const char *abs_path)
             else                                                                \
                 snprintf(texabs, sizeof(texabs), "%s/%s", mat_dir, v->valuestring); \
             md.field = qs_asset_cache_texture(engine, texabs);                  \
-            if (md.field && collected_tex_count < 5)                            \
-                snprintf(collected_tex_paths[collected_tex_count++],            \
-                         QS_PACK_MAX_PATH, "%s", texabs);                       \
+            if (md.field)                                                       \
+                snprintf(slot_tex_paths[slot_idx], QS_PACK_MAX_PATH,            \
+                         "%s", texabs);                                          \
         }                                                                       \
     } while (0)
 
     if (cJSON_IsObject(texs)) {
-        RESOLVE_TEX(base_color_texture,         "base_color");
-        RESOLVE_TEX(metallic_roughness_texture, "metallic_roughness");
-        RESOLVE_TEX(normal_texture,             "normal");
-        RESOLVE_TEX(occlusion_texture,          "occlusion");
-        RESOLVE_TEX(emissive_texture,           "emissive");
+        RESOLVE_TEX(base_color_texture,         "base_color",         0);
+        RESOLVE_TEX(metallic_roughness_texture, "metallic_roughness", 1);
+        RESOLVE_TEX(normal_texture,             "normal",             2);
+        RESOLVE_TEX(occlusion_texture,          "occlusion",          3);
+        RESOLVE_TEX(emissive_texture,           "emissive",           4);
     }
     #undef RESOLVE_TEX
 
@@ -976,22 +1008,22 @@ Qs_Material *qs_asset_cache_material(Qs_Engine *engine, const char *abs_path)
     cJSON_Delete(root);
     if (!mat) {
         /* Roll back acquired texture refs */
-        for (uint32_t t = 0; t < collected_tex_count; t++)
-            cache_release(collected_tex_paths[t], CACHE_TEX);
+        for (uint32_t t = 0; t < 5; t++)
+            if (slot_tex_paths[t][0])
+                cache_release(slot_tex_paths[t], CACHE_TEX);
         return NULL;
     }
 
     CacheEntry *e = cache_add(abs_path, CACHE_MAT);
     if (!e) {
-        for (uint32_t t = 0; t < collected_tex_count; t++)
-            cache_release(collected_tex_paths[t], CACHE_TEX);
+        for (uint32_t t = 0; t < 5; t++)
+            if (slot_tex_paths[t][0])
+                cache_release(slot_tex_paths[t], CACHE_TEX);
         qs_material_destroy(mat);
         return NULL;
     }
     e->ref_count = 1;
-    e->mat_tex_count = collected_tex_count;
-    for (uint32_t t = 0; t < collected_tex_count; t++)
-        snprintf(e->mat_tex_paths[t], QS_PACK_MAX_PATH, "%s", collected_tex_paths[t]);
+    memcpy(e->mat_tex_paths, slot_tex_paths, sizeof(slot_tex_paths));
     e->data.material = mat;
     return mat;
 }
