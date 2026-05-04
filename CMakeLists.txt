@@ -35,6 +35,13 @@ elseif(UNIX)
     add_compile_definitions(QS_PLATFORM_LINUX)
 endif()
 
+# AddressSanitizer — enable with: cmake -DENABLE_ASAN=ON ..
+option(ENABLE_ASAN "Enable AddressSanitizer" OFF)
+if(ENABLE_ASAN AND NOT MSVC)
+    add_compile_options(-fsanitize=address -fno-omit-frame-pointer -g)
+    add_link_options(-fsanitize=address)
+endif()
+
 # Engine library (brings in causality and all vendors)
 add_subdirectory(Quasar)
 

@@ -736,7 +736,17 @@ Qs_GpuBuffer *qs_renderer_get_lights_ubo(const Qs_Renderer *r)
 void qs_renderer_submit_renderable(Qs_Renderer *r, const Qs_RenderableDesc *desc)
 {
     if (!r || !desc || !desc->mesh) return;
-    if (r->renderable_count >= QS_MAX_RENDERABLES) return;
+    if (r->renderable_count >= QS_MAX_RENDERABLES) {
+        static bool s_overflow_warned;
+        if (!s_overflow_warned) {
+            QS_LOG_WARN("qs_renderer_submit_renderable: buffer full (%u) "
+                        "\xe2\x80\x94 extra renderables dropped. "
+                        "Increase QS_MAX_RENDERABLES in qs_renderer.c.",
+                        QS_MAX_RENDERABLES);
+            s_overflow_warned = true;
+        }
+        return;
+    }
 
     /* Resolve material: use desc->material if provided, else renderer default */
     Qs_Material *mat = desc->material ? desc->material : r->default_material;

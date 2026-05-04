@@ -752,11 +752,13 @@ void qs_scene_destroy(Qs_Scene *scene)
         qs_entity_destroy(scene, e);
     }
 
-    /* Free component store buffers */
+    /* Free component store buffers — null each pointer after freeing so that
+       a stale second call to qs_scene_destroy on the same pointer (use-after-
+       free) degrades to free(NULL) no-ops rather than a double-free crash. */
     for (uint32_t t = 0; t < QS_MAX_COMPONENT_TYPES; t++) {
-        free(scene->stores[t].data);
-        free(scene->stores[t].sparse);
-        free(scene->stores[t].dense);
+        free(scene->stores[t].data);    scene->stores[t].data   = NULL;
+        free(scene->stores[t].sparse);  scene->stores[t].sparse = NULL;
+        free(scene->stores[t].dense);   scene->stores[t].dense  = NULL;
     }
 
     /* Remove from system array */
@@ -767,6 +769,10 @@ void qs_scene_destroy(Qs_Scene *scene)
         }
     }
 
+    /* Mark as not-in-use before the final free so that any use-after-free
+       that re-enters qs_scene_destroy with this pointer hits the in_use
+       guard (if the OS hasn't yet reclaimed the page). */
+    scene->in_use = false;
     QS_LOG_INFO("Scene '%s' destroyed", scene->name);
     free(scene);
 }
@@ -1456,7 +1462,7 @@ bool qs_scene_load(Qs_Scene *scene, Qs_Engine *engine, const char *path)
 {
     if (!scene || !engine || !path) return false;
 
-    FILE *f = fopen(path, "r");
+    FILE *f = fopen(path, "rb");
     if (!f) {
         QS_LOG_ERROR("Failed to open scene file: %s", path);
         return false;

@@ -1,6 +1,6 @@
 {
 	"name":	"Scene",
-	"next_entity_id":	6,
+	"next_entity_id":	9,
 	"entities":	[{
 			"name":	"Sun",
 			"enabled":	true,
@@ -47,6 +47,28 @@
 				},
 				"Prototype":	{
 					"path":	"Assets/ABeautifulGame/ABeautifulGame.qproto"
+				}
+			}
+		}, {
+			"name":	"Entity",
+			"enabled":	true,
+			"parent":	-1,
+			"components":	{
+				"IdComp":	{
+					"id":	8
+				},
+				"TagComp":	{
+					"tag":	"Untagged"
+				},
+				"Transform":	{
+					"position":	[0, 0, 0],
+					"rotation":	[0, 0, 0, 1],
+					"scale":	[1, 1, 1]
+				},
+				"MeshComp":	{
+					"visible":	true,
+					"mesh_path":	"assets/ABeautifulGame/meshes/Chessboard_4.qsmesh",
+					"material_path":	"assets/ABeautifulGame/materials/Chessboard_4.qsmat"
 				}
 			}
 		}]

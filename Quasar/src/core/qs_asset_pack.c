@@ -788,6 +788,12 @@ static void cache_release(const char *abs_path, CacheKind kind)
         if (e->kind != kind || strcmp(e->path, abs_path) != 0) continue;
         if (e->ref_count > 0) e->ref_count--;
         if (e->ref_count == 0) {
+            /* Remove from the live array BEFORE recursive texture releases.
+               Each recursive cache_release does its own swap-compaction; if
+               this entry is the last element, that compaction moves this
+               pointer into a live slot, and the subsequent free(e) leaves a
+               dangling pointer inside g_cache[0..g_cache_count-1]. */
+            g_cache[i] = g_cache[--g_cache_count];
             if (kind == CACHE_MAT) {
                 /* Release all tracked texture refs (slots 0-4) */
                 for (uint32_t t = 0; t < 5; t++) {
@@ -801,7 +807,6 @@ static void cache_release(const char *abs_path, CacheKind kind)
             case CACHE_TEX:  qs_texture_destroy(e->data.texture);   break;
             }
             free(e);
-            g_cache[i] = g_cache[--g_cache_count];
         }
         return;
     }

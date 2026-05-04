@@ -352,10 +352,13 @@ static void refresh_proto_options(void)
     uint32_t n = qs_project_prototype_count(proj);
     if (n + 1 > s_proto_option_cap) {
         uint32_t cap = (n + 1 < 16) ? 16 : (n + 1);
+        /* Sequential realloc: update each pointer immediately so s_proto_options
+           is never left dangling if the second realloc fails. */
         const char **a = (const char **)realloc(s_proto_options, cap * sizeof(*a));
-        const char **b = (const char **)realloc(s_proto_paths,   cap * sizeof(*b));
-        if (!a || !b) { free(a); free(b); return; }
-        s_proto_options    = a;
+        if (!a) return;
+        s_proto_options = a;
+        const char **b = (const char **)realloc(s_proto_paths, cap * sizeof(*b));
+        if (!b) return;   /* s_proto_options updated, s_proto_paths unchanged — both valid */
         s_proto_paths      = b;
         s_proto_option_cap = cap;
     }
@@ -823,6 +826,7 @@ static void refresh_mat_options(void)
         if (a) { s_mat_options = a; s_mat_option_cap = cap; }
         if (c)   s_mat_paths   = c;
     }
+    if (!s_mat_options) return;  /* OOM guard: first alloc may have failed */
     s_mat_options[s_mat_option_count++] = "(none)";
 
     for (uint32_t i = 0; i < n; i++) {
@@ -1181,21 +1185,6 @@ static void build_mesh_comp_section(Qs_Scene *scene, Qs_Entity entity,
             if (s_mesh_paths[i - 1] &&
                 strcmp(mc->mesh_path, s_mesh_paths[i - 1]) == 0)
             { sel_mesh_idx = (int)i; break; }
-        }
-    } else if (mc->mesh && s_mesh_paths) {
-        /* Fallback: match by mesh surface name */
-        const char *cur_name = qs_mesh_name(mc->mesh);
-        if (cur_name) {
-            Qs_Engine *eng = s_editor ? editor_engine(s_editor) : NULL;
-            for (uint32_t i = 1; i < s_mesh_option_count && eng; i++) {
-                if (!s_mesh_paths[i - 1]) continue;
-                char abs[1024];
-                qs_project_resolve(proj, s_mesh_paths[i - 1], abs, sizeof(abs));
-                Qs_Mesh *m = qs_asset_cache_mesh(eng, abs);
-                if (m && qs_mesh_name(m) && strcmp(qs_mesh_name(m), cur_name) == 0) {
-                    sel_mesh_idx = (int)i; break;
-                }
-            }
         }
     }
     ca_div_begin(&(Ca_DivDesc){ .direction = CA_VERTICAL, .id = "mat-mesh-row",

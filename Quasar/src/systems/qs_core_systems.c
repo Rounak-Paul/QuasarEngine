@@ -190,17 +190,18 @@ void qs_log(Qs_LogLevel level, const char *fmt, ...)
 
     if (g_log->mutex) ca_mutex_lock(g_log->mutex);
 
-    /* Grow arrays if needed */
+    /* Grow arrays if needed.
+       Update each pointer immediately after its own realloc so that
+       g_log->entries is never left pointing at freed memory if the
+       second realloc fails (classic double-realloc use-after-free). */
     if (g_log->count == g_log->capacity) {
         uint32_t new_cap = g_log->capacity * 2;
-        Qs_LogEntry   *new_entries = realloc(g_log->entries, new_cap * sizeof(Qs_LogEntry));
-        Qs_LogStorage *new_storage = realloc(g_log->storage, new_cap * sizeof(Qs_LogStorage));
-        if (!new_entries || !new_storage) {
-            if (g_log->mutex) ca_mutex_unlock(g_log->mutex);
-            return;
-        }
-        g_log->entries  = new_entries;
-        g_log->storage  = new_storage;
+        Qs_LogEntry *ne = realloc(g_log->entries, new_cap * sizeof(Qs_LogEntry));
+        if (!ne) { if (g_log->mutex) ca_mutex_unlock(g_log->mutex); return; }
+        g_log->entries = ne;   /* update immediately — pointer is now valid */
+        Qs_LogStorage *ns = realloc(g_log->storage, new_cap * sizeof(Qs_LogStorage));
+        if (!ns) { if (g_log->mutex) ca_mutex_unlock(g_log->mutex); return; }
+        g_log->storage  = ns;
         g_log->capacity = new_cap;
     }
 
@@ -245,26 +246,39 @@ const Qs_LogEntry *qs_log_entries(uint32_t *out_count)
         if (out_count) *out_count = 0;
         return NULL;
     }
-    if (out_count) *out_count = g_log->count;
-    return g_log->entries;
+    /* Lock so count and entries pointer are consistent w.r.t. concurrent
+       worker-thread calls to qs_log() that may realloc the array. */
+    if (g_log->mutex) ca_mutex_lock(g_log->mutex);
+    uint32_t n           = g_log->count;
+    const Qs_LogEntry *arr = g_log->entries;
+    if (g_log->mutex) ca_mutex_unlock(g_log->mutex);
+    if (out_count) *out_count = n;
+    return arr;
 }
 
 void qs_log_set_level(Qs_LogLevel min_level)
 {
-    if (g_log) g_log->min_level = min_level;
+    if (!g_log) return;
+    if (g_log->mutex) ca_mutex_lock(g_log->mutex);
+    g_log->min_level = min_level;
+    if (g_log->mutex) ca_mutex_unlock(g_log->mutex);
 }
 
 void qs_log_flush(void)
 {
-    if (g_log) flush_to_file(g_log);
+    if (!g_log) return;
+    if (g_log->mutex) ca_mutex_lock(g_log->mutex);
+    flush_to_file(g_log);
+    if (g_log->mutex) ca_mutex_unlock(g_log->mutex);
 }
 
 void qs_log_set_listener(Qs_LogListenerFn fn, void *userdata)
 {
-    if (g_log) {
-        g_log->listener      = fn;
-        g_log->listener_data = userdata;
-    }
+    if (!g_log) return;
+    if (g_log->mutex) ca_mutex_lock(g_log->mutex);
+    g_log->listener      = fn;
+    g_log->listener_data = userdata;
+    if (g_log->mutex) ca_mutex_unlock(g_log->mutex);
 }
 
 /* ================================================================
