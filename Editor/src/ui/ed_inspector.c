@@ -934,6 +934,7 @@ static void on_material_select(Ca_Select *sel, void *user_data)
         qs_asset_cache_release_material(abs);
         mc->material = NULL;
     }
+    mc->material_load_failed = false;  /* allow new path to load */
 
     int idx = ca_select_get(sel);
     if (idx <= 0) {
@@ -942,8 +943,7 @@ static void on_material_select(Ca_Select *sel, void *user_data)
         const char *rel = s_mat_paths[idx - 1];
         char abs[1024];
         qs_project_resolve(proj, rel, abs, sizeof(abs));
-        Qs_Material *m = qs_asset_cache_material(eng, abs);   /* acquires ref */
-        mc->material = m;
+        mc->material = qs_asset_cache_material_async(eng, qs_engine_job_system(eng), abs);
         snprintf(mc->material_path, sizeof(mc->material_path), "%s", rel ? rel : "");
     }
     /* Force material editor rebuild */
@@ -994,17 +994,17 @@ static void on_mesh_select(Ca_Select *sel, void *user_data)
         mc->mesh = NULL;
         mc->mesh_path[0] = '\0';
     }
+    mc->mesh_load_failed = false;  /* allow new path to load */
 
     int idx = ca_select_get(sel);
     if (idx > 0 && (uint32_t)idx < s_mesh_option_count && s_mesh_paths) {
         const char *rel = s_mesh_paths[idx - 1];
         char abs[1024];
         qs_project_resolve(proj, rel, abs, sizeof(abs));
-        Qs_Mesh *m = qs_asset_cache_mesh(eng, abs);   /* acquires ref */
-        if (m) {
-            mc->mesh = m;
-            snprintf(mc->mesh_path, sizeof(mc->mesh_path), "%s", rel);
-        }
+        snprintf(mc->mesh_path, sizeof(mc->mesh_path), "%s", rel);
+        mc->mesh = qs_asset_cache_mesh_async(eng, qs_engine_job_system(eng), abs);
+        /* NULL while background job runs; submit_renderables assigns mc->mesh
+           on the frame the pump completes the GPU upload. */
     }
 }
 

@@ -266,13 +266,17 @@ static void mesh_comp_destroy(void *comp, Qs_Scene *scene, Qs_Entity entity)
 {
     (void)entity;
     Qs_MeshComp *mc = (Qs_MeshComp *)comp;
-    if (mc->mesh_path[0]) {
+    /* Only release the cache ref if the asset was actually loaded.  If the
+       entity was destroyed before its first render frame (lazy load never
+       triggered), there is no ref to release and cache_release would be a
+       no-op anyway, but this guard makes the intent explicit. */
+    if (mc->mesh && mc->mesh_path[0]) {
         char abs[1024];
         resolve_path(scene, mc->mesh_path, abs, sizeof(abs));
         qs_asset_cache_release_mesh(abs);
         mc->mesh = NULL;
     }
-    if (mc->material_path[0]) {
+    if (mc->material && mc->material_path[0]) {
         char abs[1024];
         resolve_path(scene, mc->material_path, abs, sizeof(abs));
         qs_asset_cache_release_material(abs);
@@ -1492,15 +1496,10 @@ bool qs_scene_load(Qs_Scene *scene, Qs_Engine *engine, const char *path)
     bool ok = qs_scene_from_json(scene, engine, json);
     cJSON_Delete(json);
 
-    /* Forward declaration: defined later in this file. */
-    void qs_scene_resolve_assets(Qs_Scene *scene, Qs_Engine *engine);
-
-    if (ok) {
-        qs_scene_resolve_assets(scene, engine);
+    if (ok)
         QS_LOG_INFO("Scene loaded: %s", path);
-    } else {
+    else
         QS_LOG_ERROR("Failed to deserialize scene: %s", path);
-    }
 
     return ok;
 }
@@ -1602,38 +1601,6 @@ static void resolve_path(const Qs_Scene *scene, const char *rel,
     snprintf(abs, abs_size, "%s/%s", dir, rel);
 }
 
-/// Walk every MeshComp entity in `scene` and resolve mesh_path / material_path
-/// against the scene's source directory through the runtime asset cache.
-/// Called automatically by qs_scene_load.  PrototypeComp entries are
-/// resolved lazily by qs_scene_submit_renderables on first use.
-void qs_scene_resolve_assets(Qs_Scene *scene, Qs_Engine *engine)
-{
-    if (!scene || !engine || !s_mesh_comp_type) return;
-
-    for (Qs_Entity e = qs_scene_first(scene, s_mesh_comp_type);
-         e != QS_ENTITY_INVALID;
-         e = qs_scene_next(scene, s_mesh_comp_type, e))
-    {
-        Qs_MeshComp *mc = (Qs_MeshComp *)qs_entity_get(scene, e, s_mesh_comp_type);
-        if (!mc) continue;
-
-        if (!mc->mesh && mc->mesh_path[0]) {
-            char abs[1024];
-            resolve_path(scene, mc->mesh_path, abs, sizeof(abs));
-            mc->mesh = qs_asset_cache_mesh(engine, abs);
-            if (!mc->mesh)
-                QS_LOG_WARN("Scene: failed to load mesh '%s'", abs);
-        }
-        if (!mc->material && mc->material_path[0]) {
-            char abs[1024];
-            resolve_path(scene, mc->material_path, abs, sizeof(abs));
-            mc->material = qs_asset_cache_material(engine, abs);
-            if (!mc->material)
-                QS_LOG_WARN("Scene: failed to load material '%s'", abs);
-        }
-    }
-}
-
 void qs_scene_submit_renderables(Qs_Scene *scene,
                                  Qs_Engine *engine,
                                  Qs_Renderer *renderer,
@@ -1672,7 +1639,31 @@ void qs_scene_submit_renderables(Qs_Scene *scene,
              e = qs_scene_next(scene, s_mesh_comp_type, e))
         {
             Qs_MeshComp *mc = (Qs_MeshComp *)qs_entity_get(scene, e, s_mesh_comp_type);
-            if (!mc || !mc->visible || !mc->mesh || !mc->material) continue;
+            if (!mc || !mc->visible) continue;
+
+            /* Lazy-load mesh / material asynchronously on first render.
+               _async dispatches a background disk-read job on miss and
+               returns NULL while the job is running; the entity is simply
+               skipped this frame.  Assets shared by multiple entities are
+               read once and GPU-uploaded once by the pump.
+               Material is created immediately (same frame) with fallback
+               textures; .qstex files stream in via the pump afterwards. */
+            Qs_JobSystem *jobs = engine ? qs_engine_job_system(engine) : NULL;
+            if (!mc->mesh && mc->mesh_path[0] && !mc->mesh_load_failed && jobs) {
+                char abs[1024];
+                resolve_path(scene, mc->mesh_path, abs, sizeof(abs));
+                mc->mesh = qs_asset_cache_mesh_async(engine, jobs, abs);
+                /* NULL is normal while loading — don't mark failed yet. */
+            }
+            if (!mc->material && mc->material_path[0] && !mc->material_load_failed && jobs) {
+                char abs[1024];
+                resolve_path(scene, mc->material_path, abs, sizeof(abs));
+                mc->material = qs_asset_cache_material_async(engine, jobs, abs);
+                if (!mc->material)
+                    mc->material_load_failed = true;
+            }
+
+            if (!mc->mesh || !mc->material) continue;
 
             float local_world[16];
             qs_scene_world_matrix(scene, e, local_world);

@@ -6,6 +6,7 @@
 #include <stddef.h>
 
 #include "qs_asset.h"   /* Qs_ImportResult */
+#include "qs_job.h"     /* Qs_JobSystem */
 
 typedef struct Qs_Engine   Qs_Engine;
 typedef struct Qs_Mesh     Qs_Mesh;
@@ -132,27 +133,13 @@ bool qs_asset_cook(const Qs_ImportResult *result,
 /* ================================================================
    RUNTIME ASSET CACHE
    ================================================================
-   Path-keyed, ref-shared caches for packed mesh / material / texture
-   files.  Loaded synchronously on demand from .qsmesh / .qsmat /
-   .qstex files.  Used by MeshComp resolution at scene load.
-   The cache lives inside the asset system; entries are freed at
-   engine shutdown.
+   Path-keyed, ref-counted cache for mesh / material / texture GPU
+   resources.  All loading is async (see ASYNC / STREAMING CACHE).
+   Release functions are the only public cache API; loading is done
+   exclusively through the _async variants below.
    ================================================================ */
 
-/// Get-or-load a GPU mesh from a .qsmesh file.  Returns NULL on failure.
-/// Each successful call increments the cache entry's ref count.
-Qs_Mesh *qs_asset_cache_mesh(Qs_Engine *engine, const char *abs_path);
-
-/// Get-or-load a PBR material from a .qsmat file.  Texture references
-/// inside the material are resolved through qs_asset_cache_texture.
-/// Each successful call increments the cache entry's ref count.
-Qs_Material *qs_asset_cache_material(Qs_Engine *engine, const char *abs_path);
-
-/// Get-or-load a GPU texture from a .qstex file.
-/// Each successful call increments the cache entry's ref count.
-Qs_Texture *qs_asset_cache_texture(Qs_Engine *engine, const char *abs_path);
-
-/// Release a ref acquired by qs_asset_cache_mesh.
+/// Release a ref acquired by qs_asset_cache_mesh_async.
 /// The GPU resource is destroyed when the ref count reaches zero.
 void qs_asset_cache_release_mesh(const char *abs_path);
 
@@ -178,6 +165,55 @@ Qs_Texture *qs_asset_cache_material_swap_texture(Qs_Engine  *engine,
 
 /// Drop and destroy every cached entry.  Called at asset-system shutdown.
 void qs_asset_cache_clear(void);
+
+/* ================================================================
+   ASYNC / STREAMING CACHE
+   ================================================================
+   Background-thread disk reads with main-thread GPU uploads.
+
+   qs_asset_cache_mesh_async — on a cache miss, dispatches a worker job
+   to read the .qsmesh file.  Returns NULL while loading; the entity is
+   silently skipped from rendering until the mesh is ready.  On the frame
+   after the background read completes, the pump (called automatically by
+   the asset-system update) uploads the geometry to GPU and places the
+   mesh in the main cache; the next call returns the live Qs_Mesh*.
+
+   qs_asset_cache_material_async — parses the tiny .qsmat JSON on the
+   calling thread (sub-millisecond) and creates the Qs_Material
+   immediately with NULL / fallback textures.  Each referenced .qstex is
+   dispatched as a separate background job.  The material is returned on
+   the SAME frame it is first requested; textures stream in progressively
+   via qs_material_set_texture calls made by the pump.
+
+   The pump (qs_asset_cache_pump) is called once per frame by the built-in
+   asset-system update callback — no manual wiring is needed.
+   ================================================================ */
+
+/// Get-or-request a GPU mesh asynchronously.
+/// Returns NULL while the background job is running; call again next frame.
+/// Returns NULL permanently if the file cannot be read (load error).
+/// On success, increments the cache ref count — release with
+/// qs_asset_cache_release_mesh when done.
+Qs_Mesh *qs_asset_cache_mesh_async(Qs_Engine    *engine,
+                                   Qs_JobSystem *jobs,
+                                   const char   *abs_path);
+
+/// Get-or-request a PBR material asynchronously.
+/// The material is created on the calling thread (same frame) with default
+/// fallback textures; each .qstex referenced by the .qsmat is loaded in the
+/// background and swapped into the material's slots as they arrive.
+/// Returns NULL only if the .qsmat file cannot be read or the GPU material
+/// creation fails.
+/// On success, increments the cache ref count — release with
+/// qs_asset_cache_release_material when done.
+Qs_Material *qs_asset_cache_material_async(Qs_Engine    *engine,
+                                           Qs_JobSystem *jobs,
+                                           const char   *abs_path);
+
+/// Promote any CPU-complete async load requests to GPU and insert them into
+/// the main cache.  Called automatically by the asset system's update hook —
+/// no manual invocation needed.
+void qs_asset_cache_pump(Qs_Engine *engine);
 
 /* ================================================================
    ENGINE BINDING — set by the asset system at init time so internal

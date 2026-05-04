@@ -30,6 +30,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdatomic.h>
 #include <sys/stat.h>
 #include <math.h>
 
@@ -740,6 +741,102 @@ typedef struct CacheEntry {
 static CacheEntry *g_cache[QS_PACK_CACHE_MAX];
 static uint32_t    g_cache_count;
 
+/* ================================================================
+   ASYNC LOAD QUEUE
+   ================================================================
+   Background jobs read packed files from disk (CPU-only work).
+   The main-thread pump walks completed requests, does GPU upload,
+   and promotes entries into g_cache (ref_count = 0).
+
+   Callers that receive a NULL from _async set mc->mesh/material = NULL
+   and call _async again next frame; the guard on mc->mesh != NULL in
+   mesh_comp_destroy prevents releasing a ref that was never acquired.
+   ================================================================ */
+
+typedef struct PendingLoad {
+    char         path[QS_PACK_MAX_PATH];
+    CacheKind    kind;
+    /* Set main-thread before job fires; job discards staging data on true. */
+    bool         abandoned;
+    /* Set by the job thread when disk I/O is done; read by the pump. */
+    atomic_bool  cpu_done;
+
+    /* For CACHE_TEX: if mat_path is non-empty, swap texture into that
+       material's slot after GPU upload. */
+    char         mat_path[QS_PACK_MAX_PATH];
+    uint32_t     mat_slot;
+
+    union {
+        struct {
+            Qs_MeshFileHeader h;
+            Qs_Vertex        *v;
+            uint32_t         *idx;
+            bool              ok;
+        } mesh;
+        struct {
+            Qs_TexFileHeader  h;
+            void             *pixels;
+            bool              ok;
+        } tex;
+    } stage;
+} PendingLoad;
+
+/* Max simultaneous in-flight loads (mesh + tex combined). */
+#define QS_PACK_PENDING_MAX 512
+
+static PendingLoad *g_pending[QS_PACK_PENDING_MAX];
+static uint32_t     g_pending_count;
+
+static PendingLoad *pending_find(const char *path, CacheKind kind)
+{
+    for (uint32_t i = 0; i < g_pending_count; i++)
+        if (g_pending[i]->kind == kind &&
+            strcmp(g_pending[i]->path, path) == 0)
+            return g_pending[i];
+    return NULL;
+}
+
+static PendingLoad *pending_add(const char *path, CacheKind kind)
+{
+    if (g_pending_count >= QS_PACK_PENDING_MAX) {
+        QS_LOG_WARN("Async load queue full (%d)", QS_PACK_PENDING_MAX);
+        return NULL;
+    }
+    PendingLoad *req = calloc(1, sizeof(PendingLoad));
+    if (!req) return NULL;
+    snprintf(req->path, sizeof(req->path), "%s", path);
+    req->kind = kind;
+    g_pending[g_pending_count++] = req;
+    return req;
+}
+
+/* Job: read a .qsmesh from disk into req->stage.mesh (CPU only). */
+static void job_load_mesh(void *data)
+{
+    PendingLoad *req = (PendingLoad *)data;
+    if (!req->abandoned) {
+        req->stage.mesh.ok = read_qsmesh(req->path,
+                                         &req->stage.mesh.h,
+                                         &req->stage.mesh.v,
+                                         &req->stage.mesh.idx);
+    }
+    atomic_store(&req->cpu_done, true);
+}
+
+/* Job: read a .qstex from disk into req->stage.tex (CPU only). */
+static void job_load_tex(void *data)
+{
+    PendingLoad *req = (PendingLoad *)data;
+    uint32_t pixel_size = 0;
+    if (!req->abandoned) {
+        req->stage.tex.ok = read_qstex(req->path,
+                                        &req->stage.tex.h,
+                                        &req->stage.tex.pixels,
+                                        &pixel_size);
+    }
+    atomic_store(&req->cpu_done, true);
+}
+
 static CacheEntry *cache_find(const char *path, CacheKind kind)
 {
     for (uint32_t i = 0; i < g_cache_count; i++) {
@@ -762,6 +859,28 @@ static CacheEntry *cache_add(const char *path, CacheKind kind)
     e->kind = kind;
     g_cache[g_cache_count++] = e;
     return e;
+}
+
+/* Dispatch an async texture load; if mat_path/slot are given, the pump
+   will call swap_texture when the load completes (material slot streaming). */
+static void dispatch_tex_async(Qs_JobSystem *jobs,
+                                const char   *abs_tex_path,
+                                const char   *mat_path,
+                                uint32_t      mat_slot)
+{
+    /* Already in main cache? Nothing to do — the pump's swap_texture call
+       (or an earlier load) already placed it there. */
+    if (cache_find(abs_tex_path, CACHE_TEX)) return;
+    /* Already queued? */
+    if (pending_find(abs_tex_path, CACHE_TEX)) return;
+
+    PendingLoad *req = pending_add(abs_tex_path, CACHE_TEX);
+    if (!req) return;
+    if (mat_path && mat_path[0]) {
+        snprintf(req->mat_path, sizeof(req->mat_path), "%s", mat_path);
+        req->mat_slot = mat_slot;
+    }
+    qs_job_dispatch(jobs, &(Qs_JobDesc){ .fn = job_load_tex, .data = req }, NULL);
 }
 
 void qs_asset_cache_clear(void)
@@ -827,6 +946,9 @@ void qs_asset_cache_release_texture(const char *abs_path)
     cache_release(abs_path, CACHE_TEX);
 }
 
+/* Forward declaration — defined below; used by swap_texture and the pump. */
+static Qs_Texture *qs_asset_cache_texture(Qs_Engine *engine, const char *abs_path);
+
 /// Atomically swap the texture in one slot of a cached material.
 /// Releases the ref for the old texture at that slot, acquires one for the new,
 /// updates the material's tracked slot path, and binds it via qs_material_set_texture.
@@ -858,7 +980,7 @@ Qs_Texture *qs_asset_cache_material_swap_texture(
     return new_tex;
 }
 
-Qs_Texture *qs_asset_cache_texture(Qs_Engine *engine, const char *abs_path)
+static Qs_Texture *qs_asset_cache_texture(Qs_Engine *engine, const char *abs_path)
 {
     if (!engine || !abs_path || !*abs_path) return NULL;
     CacheEntry *hit = cache_find(abs_path, CACHE_TEX);
@@ -891,35 +1013,6 @@ Qs_Texture *qs_asset_cache_texture(Qs_Engine *engine, const char *abs_path)
     return tex;
 }
 
-Qs_Mesh *qs_asset_cache_mesh(Qs_Engine *engine, const char *abs_path)
-{
-    if (!engine || !abs_path || !*abs_path) return NULL;
-    CacheEntry *hit = cache_find(abs_path, CACHE_MESH);
-    if (hit) { hit->ref_count++; return hit->data.mesh; }
-
-    Qs_MeshFileHeader h;
-    Qs_Vertex *v = NULL; uint32_t *idx = NULL;
-    if (!read_qsmesh(abs_path, &h, &v, &idx)) return NULL;
-
-    Qs_MeshDesc md = {
-        .name         = h.surface_name[0] ? h.surface_name : abs_path,
-        .vertices     = v,
-        .vertex_count = h.vertex_count,
-        .indices      = idx,
-        .index_count  = h.index_count,
-        .index_type   = QS_INDEX_TYPE_UINT32,
-    };
-    Qs_Mesh *mesh = qs_mesh_create(engine, &md);
-    free(v); free(idx);
-    if (!mesh) return NULL;
-
-    CacheEntry *e = cache_add(abs_path, CACHE_MESH);
-    if (!e) { qs_mesh_destroy(mesh); return NULL; }
-    e->ref_count = 1;
-    e->data.mesh = mesh;
-    return mesh;
-}
-
 static double json_num(const cJSON *o, const char *k, double def)
 {
     const cJSON *v = cJSON_GetObjectItemCaseSensitive(o, k);
@@ -941,13 +1034,134 @@ static void json_vecf(const cJSON *o, const char *k, float *out, int n, const fl
     }
 }
 
-Qs_Material *qs_asset_cache_material(Qs_Engine *engine, const char *abs_path)
+/* ================================================================
+   ASYNC PUBLIC API
+   ================================================================ */
+
+void qs_asset_cache_pump(Qs_Engine *engine)
 {
-    if (!engine || !abs_path || !*abs_path) return NULL;
+    if (!engine) return;
+
+    /* Walk pending list back-to-front so swap-remove doesn't skip entries. */
+    for (uint32_t i = g_pending_count; i-- > 0; ) {
+        PendingLoad *req = g_pending[i];
+        if (!atomic_load(&req->cpu_done)) continue;
+
+        /* Swap-remove from pending list. */
+        g_pending[i] = g_pending[--g_pending_count];
+
+        if (req->abandoned) {
+            /* Discard staging data. */
+            if (req->kind == CACHE_MESH) {
+                free(req->stage.mesh.v);
+                free(req->stage.mesh.idx);
+            } else if (req->kind == CACHE_TEX) {
+                free(req->stage.tex.pixels);
+            }
+            free(req);
+            continue;
+        }
+
+        if (req->kind == CACHE_MESH) {
+            if (!req->stage.mesh.ok) {
+                QS_LOG_WARN("Async mesh load failed: %s", req->path);
+                free(req);
+                continue;
+            }
+            Qs_MeshFileHeader *h = &req->stage.mesh.h;
+            Qs_MeshDesc md = {
+                .name         = h->surface_name[0] ? h->surface_name : req->path,
+                .vertices     = req->stage.mesh.v,
+                .vertex_count = h->vertex_count,
+                .indices      = req->stage.mesh.idx,
+                .index_count  = h->index_count,
+                .index_type   = QS_INDEX_TYPE_UINT32,
+            };
+            Qs_Mesh *mesh = qs_mesh_create(engine, &md);
+            free(req->stage.mesh.v);
+            free(req->stage.mesh.idx);
+            if (mesh) {
+                /* ref_count = 0: first _async caller next frame increments to 1. */
+                CacheEntry *e = cache_add(req->path, CACHE_MESH);
+                if (e) { e->ref_count = 0; e->data.mesh = mesh; }
+                else   { qs_mesh_destroy(mesh); }
+            }
+
+        } else if (req->kind == CACHE_TEX) {
+            if (!req->stage.tex.ok) {
+                QS_LOG_WARN("Async texture load failed: %s", req->path);
+                free(req);
+                continue;
+            }
+            Qs_TexFileHeader *h = &req->stage.tex.h;
+            Qs_TextureDesc td = {
+                .name          = req->path,
+                .width         = h->width,
+                .height        = h->height,
+                .format        = (Qs_TextureFormat)h->format,
+                .pixels        = req->stage.tex.pixels,
+                .generate_mips = (h->flags & (1u << 1)) != 0,
+                .min_filter    = (Qs_TextureFilter)h->min_filter,
+                .mag_filter    = (Qs_TextureFilter)h->mag_filter,
+                .wrap_u        = (Qs_TextureWrap)h->wrap_u,
+                .wrap_v        = (Qs_TextureWrap)h->wrap_v,
+            };
+            Qs_Texture *tex = qs_texture_create(engine, &td);
+            free(req->stage.tex.pixels);
+            if (tex) {
+                /* Add to cache before swap_texture so that swap_texture
+                   finds it via cache_find (ref_count will be bumped to 1). */
+                CacheEntry *e = cache_add(req->path, CACHE_TEX);
+                if (e) {
+                    e->ref_count = 0;
+                    e->data.texture = tex;
+                    /* If this texture was for a material slot, stream it in. */
+                    if (req->mat_path[0]) {
+                        qs_asset_cache_material_swap_texture(engine,
+                                                             req->mat_path,
+                                                             req->mat_slot,
+                                                             req->path);
+                    }
+                } else {
+                    qs_texture_destroy(tex);
+                }
+            }
+        }
+        free(req);
+    }
+}
+
+Qs_Mesh *qs_asset_cache_mesh_async(Qs_Engine    *engine,
+                                   Qs_JobSystem *jobs,
+                                   const char   *abs_path)
+{
+    if (!engine || !jobs || !abs_path || !*abs_path) return NULL;
+
+    /* Cache hit (READY): bump ref and return. */
+    CacheEntry *hit = cache_find(abs_path, CACHE_MESH);
+    if (hit) { hit->ref_count++; return hit->data.mesh; }
+
+    /* Already pending: wait for pump. */
+    if (pending_find(abs_path, CACHE_MESH)) return NULL;
+
+    /* New request: dispatch background read job. */
+    PendingLoad *req = pending_add(abs_path, CACHE_MESH);
+    if (!req) return NULL;
+    qs_job_dispatch(jobs, &(Qs_JobDesc){ .fn = job_load_mesh, .data = req }, NULL);
+    return NULL;
+}
+
+Qs_Material *qs_asset_cache_material_async(Qs_Engine    *engine,
+                                           Qs_JobSystem *jobs,
+                                           const char   *abs_path)
+{
+    if (!engine || !jobs || !abs_path || !*abs_path) return NULL;
+
+    /* Cache hit: bump ref and return. */
     CacheEntry *hit = cache_find(abs_path, CACHE_MAT);
     if (hit) { hit->ref_count++; return hit->data.material; }
 
-    /* Read & parse JSON */
+    /* ---- Parse .qsmat synchronously (sub-millisecond JSON read). ---- */
     FILE *f = fopen(abs_path, "rb");
     if (!f) { QS_LOG_ERROR("Failed to open .qsmat: %s", abs_path); return NULL; }
     fseek(f, 0, SEEK_END); long len = ftell(f); fseek(f, 0, SEEK_SET);
@@ -976,7 +1190,9 @@ Qs_Material *qs_asset_cache_material(Qs_Engine *engine, const char *abs_path)
     md.alpha_cutoff  = (float)json_num(root, "alpha_cutoff", 0.5);
     md.double_sided  = json_bool(root, "double_sided", false);
 
-    /* Resolve texture refs — store by slot index so they can be swapped later */
+    /* All texture slots start NULL → material system uses engine fallbacks. */
+
+    /* Collect texture paths for async dispatch (after material is in cache). */
     char mat_dir[QS_PACK_MAX_PATH];
     path_dirname(abs_path, mat_dir, sizeof(mat_dir));
     const cJSON *texs = cJSON_GetObjectItemCaseSensitive(root, "textures");
@@ -984,52 +1200,45 @@ Qs_Material *qs_asset_cache_material(Qs_Engine *engine, const char *abs_path)
     char slot_tex_paths[5][QS_PACK_MAX_PATH];
     memset(slot_tex_paths, 0, sizeof(slot_tex_paths));
 
-    #define RESOLVE_TEX(field, json_key, slot_idx)                              \
-    do {                                                                        \
-        const cJSON *v = cJSON_GetObjectItemCaseSensitive(texs, json_key);      \
-        if (cJSON_IsString(v) && v->valuestring[0]) {                           \
-            char texabs[QS_PACK_MAX_PATH];                                      \
-            if (path_is_absolute(v->valuestring))                               \
-                snprintf(texabs, sizeof(texabs), "%s", v->valuestring);         \
-            else                                                                \
-                snprintf(texabs, sizeof(texabs), "%s/%s", mat_dir, v->valuestring); \
-            md.field = qs_asset_cache_texture(engine, texabs);                  \
-            if (md.field)                                                       \
-                snprintf(slot_tex_paths[slot_idx], QS_PACK_MAX_PATH,            \
-                         "%s", texabs);                                          \
-        }                                                                       \
-    } while (0)
-
+    static const struct { const char *json_key; uint32_t slot; } TEX_SLOTS[] = {
+        { "base_color",         0 },
+        { "metallic_roughness", 1 },
+        { "normal",             2 },
+        { "occlusion",          3 },
+        { "emissive",           4 },
+    };
     if (cJSON_IsObject(texs)) {
-        RESOLVE_TEX(base_color_texture,         "base_color",         0);
-        RESOLVE_TEX(metallic_roughness_texture, "metallic_roughness", 1);
-        RESOLVE_TEX(normal_texture,             "normal",             2);
-        RESOLVE_TEX(occlusion_texture,          "occlusion",          3);
-        RESOLVE_TEX(emissive_texture,           "emissive",           4);
+        for (uint32_t s = 0; s < 5; s++) {
+            const cJSON *v = cJSON_GetObjectItemCaseSensitive(texs, TEX_SLOTS[s].json_key);
+            if (cJSON_IsString(v) && v->valuestring[0]) {
+                if (path_is_absolute(v->valuestring))
+                    snprintf(slot_tex_paths[s], QS_PACK_MAX_PATH, "%s", v->valuestring);
+                else
+                    snprintf(slot_tex_paths[s], QS_PACK_MAX_PATH,
+                             "%s/%s", mat_dir, v->valuestring);
+            }
+        }
     }
-    #undef RESOLVE_TEX
 
+    /* Create material with no textures (fallbacks). */
     Qs_Material *mat = qs_material_create(engine, &md);
     cJSON_Delete(root);
-    if (!mat) {
-        /* Roll back acquired texture refs */
-        for (uint32_t t = 0; t < 5; t++)
-            if (slot_tex_paths[t][0])
-                cache_release(slot_tex_paths[t], CACHE_TEX);
-        return NULL;
-    }
+    if (!mat) return NULL;
 
     CacheEntry *e = cache_add(abs_path, CACHE_MAT);
-    if (!e) {
-        for (uint32_t t = 0; t < 5; t++)
-            if (slot_tex_paths[t][0])
-                cache_release(slot_tex_paths[t], CACHE_TEX);
-        qs_material_destroy(mat);
-        return NULL;
-    }
+    if (!e) { qs_material_destroy(mat); return NULL; }
     e->ref_count = 1;
-    memcpy(e->mat_tex_paths, slot_tex_paths, sizeof(slot_tex_paths));
+    /* mat_tex_paths start empty — each slot will be filled by the pump via
+       swap_texture as background texture loads complete. */
     e->data.material = mat;
+
+    /* Dispatch background texture loads.  The pump's swap_texture call will
+       bind each texture into the material slot when it finishes. */
+    for (uint32_t s = 0; s < 5; s++) {
+        if (slot_tex_paths[s][0])
+            dispatch_tex_async(jobs, slot_tex_paths[s], abs_path, s);
+    }
+
     return mat;
 }
 
@@ -1067,8 +1276,38 @@ static bool asset_system_init(Qs_System *system, Qs_Engine *engine)
 static void asset_system_shutdown(Qs_System *system, Qs_Engine *engine)
 {
     (void)system; (void)engine;
+
+    /* Abandon all in-flight async requests.  Jobs that haven't fired yet
+       will check the flag and discard staging data without calling GPU APIs.
+       Jobs already running will complete disk I/O normally; the pump won't
+       be called again, so their staging data is freed here instead. */
+    for (uint32_t i = 0; i < g_pending_count; i++) {
+        PendingLoad *req = g_pending[i];
+        req->abandoned = true;
+        /* If the job already ran (cpu_done), free staging now.
+           If it hasn't fired yet, the job will free nothing (just exits);
+           we free here as well — safe because the job won't touch staging
+           after setting cpu_done, and we're on the main thread. */
+        if (atomic_load(&req->cpu_done)) {
+            if (req->kind == CACHE_MESH) {
+                free(req->stage.mesh.v);
+                free(req->stage.mesh.idx);
+            } else if (req->kind == CACHE_TEX) {
+                free(req->stage.tex.pixels);
+            }
+        }
+        free(req);
+    }
+    g_pending_count = 0;
+
     qs_asset_cache_clear();
     qs_pack_set_active_engine(NULL);
+}
+
+static void asset_system_update(Qs_System *system, Qs_Engine *engine, float dt)
+{
+    (void)system; (void)dt;
+    qs_asset_cache_pump(engine);
 }
 
 Qs_SystemDesc qs_asset_system_desc(void)
@@ -1078,5 +1317,6 @@ Qs_SystemDesc qs_asset_system_desc(void)
         .data_size = 0,
         .init      = asset_system_init,
         .shutdown  = asset_system_shutdown,
+        .update    = asset_system_update,
     };
 }

@@ -84,14 +84,18 @@ typedef struct Qs_Transform {
 
 /// Renderable mesh reference.
 /// Both `mesh_path` and `material_path` are stored relative to the file the
-/// component lives in (a .qscene or .qproto).  Resolution happens at scene
-/// load time via the runtime asset cache.
+/// component lives in (a .qscene or .qproto).  Resolution is lazy: assets are
+/// loaded on the first frame the entity is submitted for rendering, through the
+/// ref-counted asset cache.  Meshes/materials shared by multiple entities are
+/// uploaded to GPU only once.
 typedef struct Qs_MeshComp {
-    Qs_Mesh     *mesh;             ///< Resolved at load (runtime-only).
-    Qs_Material *material;         ///< Resolved at load (runtime-only).
-    bool         visible;          ///< Default: true.
-    char         mesh_path[256];   ///< Project-relative or scene-relative .qsmesh path.
-    char         material_path[256];///< Project-relative or scene-relative .qsmat path.
+    Qs_Mesh     *mesh;                 ///< Resolved lazily on first render (runtime-only).
+    Qs_Material *material;             ///< Resolved lazily on first render (runtime-only).
+    bool         visible;              ///< Default: true.
+    bool         mesh_load_failed;     ///< Set when mesh_path failed to open; suppresses per-frame retry.
+    bool         material_load_failed; ///< Set when material_path failed to open; suppresses per-frame retry.
+    char         mesh_path[256];       ///< Project-relative or scene-relative .qsmesh path.
+    char         material_path[256];   ///< Project-relative or scene-relative .qsmat path.
 } Qs_MeshComp;
 
 /// Light component — all parameters stored inline for reflection, serialization,
