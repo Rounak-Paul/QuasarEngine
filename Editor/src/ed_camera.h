@@ -36,11 +36,15 @@ void ed_camera_init(EditorCamera *cam);
  * Poll input and update the camera state, then write position/target/up
  * to the renderer's active Qs_Camera for this frame.
  *
- * @param cam      The editor camera state.
- * @param renderer The scene renderer whose camera will be updated.
- * @param dt       Delta-time in seconds for the current frame.
+ * @param cam               The editor camera state.
+ * @param renderer          The scene renderer whose camera will be updated.
+ * @param dt                Delta-time in seconds for the current frame.
+ * @param viewport_hovered  True when the mouse is currently inside the scene
+ *                          viewport.  Scroll-dolly is suppressed when false so
+ *                          scrolling other panels does not move the camera.
  */
-void ed_camera_update(EditorCamera *cam, Qs_Renderer *renderer, float dt);
+void ed_camera_update(EditorCamera *cam, Qs_Renderer *renderer, float dt,
+                      bool viewport_hovered);
 
 /**
  * Smoothly reframe the camera to fit a sphere (center + radius) in view.

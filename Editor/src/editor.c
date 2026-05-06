@@ -216,7 +216,20 @@ static void on_frame(Qs_Engine *engine, void *userdata)
     Editor *ed = userdata;
     if (ed->scene_viewport)
         ca_viewport_request_redraw(ed->scene_viewport);
-    ed_camera_update(&ed->cam, ed->scene_renderer, qs_engine_dt(ed->engine));
+
+    /* Determine whether the mouse is currently inside the scene viewport so
+       the camera ignores scroll events from other panels. */
+    bool viewport_hovered = false;
+    if (ed->scene_viewport) {
+        float vx, vy, vw, vh;
+        ca_viewport_screen_rect(ed->scene_viewport, &vx, &vy, &vw, &vh);
+        float mx, my;
+        qs_input_mouse_pos(&mx, &my);
+        viewport_hovered = (mx >= vx && mx <= vx + vw && my >= vy && my <= vy + vh);
+    }
+
+    ed_camera_update(&ed->cam, ed->scene_renderer, qs_engine_dt(ed->engine),
+                     viewport_hovered);
     ed_gizmo_update(ed, qs_engine_dt(ed->engine));
 
     /* Submit scene renderables and lights for this frame */
@@ -518,6 +531,46 @@ bool editor_redo(Editor *ed)
 {
     (void)ed;
     return ed_redo();
+}
+
+void editor_focus_all(Editor *ed)
+{
+    if (!ed) return;
+    Qs_Scene *scene = qs_scene_active();
+    if (!scene) return;
+
+    float min_x = 1e30f, min_y = 1e30f, min_z = 1e30f;
+    float max_x = -1e30f, max_y = -1e30f, max_z = -1e30f;
+    int count = 0;
+
+    for (Qs_Entity e = qs_scene_first(scene, qs_transform_type());
+         e != QS_ENTITY_INVALID;
+         e = qs_scene_next(scene, qs_transform_type(), e))
+    {
+        float m[16];
+        qs_scene_world_matrix(scene, e, m);
+        /* column-major: translation is at [12],[13],[14] */
+        float x = m[12], y = m[13], z = m[14];
+        if (x < min_x) min_x = x;  if (x > max_x) max_x = x;
+        if (y < min_y) min_y = y;  if (y > max_y) max_y = y;
+        if (z < min_z) min_z = z;  if (z > max_z) max_z = z;
+        count++;
+    }
+
+    if (count == 0) return;
+
+    float center[3] = {
+        (min_x + max_x) * 0.5f,
+        (min_y + max_y) * 0.5f,
+        (min_z + max_z) * 0.5f,
+    };
+    float dx = (max_x - min_x) * 0.5f;
+    float dy = (max_y - min_y) * 0.5f;
+    float dz = (max_z - min_z) * 0.5f;
+    float radius = qs_v3_len((float[]){dx, dy, dz});
+    if (radius < 1.0f) radius = 1.0f;
+
+    ed_camera_focus(&ed->cam, center, radius);
 }
 
 /* ---- Keybind action thunks ---- */

@@ -90,7 +90,8 @@ static void cam_axes(const float fwd[3], float right[3], float up[3])
    ed_camera_update
    ================================================================ */
 
-void ed_camera_update(EditorCamera *cam, Qs_Renderer *renderer, float dt)
+void ed_camera_update(EditorCamera *cam, Qs_Renderer *renderer, float dt,
+                      bool viewport_hovered)
 {
     if (!cam || !renderer) return;
 
@@ -174,8 +175,8 @@ void ed_camera_update(EditorCamera *cam, Qs_Renderer *renderer, float dt)
         qs_v3_add(cam->target,   delta, cam->target);
     }
 
-    /* ---- Scroll dolly ---- */
-    if (sdy != 0.0f) {
+    /* ---- Scroll dolly (only when mouse is over the scene viewport) ---- */
+    if (viewport_hovered && sdy != 0.0f) {
         float fwd[3];
         cam_forward(cam->yaw, cam->pitch, fwd);
         float dolly[3];

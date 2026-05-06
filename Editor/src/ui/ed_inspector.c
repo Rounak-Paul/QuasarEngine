@@ -1175,7 +1175,7 @@ static void build_mesh_comp_section(Qs_Scene *scene, Qs_Entity entity,
     }
 
     /* ---- Mesh picker dropdown ---- */
-    ca_hr(&(Ca_HrDesc){ .color = 0xFF242430u });
+    ca_hr(&(Ca_HrDesc){ .color = 0x242430FFu });
     build_mat_subsection(ICON_MESH "  Mesh", "mat-sub-mesh");
 
     refresh_mesh_options();
@@ -1200,7 +1200,7 @@ static void build_mesh_comp_section(Qs_Scene *scene, Qs_Entity entity,
     ca_div_end();
 
     /* ---- Material selector ---- */
-    ca_hr(&(Ca_HrDesc){ .color = 0xFF242430u });
+    ca_hr(&(Ca_HrDesc){ .color = 0x242430FFu });
     build_mat_subsection(ICON_MESH "  Material", "mat-sub-material");
 
     refresh_mat_options();
@@ -1227,7 +1227,7 @@ static void build_mesh_comp_section(Qs_Scene *scene, Qs_Entity entity,
     if (!mc->material) return;
 
     /* ---- PBR Properties ---- */
-    ca_hr(&(Ca_HrDesc){ .color = 0xFF242430u });
+    ca_hr(&(Ca_HrDesc){ .color = 0x242430FFu });
     build_mat_subsection("  Properties", "mat-sub-props");
 
     build_mat_vec_row("Base Color",  mc->material,
@@ -1249,7 +1249,7 @@ static void build_mesh_comp_section(Qs_Scene *scene, Qs_Entity entity,
     }
 
     /* ---- Texture Slots ---- */
-    ca_hr(&(Ca_HrDesc){ .color = 0xFF242430u });
+    ca_hr(&(Ca_HrDesc){ .color = 0x242430FFu });
     build_mat_subsection("  Textures", "mat-sub-tex");
 
     refresh_tex_options();

@@ -326,6 +326,17 @@ const char *g_editor_css =
     "  background: " ED_COL_OVERLAY ";"
     "}"
 
+    ".hierarchy-rename-input {"
+    "  flex-grow: 1;"
+    "  height: " ED_H_ROW_TIGHT "px;"
+    "  font-size: " ED_FS "px;"
+    "  padding-left: 4px;"
+    "  padding-right: 4px;"
+    "  background: " ED_COL_VOID ";"
+    "  color: " ED_COL_TEXT_BRIGHT ";"
+    "  border-radius: 2px;"
+    "}"
+
     /* ---- Inspector panel ---- */
     ".inspector-scroll {"
     "  overflow-y: scroll;"

@@ -10,17 +10,11 @@
    HIERARCHY PANEL — scene entity tree
    ================================================================ */
 
-/* We need a way to pass both the editor pointer and entity ID to the callback.
-   Use a small static ring buffer of callback contexts. */
 #define MAX_ENTITY_NODES 4096
 
 typedef struct {
     Editor   *editor;
     Qs_Entity entity;
-    /* Set when this node represents an entity inside a prototype instance.
-       `proto_owner` is the outer-scene entity holding the PrototypeComp;
-       `inner_scene` is the loaded `pc->inner` containing `entity`.
-       Both QS_ENTITY_INVALID/NULL for normal scene entities. */
     Qs_Entity proto_owner;
     Qs_Scene *inner_scene;
 } HierarchyClickCtx;
@@ -29,6 +23,18 @@ static HierarchyClickCtx s_click_ctx[MAX_ENTITY_NODES];
 static uint32_t           s_click_idx;
 static Editor            *s_editor;
 static Ca_Div            *s_root;
+
+/* ---- Inline rename state ------------------------------------------ */
+/* QS_ENTITY_INVALID means "not renaming" */
+static Qs_Entity       s_renaming       = QS_ENTITY_INVALID;
+static char            s_rename_buf[256];        /* current text while editing  */
+static char            s_rename_prev[256];       /* name before rename started  */
+static bool            s_rename_focus_next;      /* request auto-focus on next frame */
+static Ca_TextInput   *s_rename_input    = NULL; /* cached input widget pointer */
+
+/* ================================================================
+   Entity selection callback
+   ================================================================ */
 
 static void on_entity_select(Ca_TreeNode *tn, void *user_data)
 {
@@ -43,7 +49,9 @@ static void on_entity_select(Ca_TreeNode *tn, void *user_data)
     }
 }
 
-/* ---- Add-entity helpers --------------------------------------------- */
+/* ================================================================
+   Entity helpers
+   ================================================================ */
 
 static Qs_Entity create_entity_with_parent(const char *name, Qs_Entity parent)
 {
@@ -56,32 +64,139 @@ static Qs_Entity create_entity_with_parent(const char *name, Qs_Entity parent)
     return e;
 }
 
-/* Context-menu item indices (kept in sync with s_root_ctx_items / s_entity_ctx_items). */
-enum {
-    ROOT_CTX_EMPTY  = 0,
-    ROOT_CTX_LIGHT  = 1,
-    ROOT_CTX_PROTO  = 2,
-};
-enum {
-    ENT_CTX_CHILD   = 0,
-    ENT_CTX_DELETE  = 1,
-};
+static Qs_Entity duplicate_entity(Qs_Scene *scene, Qs_Entity src)
+{
+    if (!qs_entity_valid(scene, src)) return QS_ENTITY_INVALID;
 
+    const char *src_name = qs_entity_name(scene, src);
+    char dup_name[256];
+    snprintf(dup_name, sizeof(dup_name), "%s Copy", src_name ? src_name : "Entity");
+
+    Qs_Entity parent = qs_entity_get_parent(scene, src);
+    Qs_Entity dup = create_entity_with_parent(dup_name, parent);
+    if (dup == QS_ENTITY_INVALID) return QS_ENTITY_INVALID;
+
+    Qs_Transform *src_t = qs_entity_get(scene, src, qs_transform_type());
+    Qs_Transform *dup_t = qs_entity_get(scene, dup, qs_transform_type());
+    if (src_t && dup_t) *dup_t = *src_t;
+
+    if (qs_entity_has(scene, src, qs_mesh_comp_type())) {
+        Qs_MeshComp *src_m = qs_entity_get(scene, src, qs_mesh_comp_type());
+        Qs_MeshComp *dup_m = qs_entity_add(scene, dup, qs_mesh_comp_type());
+        if (src_m && dup_m) {
+            dup_m->visible = src_m->visible;
+            memcpy(dup_m->mesh_path,     src_m->mesh_path,     sizeof(dup_m->mesh_path));
+            memcpy(dup_m->material_path, src_m->material_path, sizeof(dup_m->material_path));
+        }
+    }
+    if (qs_entity_has(scene, src, qs_light_comp_type())) {
+        Qs_LightComp *src_l = qs_entity_get(scene, src, qs_light_comp_type());
+        Qs_LightComp *dup_l = qs_entity_add(scene, dup, qs_light_comp_type());
+        if (src_l && dup_l) *dup_l = *src_l;
+    }
+    if (qs_entity_has(scene, src, qs_prototype_comp_type())) {
+        Qs_PrototypeComp *src_p = qs_entity_get(scene, src, qs_prototype_comp_type());
+        Qs_PrototypeComp *dup_p = qs_entity_add(scene, dup, qs_prototype_comp_type());
+        if (src_p && dup_p) memcpy(dup_p->path, src_p->path, sizeof(dup_p->path));
+    }
+    return dup;
+}
+
+/* ================================================================
+   Context menu definitions
+   ================================================================ */
+
+/* --- Scene root / empty-space menu --- */
+enum {
+    ROOT_CTX_EMPTY     = 0,
+    ROOT_CTX_LIGHT     = 1,
+    ROOT_CTX_PROTO     = 2,
+    /* 3 = "-" */
+    ROOT_CTX_FRAME_ALL = 4,
+};
 static const char *s_root_ctx_items[] = {
     "Add Empty Entity",
     "Add Light",
     "Add Prototype",
+    "-",
+    "Frame All",
+};
+
+/* --- Per-entity menu --- */
+enum {
+    ENT_CTX_CREATE_CHILD  = 0,
+    ENT_CTX_CREATE_PARENT = 1,
+    ENT_CTX_DUPLICATE     = 2,
+    /* 3 = "-" */
+    ENT_CTX_RENAME        = 4,
+    /* 5 = "-" */
+    ENT_CTX_DELETE        = 6,
 };
 static const char *s_entity_ctx_items[] = {
-    "Add Child Entity",
-    "Delete",
+    "Create Child",    /* 0 */
+    "Create Parent",   /* 1 */
+    "Duplicate",       /* 2 */
+    "-",               /* 3 */
+    "Rename",          /* 4 */
+    "-",               /* 5 */
+    "Delete",          /* 6 */
 };
+
+/* ================================================================
+   Inline rename helpers
+   ================================================================ */
+
+static void rename_begin(Qs_Entity entity, Qs_Scene *scene)
+{
+    const char *cur = qs_entity_name(scene, entity);
+    snprintf(s_rename_prev, sizeof(s_rename_prev), "%s", cur ? cur : "");
+    snprintf(s_rename_buf,  sizeof(s_rename_buf),  "%s", cur ? cur : "");
+    s_renaming          = entity;
+    s_rename_focus_next = true;
+    s_rename_input      = NULL;
+}
+
+static void rename_commit(Qs_Scene *scene)
+{
+    if (s_renaming == QS_ENTITY_INVALID) return;
+    if (qs_entity_valid(scene, s_renaming))
+        qs_entity_set_name(scene, s_renaming, s_rename_buf);
+    s_renaming     = QS_ENTITY_INVALID;
+    s_rename_input = NULL;
+}
+
+static void rename_cancel(Qs_Scene *scene)
+{
+    if (s_renaming == QS_ENTITY_INVALID) return;
+    /* Restore original name */
+    if (qs_entity_valid(scene, s_renaming))
+        qs_entity_set_name(scene, s_renaming, s_rename_prev);
+    s_renaming     = QS_ENTITY_INVALID;
+    s_rename_input = NULL;
+}
+
+static void on_rename_change(Ca_TextInput *input, void *user_data)
+{
+    (void)user_data;
+    const char *text = ca_get_text(input);
+    if (text) snprintf(s_rename_buf, sizeof(s_rename_buf), "%s", text);
+    /* Live-update the entity name so inspector and everywhere else stays in
+       sync as the user types — same as the inspector's on_entity_name_input. */
+    Qs_Scene *scene = qs_scene_active();
+    if (scene && s_renaming != QS_ENTITY_INVALID && qs_entity_valid(scene, s_renaming))
+        qs_entity_set_name(scene, s_renaming, s_rename_buf);
+}
+
+/* ================================================================
+   Context menu callbacks
+   ================================================================ */
 
 static void on_root_ctx(int item_index, void *user_data)
 {
-    Editor *ed = (Editor *)user_data;
+    Editor   *ed    = (Editor *)user_data;
     Qs_Scene *scene = qs_scene_active();
     if (!ed || !scene) return;
+
     Qs_Entity e = QS_ENTITY_INVALID;
     switch (item_index) {
     case ROOT_CTX_EMPTY:
@@ -89,49 +204,82 @@ static void on_root_ctx(int item_index, void *user_data)
         break;
     case ROOT_CTX_LIGHT:
         e = create_entity_with_parent("Light", QS_ENTITY_INVALID);
-        if (e != QS_ENTITY_INVALID)
-            qs_entity_add(scene, e, qs_light_comp_type());
+        if (e != QS_ENTITY_INVALID) qs_entity_add(scene, e, qs_light_comp_type());
         break;
     case ROOT_CTX_PROTO:
         e = create_entity_with_parent("Prototype", QS_ENTITY_INVALID);
-        if (e != QS_ENTITY_INVALID)
-            qs_entity_add(scene, e, qs_prototype_comp_type());
+        if (e != QS_ENTITY_INVALID) qs_entity_add(scene, e, qs_prototype_comp_type());
         break;
-    default: break;
+    case ROOT_CTX_FRAME_ALL:
+        editor_focus_all(ed);
+        return;
+    default: return;
     }
-    if (e != QS_ENTITY_INVALID) editor_set_selected_entity(ed, e);
+    if (e != QS_ENTITY_INVALID)
+        editor_set_selected_entity(ed, e);
 }
 
 static void on_entity_ctx(int item_index, void *user_data)
 {
-    HierarchyClickCtx *ctx = (HierarchyClickCtx *)user_data;
-    Qs_Scene *scene = qs_scene_active();
+    HierarchyClickCtx *ctx   = (HierarchyClickCtx *)user_data;
+    Qs_Scene          *scene = qs_scene_active();
     if (!ctx || !ctx->editor || !scene) return;
     if (!qs_entity_valid(scene, ctx->entity)) return;
 
     switch (item_index) {
-    case ENT_CTX_CHILD: {
+
+    case ENT_CTX_CREATE_CHILD: {
         Qs_Entity e = create_entity_with_parent("Entity", ctx->entity);
-        if (e != QS_ENTITY_INVALID)
-            editor_set_selected_entity(ctx->editor, e);
+        if (e != QS_ENTITY_INVALID) editor_set_selected_entity(ctx->editor, e);
         break;
     }
+
+    case ENT_CTX_CREATE_PARENT: {
+        /* Insert a new empty entity at the same level, then re-parent the
+           target entity under it.  The new parent inherits the target's
+           current parent (or root). */
+        const char *src_name = qs_entity_name(scene, ctx->entity);
+        char new_parent_name[256];
+        snprintf(new_parent_name, sizeof(new_parent_name), "%s Parent",
+                 src_name ? src_name : "Entity");
+        Qs_Entity old_parent = qs_entity_get_parent(scene, ctx->entity);
+        Qs_Entity wrapper    = create_entity_with_parent(new_parent_name, old_parent);
+        if (wrapper != QS_ENTITY_INVALID) {
+            qs_entity_set_parent(scene, ctx->entity, wrapper);
+            editor_set_selected_entity(ctx->editor, wrapper);
+        }
+        break;
+    }
+
+    case ENT_CTX_DUPLICATE: {
+        Qs_Entity dup = duplicate_entity(scene, ctx->entity);
+        if (dup != QS_ENTITY_INVALID) editor_set_selected_entity(ctx->editor, dup);
+        break;
+    }
+
+    case ENT_CTX_RENAME:
+        /* Switch this entity's row to inline-edit mode next frame */
+        rename_begin(ctx->entity, scene);
+        editor_set_selected_entity(ctx->editor, ctx->entity);
+        break;
+
     case ENT_CTX_DELETE:
+        if (s_renaming == ctx->entity) {
+            s_renaming     = QS_ENTITY_INVALID;
+            s_rename_input = NULL;
+        }
         if (editor_selected_entity(ctx->editor) == ctx->entity)
             editor_set_selected_entity(ctx->editor, QS_ENTITY_INVALID);
         qs_entity_destroy(scene, ctx->entity);
         break;
+
     default: break;
     }
 }
 
-static void on_add_entity_click(Ca_Button *btn, void *user_data)
-{
-    (void)btn;
-    Editor *ed = (Editor *)user_data;
-    Qs_Entity e = create_entity_with_parent("Entity", QS_ENTITY_INVALID);
-    if (ed && e != QS_ENTITY_INVALID) editor_set_selected_entity(ed, e);
-}
+/* ================================================================
+   Tree rendering
+   ================================================================ */
 
 static void render_entity_node(Editor *ed, Qs_Scene *scene, Qs_Entity entity, Qs_Entity selected);
 
@@ -157,27 +305,18 @@ static void render_entity_node(Editor *ed, Qs_Scene *scene, Qs_Entity entity, Qs
 
     uint32_t    dot_color;
     const char *dot_icon;
-    if (has_light) {
-        dot_color = CA_THEME_WARNING;
-        dot_icon  = ICON_LIGHT;
-    } else if (has_proto) {
-        dot_color = CA_THEME_ACCENT;
-        dot_icon  = ICON_PROTOTYPE;
-    } else if (has_mesh) {
-        dot_color = CA_THEME_SUCCESS;
-        dot_icon  = ICON_MESH;
-    } else {
-        dot_color = CA_THEME_TEXT_MUTED;
-        dot_icon  = ICON_ENTITY;
-    }
+    if (has_light)       { dot_color = CA_THEME_WARNING;    dot_icon = ICON_LIGHT;     }
+    else if (has_proto)  { dot_color = CA_THEME_ACCENT;     dot_icon = ICON_PROTOTYPE; }
+    else if (has_mesh)   { dot_color = CA_THEME_SUCCESS;    dot_icon = ICON_MESH;      }
+    else                 { dot_color = CA_THEME_TEXT_MUTED; dot_icon = ICON_ENTITY;    }
 
     HierarchyClickCtx *ctx = NULL;
     if (s_click_idx < MAX_ENTITY_NODES) {
         ctx = &s_click_ctx[s_click_idx++];
-        ctx->editor       = ed;
-        ctx->entity       = entity;
-        ctx->proto_owner  = QS_ENTITY_INVALID;
-        ctx->inner_scene  = NULL;
+        ctx->editor      = ed;
+        ctx->entity      = entity;
+        ctx->proto_owner = QS_ENTITY_INVALID;
+        ctx->inner_scene = NULL;
     }
 
     const char *style = (entity == selected)
@@ -187,10 +326,6 @@ static void render_entity_node(Editor *ed, Qs_Scene *scene, Qs_Entity entity, Qs
     char node_id[64];
     snprintf(node_id, sizeof(node_id), "hier-entity-%u", (unsigned)entity);
 
-    /* A prototype is exposed in the scene as a single component — its
-       inner entities are intentionally hidden from the outer hierarchy
-       to avoid clutter.  Use the inspector's "Edit Prototype" button to
-       open the prototype in its own edit window. */
     bool has_children = false;
     for (Qs_Entity e = qs_scene_first(scene, qs_transform_type());
          e != QS_ENTITY_INVALID;
@@ -199,16 +334,41 @@ static void render_entity_node(Editor *ed, Qs_Scene *scene, Qs_Entity entity, Qs
         if (qs_entity_get_parent(scene, e) == entity) { has_children = true; break; }
     }
 
+    bool is_renaming = (entity == s_renaming);
+
     ca_tree_node_begin(&(Ca_TreeNodeDesc){
-        .text        = name,
+        .text        = is_renaming ? "" : name,  /* hide label while editing */
         .id          = node_id,
         .style       = style,
-        .icon        = dot_icon,
+        .icon        = is_renaming ? NULL : dot_icon,
         .icon_color  = dot_color,
         .is_leaf     = !has_children,
         .on_toggle   = ctx ? on_entity_select : NULL,
         .toggle_data = ctx,
     });
+
+    /* Inline rename: show a text input inside the header row */
+    if (is_renaming) {
+        char input_id[80];
+        snprintf(input_id, sizeof(input_id), "hier-rename-%u", (unsigned)entity);
+        s_rename_input = ca_input(&(Ca_InputDesc){
+            .text      = s_rename_buf,
+            .id        = input_id,
+            .style     = "hierarchy-rename-input",
+            .on_change = on_rename_change,
+        });
+
+        /* Auto-focus the field on the first frame it appears */
+        if (s_rename_focus_next && s_rename_input) {
+            ca_input_focus(s_rename_input);
+            s_rename_focus_next = false;
+        }
+    }
+
+    /* Entity-specific right-click menu. ca_context_menu now always attaches
+       to children[0] (the header row) when inside a tree node — so it
+       correctly targets the header row regardless of how many child entity
+       nodes exist from prior frames. */
     ca_context_menu(&(Ca_CtxMenuDesc){
         .items       = s_entity_ctx_items,
         .item_count  = (int)(sizeof(s_entity_ctx_items) / sizeof(*s_entity_ctx_items)),
@@ -226,14 +386,12 @@ static void build_hierarchy(Editor *ed, Qs_Scene *scene)
 {
     s_click_idx = 0;
 
-    /* ---- Tree ---- */
     ca_tree_begin(&(Ca_DivDesc){
         .direction = CA_VERTICAL,
         .id        = "hierarchy-tree",
         .style     = "hierarchy-tree",
     });
     {
-        /* Scene root node — always expanded */
         ca_tree_node_begin(&(Ca_TreeNodeDesc){
             .text       = qs_scene_name(scene),
             .expanded   = true,
@@ -250,8 +408,6 @@ static void build_hierarchy(Editor *ed, Qs_Scene *scene)
         });
         {
             Qs_Entity selected = editor_selected_entity(ed);
-
-            /* Render only root entities; children rendered recursively */
             for (Qs_Entity e = qs_scene_first(scene, qs_transform_type());
                  e != QS_ENTITY_INVALID;
                  e = qs_scene_next(scene, qs_transform_type(), e))
@@ -264,21 +420,50 @@ static void build_hierarchy(Editor *ed, Qs_Scene *scene)
     }
     ca_tree_end();
 
-    /* ---- Add Entity button ---- */
-    ca_btn_begin(&(Ca_BtnDesc){
-        .text      = "+  Add Entity",
-        .id        = "hierarchy-add-entity",
-        .style     = "hierarchy-add-btn",
-        .on_click  = on_add_entity_click,
-        .click_data = ed,
+    /* Attach root menu to tree container after ca_tree_end so the div
+       already exists as a child (child_count > 0 guard passes).
+       Empty-area right-clicks fall through to this menu. */
+    ca_context_menu(&(Ca_CtxMenuDesc){
+        .items       = s_root_ctx_items,
+        .item_count  = (int)(sizeof(s_root_ctx_items) / sizeof(*s_root_ctx_items)),
+        .on_select   = on_root_ctx,
+        .select_data = ed,
     });
-    ca_btn_end();
 }
+
+/* ================================================================
+   Keyboard handling for inline rename (Enter = commit, Esc = cancel)
+   Called each frame from ed_hierarchy_update.
+   ================================================================ */
+
+static void rename_handle_keys(Qs_Scene *scene)
+{
+    if (s_renaming == QS_ENTITY_INVALID || !s_rename_input) return;
+
+    /* GLFW_KEY_ENTER=257, GLFW_KEY_KP_ENTER=335, GLFW_KEY_ESCAPE=256 */
+    if (ca_input_key_pressed(s_rename_input, 257) ||
+        ca_input_key_pressed(s_rename_input, 335)) {
+        rename_commit(scene);
+        return;
+    }
+    if (ca_input_key_pressed(s_rename_input, 256)) {
+        rename_cancel(scene);
+        return;
+    }
+
+    /* Commit when the input loses focus (user clicked elsewhere) */
+    if (!ca_input_is_focused(s_rename_input))
+        rename_commit(scene);
+}
+
+/* ================================================================
+   Public API
+   ================================================================ */
 
 void ed_hierarchy(void *editor)
 {
     s_editor = (Editor *)editor;
-    s_root = ca_div_begin(&(Ca_DivDesc){
+    s_root   = ca_div_begin(&(Ca_DivDesc){
         .direction = CA_VERTICAL,
         .id        = "hierarchy-root",
     });
@@ -292,7 +477,12 @@ void ed_hierarchy_update(void *editor)
     Qs_Scene *scene = qs_scene_active();
     if (!scene) return;
 
+    /* Handle rename keyboard events before rebuilding (uses last frame's input) */
+    rename_handle_keys(scene);
+
     ca_reconcile_begin(s_root);
     build_hierarchy(ed, scene);
     ca_div_end();
 }
+
+

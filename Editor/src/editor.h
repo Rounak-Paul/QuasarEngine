@@ -99,4 +99,7 @@ void editor_close_prototype(Editor *editor);
 /// Destroys the editor and all owned resources.
 void editor_destroy(Editor *editor);
 
+/// Frames the camera to show all entities in the active scene.
+void editor_focus_all(Editor *editor);
+
 #endif
