@@ -234,6 +234,10 @@ Ca_Button *ed_icon_btn(const EdIconBtnDesc *desc)
         .click_data = desc->click_data,
     });
     ca_btn_end();
+
+    if (desc->tooltip)
+        ca_tooltip(&(Ca_TooltipDesc){ .text = desc->tooltip });
+
     return btn;
 }
 

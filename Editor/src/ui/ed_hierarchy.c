@@ -24,6 +24,11 @@ static uint32_t           s_click_idx;
 static Editor            *s_editor;
 static Ca_Div            *s_root;
 
+/* ---- Toolbar state ------------------------------------------------- */
+static bool            s_collapse_all      = false;
+static bool            s_expand_scene_root = false;
+static bool            s_rendering_enabled = true;
+
 /* ---- Inline rename state ------------------------------------------ */
 /* QS_ENTITY_INVALID means "not renaming" */
 static Qs_Entity       s_renaming       = QS_ENTITY_INVALID;
@@ -278,6 +283,61 @@ static void on_entity_ctx(int item_index, void *user_data)
 }
 
 /* ================================================================
+   Toolbar callbacks
+   ================================================================ */
+
+static void on_collapse_all_click(Ca_Button *btn, void *data)
+{
+    (void)btn; (void)data;
+    s_collapse_all = true;
+}
+
+static void on_new_entity_click(Ca_Button *btn, void *data)
+{
+    (void)btn;
+    Editor *ed = (Editor *)data;
+    Qs_Scene *scene = qs_scene_active();
+    if (!scene) return;
+    Qs_Entity e = qs_entity_create(scene, "Entity");
+    if (e != QS_ENTITY_INVALID) {
+        editor_set_selected_entity(ed, e);
+        s_expand_scene_root = true;
+    }
+}
+
+static void set_scene_rendering(Qs_Scene *scene, bool visible)
+{
+    if (!scene) return;
+
+    /* Toggle all mesh components in this scene */
+    for (Qs_Entity e = qs_scene_first(scene, qs_mesh_comp_type());
+         e != QS_ENTITY_INVALID;
+         e = qs_scene_next(scene, qs_mesh_comp_type(), e))
+    {
+        Qs_MeshComp *mc = qs_entity_get(scene, e, qs_mesh_comp_type());
+        if (mc) mc->visible = visible;
+    }
+
+    /* Recurse into prototype inner scenes */
+    for (Qs_Entity e = qs_scene_first(scene, qs_prototype_comp_type());
+         e != QS_ENTITY_INVALID;
+         e = qs_scene_next(scene, qs_prototype_comp_type(), e))
+    {
+        Qs_PrototypeComp *pc = qs_entity_get(scene, e, qs_prototype_comp_type());
+        if (pc && pc->inner) set_scene_rendering(pc->inner, visible);
+    }
+}
+
+static void on_toggle_rendering_click(Ca_Button *btn, void *data)
+{
+    (void)btn; (void)data;
+    Qs_Scene *scene = qs_scene_active();
+    if (!scene) return;
+    s_rendering_enabled = !s_rendering_enabled;
+    set_scene_rendering(scene, s_rendering_enabled);
+}
+
+/* ================================================================
    Tree rendering
    ================================================================ */
 
@@ -336,7 +396,7 @@ static void render_entity_node(Editor *ed, Qs_Scene *scene, Qs_Entity entity, Qs
 
     bool is_renaming = (entity == s_renaming);
 
-    ca_tree_node_begin(&(Ca_TreeNodeDesc){
+    Ca_TreeNode *tn_entity = ca_tree_node_begin(&(Ca_TreeNodeDesc){
         .text        = is_renaming ? "" : name,  /* hide label while editing */
         .id          = node_id,
         .style       = style,
@@ -346,6 +406,10 @@ static void render_entity_node(Editor *ed, Qs_Scene *scene, Qs_Entity entity, Qs
         .on_toggle   = ctx ? on_entity_select : NULL,
         .toggle_data = ctx,
     });
+    if (s_collapse_all && tn_entity) ca_tree_node_set_expanded(tn_entity, false);
+    /* Tooltip shows full entity name (useful when truncated) */
+    if (!is_renaming)
+        ca_tooltip(&(Ca_TooltipDesc){ .text = name });
 
     /* Inline rename: show a text input inside the header row */
     if (is_renaming) {
@@ -386,13 +450,44 @@ static void build_hierarchy(Editor *ed, Qs_Scene *scene)
 {
     s_click_idx = 0;
 
+    /* ---- Toolbar ---- */
+    ca_div_begin(&(Ca_DivDesc){ .direction = CA_HORIZONTAL,
+                                .id        = "hierarchy-toolbar",
+                                .style     = "hierarchy-toolbar" });
+    {
+        ed_icon_btn(&(EdIconBtnDesc){
+            .icon       = ICON_COMPRESS,
+            .id         = "hier-btn-collapse",
+            .tooltip    = "Collapse All",
+            .on_click   = on_collapse_all_click,
+        });
+        ed_icon_btn(&(EdIconBtnDesc){
+            .icon       = ICON_PLUS,
+            .id         = "hier-btn-new-entity",
+            .tooltip    = "New Entity",
+            .on_click   = on_new_entity_click,
+            .click_data = ed,
+        });
+        /* Push eye button to the right */
+        ca_div_begin(&(Ca_DivDesc){ .style = "hierarchy-toolbar-spacer" });
+        ca_div_end();
+        Ca_Button *render_btn = ed_icon_btn(&(EdIconBtnDesc){
+            .icon       = s_rendering_enabled ? ICON_EYE : ICON_EYE_SLASH,
+            .id         = "hier-btn-toggle-render",
+            .tooltip    = s_rendering_enabled ? "Disable Scene Rendering" : "Enable Scene Rendering",
+            .on_click   = on_toggle_rendering_click,
+        });
+        ed_icon_btn_set_active(render_btn, !s_rendering_enabled);
+    }
+    ca_div_end();
+
     ca_tree_begin(&(Ca_DivDesc){
         .direction = CA_VERTICAL,
         .id        = "hierarchy-tree",
         .style     = "hierarchy-tree",
     });
     {
-        ca_tree_node_begin(&(Ca_TreeNodeDesc){
+        Ca_TreeNode *tn_scene = ca_tree_node_begin(&(Ca_TreeNodeDesc){
             .text       = qs_scene_name(scene),
             .expanded   = true,
             .id         = "hierarchy-scene-root",
@@ -400,6 +495,9 @@ static void build_hierarchy(Editor *ed, Qs_Scene *scene)
             .icon       = ICON_SCENE,
             .icon_color = CA_THEME_ACCENT,
         });
+        if (s_collapse_all && tn_scene) ca_tree_node_set_expanded(tn_scene, false);
+        if (s_expand_scene_root && tn_scene) ca_tree_node_set_expanded(tn_scene, true);
+        ca_tooltip(&(Ca_TooltipDesc){ .text = qs_scene_name(scene) });
         ca_context_menu(&(Ca_CtxMenuDesc){
             .items       = s_root_ctx_items,
             .item_count  = (int)(sizeof(s_root_ctx_items) / sizeof(*s_root_ctx_items)),
@@ -419,6 +517,9 @@ static void build_hierarchy(Editor *ed, Qs_Scene *scene)
         ca_tree_node_end();
     }
     ca_tree_end();
+
+    s_collapse_all = false;
+    s_expand_scene_root = false;
 
     /* Attach root menu to tree container after ca_tree_end so the div
        already exists as a child (child_count > 0 guard passes).

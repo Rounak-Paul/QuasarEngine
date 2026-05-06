@@ -285,6 +285,18 @@ const char *g_editor_css =
     "  overflow: hidden;"
     "}"
 
+    ".hierarchy-toolbar {"
+    "  background: " ED_COL_ELEVATED ";"
+    "  width: 100%;"
+    "  height: " ED_H_CHROME "px;"
+    "  align-items: center;"
+    "  padding-left: 4px;"
+    "  padding-right: 4px;"
+    "  gap: 2px;"
+    "}"
+
+    ".hierarchy-toolbar-spacer { flex-grow: 1; }"
+
     ".hierarchy-tree {"
     "  overflow-y: scroll;"
     "  padding-left: 6px;"
@@ -901,6 +913,11 @@ const char *g_editor_css =
     "  font-size: " ED_FS "px;"
     "  padding: 24px;"
     "}"
+
+    /* ---- Tooltips ---- */
+    "tooltip {"
+    "  font-size: 10px;"
+    "}"
 ;
 
 /* ------------------------------------------------------------------
@@ -1100,4 +1117,9 @@ const char *g_launcher_css =
 
     /* ---- File browser ---- */
     FB_CSS
+
+    /* ---- Tooltips ---- */
+    "tooltip {"
+    "  font-size: 10px;"
+    "}"
 ;

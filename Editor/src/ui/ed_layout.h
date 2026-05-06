@@ -25,8 +25,11 @@ void ed_status_bar(Ca_Window *window, void *editor);
 #define ICON_TAG        "\xEF\x81\x84"   /* U+F044 pencil    */
 #define ICON_PROTOTYPE  "\xEF\x86\xB3"   /* U+F1B3 cubes     */
 #define ICON_TRASH      "\xEF\x87\xB8"   /* U+F1F8 trash     */
-#define ICON_PLUS       "\xEF\x81\xA7"   /* U+F067 plus      */
+#define ICON_PLUS       "\xEF\x81\xA7"   /* U+F067 plus         */
 #define ICON_CHEVRON_D  "\xEF\x81\xB8"   /* U+F078 chevron-down */
+#define ICON_COMPRESS   "\xEF\x81\xA6"   /* U+F066 compress / collapse-all */
+#define ICON_EYE        "\xEF\x81\xAE"   /* U+F06E eye          */
+#define ICON_EYE_SLASH  "\xEF\x81\xB0"   /* U+F070 eye-slash    */
 
 /* ---- Toolbar icon buttons ---- */
 
