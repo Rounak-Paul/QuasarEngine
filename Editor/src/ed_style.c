@@ -279,6 +279,12 @@ const char *g_editor_css =
     FB_CSS
 
     /* ---- Hierarchy panel ---- */
+    ".hierarchy-root {"
+    "  flex-grow: 1;"
+    "  width: 100%;"
+    "  overflow: hidden;"
+    "}"
+
     ".hierarchy-tree {"
     "  overflow-y: scroll;"
     "  padding-left: 6px;"

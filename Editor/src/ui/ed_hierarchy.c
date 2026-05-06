@@ -466,6 +466,7 @@ void ed_hierarchy(void *editor)
     s_root   = ca_div_begin(&(Ca_DivDesc){
         .direction = CA_VERTICAL,
         .id        = "hierarchy-root",
+        .style     = "hierarchy-root",
     });
     ca_div_end();
 }
