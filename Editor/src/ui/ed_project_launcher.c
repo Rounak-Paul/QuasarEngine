@@ -499,11 +499,18 @@ static void build_launcher_ui(void)
             ca_btn_end();
             ca_div_end();
 
+            /* Page body */
+            ca_div_begin(&(Ca_DivDesc){
+                .direction = CA_VERTICAL,
+                .style     = "launcher-page-body",
+            });
+
             /* Project list — rebuilt dynamically */
             s_launcher.project_list = ca_div_begin(&(Ca_DivDesc){
                 .direction = CA_VERTICAL,
                 .style     = "launcher-list",
             });
+            ca_div_end();
             ca_div_end();
 
             ca_div_end(); /* page_projects */
@@ -524,7 +531,18 @@ static void build_launcher_ui(void)
                 .text  = "Create New Project",
                 .style = "launcher-page-title",
             });
+            ca_btn_begin(&(Ca_BtnDesc){
+                .text     = "Create",
+                .on_click = on_create_project,
+                .style    = "launcher-btn launcher-btn-primary",
+            });
+            ca_btn_end();
             ca_div_end();
+
+            ca_div_begin(&(Ca_DivDesc){
+                .direction = CA_VERTICAL,
+                .style     = "launcher-page-body",
+            });
 
             /* Form */
             ca_div_begin(&(Ca_DivDesc){
@@ -568,20 +586,8 @@ static void build_launcher_ui(void)
             ca_btn_end();
             ca_div_end();
 
-            /* Actions */
-            ca_div_begin(&(Ca_DivDesc){
-                .direction = CA_HORIZONTAL,
-                .style     = "launcher-form-actions",
-            });
-            ca_btn_begin(&(Ca_BtnDesc){
-                .text     = "Create",
-                .on_click = on_create_project,
-                .style    = "launcher-btn launcher-btn-primary",
-            });
-            ca_btn_end();
-            ca_div_end();
-
             ca_div_end(); /* form */
+            ca_div_end(); /* page body */
             ca_div_end(); /* page_new_project */
         }
         ca_div_end(); /* content */

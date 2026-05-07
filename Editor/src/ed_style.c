@@ -997,6 +997,15 @@ const char *g_launcher_css =
     ".launcher-page {"
     "  flex-grow: 1;"
     "  width: 100%;"
+    "  overflow: hidden;"
+    "}"
+
+    ".launcher-page-body {"
+    "  flex-grow: 1;"
+    "  width: 100%;"
+    "  overflow: hidden;"
+    "  padding: 12px;"
+    "  gap: 8px;"
     "}"
 
     /* ---- Projects page ---- */
@@ -1021,7 +1030,7 @@ const char *g_launcher_css =
     "  flex-grow: 1;"
     "  width: 100%;"
     "  overflow-y: scroll;"
-    "  padding: 8px 12px;"
+    "  padding: 0px;"
     "  gap: 4px;"
     "  align-items: flex-start;"
     "}"
@@ -1057,9 +1066,12 @@ const char *g_launcher_css =
 
     /* ---- New Project form ---- */
     ".launcher-form {"
+    "  flex-grow: 1;"
     "  width: 100%;"
-    "  padding: 20px;"
+    "  overflow-y: scroll;"
+    "  padding: 0px;"
     "  gap: 14px;"
+    "  align-items: flex-start;"
     "}"
 
     ".launcher-form-row {"
@@ -1114,14 +1126,6 @@ const char *g_launcher_css =
     ".launcher-btn-primary {"
     "  background: " ED_COL_PRIMARY ";"
     "  color: " ED_COL_VOID ";"
-    "}"
-
-    ".launcher-form-actions {"
-    "  width: 100%;"
-    "  height: " ED_H_ITEM_MD "px;"
-    "  align-items: center;"
-    "  padding-top: 6px;"
-    "  gap: 8px;"
     "}"
 
     /* ---- File browser ---- */
