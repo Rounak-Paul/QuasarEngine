@@ -31,7 +31,7 @@
    Any positive float is valid: 1.0 = 100 %, 1.5 = 150 %, 2.0 = 200 %
    ------------------------------------------------------------------ */
 
-#define ED_UI_SCALE     1.25f
+#define ED_UI_SCALE     1.4f
 
 /* ------------------------------------------------------------------
    Font size
@@ -39,7 +39,7 @@
 
 /* Base font atlas size in logical pixels. Independent of ED_UI_SCALE —
    the scale is handled by ca_window_set_scale, not the font atlas. */
-#define ED_FONT_PX      28
+#define ED_FONT_PX      16
 
 /* Passed to qs_engine_create / ca_instance_create as font_size_px. */
 #define ED_FONT_SIZE_PX ((float)ED_FONT_PX)
