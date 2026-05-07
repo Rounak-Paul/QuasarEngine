@@ -98,7 +98,7 @@
     "  overflow-y: scroll;" \
     "  padding: 4px;" \
     "  gap: 2px;" \
-    "  align-items: flex-start;" \
+    "  align-items: stretch;" \
     "  background: " ED_COL_BASE ";" \
     "}" \
     ".fb-entry {" \
@@ -109,6 +109,7 @@
     "  font-size: " ED_FS "px;" \
     "  text-align: left;" \
     "  padding-left: 8px;" \
+    "  align-items: flex-start;" \
     "  corner-radius: " ED_R_SM ";" \
     "}" \
     ".fb-entry-selected {" \
@@ -267,6 +268,95 @@ const char *g_editor_css =
     "  width: 100%;"
     "  color: " ED_COL_TEXT_DIM ";"
     "  font-size: 12px;"
+    "  text-align: left;"
+    "}"
+
+    ".assets-root {"
+    "  flex-grow: 1;"
+    "  width: 100%;"
+    "  background: " ED_COL_VOID ";"
+    "  overflow: hidden;"
+    "}"
+
+    ".assets-toolbar {"
+    "  width: 100%;"
+    "  height: " ED_H_CHROME "px;"
+    "  align-items: center;"
+    "  gap: 4px;"
+    "  padding-left: 6px;"
+    "  padding-right: 6px;"
+    "  background: " ED_COL_ELEVATED ";"
+    "  flex-shrink: 0;"
+    "}"
+
+    ".assets-btn {"
+    "  height: " ED_H_ROW_TIGHT "px;"
+    "  padding-left: 6px;"
+    "  padding-right: 6px;"
+    "  background: " ED_COL_OVERLAY ";"
+    "  color: " ED_COL_TEXT_MUTED ";"
+    "  font-size: " ED_FS "px;"
+    "  corner-radius: 0px;"
+    "}"
+
+    ".assets-path {"
+    "  color: " ED_COL_TEXT_MUTED ";"
+    "  font-size: " ED_FS "px;"
+    "  text-align: left;"
+    "  flex-grow: 1;"
+    "}"
+
+    ".assets-search-input {"
+    "  width: 180px;"
+    "  height: " ED_H_ROW_TIGHT "px;"
+    "  background: " ED_COL_VOID ";"
+    "  color: " ED_COL_TEXT_BRIGHT ";"
+    "  font-size: " ED_FS "px;"
+    "  padding-left: 6px;"
+    "}"
+
+    ".assets-chip {"
+    "  height: " ED_H_ROW_TIGHT "px;"
+    "  padding-left: 6px;"
+    "  padding-right: 6px;"
+    "  background: transparent;"
+    "  color: " ED_COL_TEXT_DIM ";"
+    "  font-size: " ED_FS "px;"
+    "  corner-radius: 0px;"
+    "}"
+
+    ".assets-scroll {"
+    "  flex-grow: 1;"
+    "  width: 100%;"
+    "  overflow-y: scroll;"
+    "  padding: 2px 0px;"
+    "  gap: 0px;"
+    "  align-items: stretch;"
+    "  background: " ED_COL_VOID ";"
+    "}"
+
+    ".assets-entry {"
+    "  width: 100%;"
+    "  height: " ED_H_ROW_TIGHT "px;"
+    "  background: transparent;"
+    "  color: " ED_COL_TEXT_MUTED ";"
+    "  font-size: " ED_FS "px;"
+    "  text-align: left;"
+    "  padding-left: 6px;"
+    "  padding-right: 4px;"
+    "  corner-radius: 0px;"
+    "}"
+
+    ".assets-entry-selected {"
+    "  background: " ED_COL_OVERLAY ";"
+    "  color: " ED_COL_TEXT_BRIGHT ";"
+    "}"
+
+    ".assets-empty {"
+    "  color: " ED_COL_TEXT_DIM ";"
+    "  font-size: " ED_FS "px;"
+    "  padding: 8px;"
+    "  width: 100%;"
     "  text-align: left;"
     "}"
 
