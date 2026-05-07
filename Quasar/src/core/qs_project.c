@@ -8,6 +8,7 @@
 #include <sys/stat.h>
 
 #ifdef _WIN32
+  #include <windows.h>
   #include <direct.h>
   #define qs_mkdir(p) _mkdir(p)
   #ifndef S_ISDIR
