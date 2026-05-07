@@ -233,8 +233,8 @@ const char *g_editor_css =
     "  gap: 4px;"
     "  overflow: hidden;"
     "  flex-shrink: 0;"
-    "  padding-left: 2px;"
-    "  padding-right: 2px;"
+    "  padding-left: 0px;"
+    "  padding-right: 0px;"
     "}"
 
     ".panel-tab {"

@@ -26,8 +26,8 @@ static void panel_tabs(const char **labels, int count, int active)
         .inactive_text = CA_THEME_TEXT_DIM,
         .active_bg     = CA_THEME_BG_OVERLAY,
         .inactive_bg   = CA_THEME_TRANSPARENT,
-        .tab_padding_x = 2.0f,
-        .tabs_fill     = (count == 1),
+        .tab_padding_x = 0.0f,
+        .tabs_fill     = false,
         .tabs_left_align = true,
     });
 }
