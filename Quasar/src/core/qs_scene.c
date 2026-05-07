@@ -6,6 +6,7 @@
 #include "qs_asset_pack.h"
 #include "qs_renderer.h"
 #include "qs_mesh.h"
+#include "qs_primitive.h"
 #include "qs_material.h"
 #include "qs_project.h"
 #include "quasar.h"
@@ -260,6 +261,7 @@ static void mesh_comp_init(void *comp, Qs_Scene *scene, Qs_Entity entity)
     (void)scene; (void)entity;
     Qs_MeshComp *mc = (Qs_MeshComp *)comp;
     mc->visible = true;
+    snprintf(mc->material_path, sizeof(mc->material_path), "%s", "@default");
 }
 
 static void mesh_comp_destroy(void *comp, Qs_Scene *scene, Qs_Entity entity)
@@ -269,14 +271,18 @@ static void mesh_comp_destroy(void *comp, Qs_Scene *scene, Qs_Entity entity)
     /* Only release the cache ref if the asset was actually loaded.  If the
        entity was destroyed before its first render frame (lazy load never
        triggered), there is no ref to release and cache_release would be a
-       no-op anyway, but this guard makes the intent explicit. */
-    if (mc->mesh && mc->mesh_path[0]) {
+       no-op anyway, but this guard makes the intent explicit.
+       Primitive meshes (@cube etc.) are not reference-counted by the asset
+       cache, so skip the release for those. */
+    if (mc->mesh && mc->mesh_path[0] &&
+        qs_primitive_type_from_path(mc->mesh_path) < 0) {
         char abs[1024];
         resolve_path(scene, mc->mesh_path, abs, sizeof(abs));
         qs_asset_cache_release_mesh(abs);
         mc->mesh = NULL;
     }
-    if (mc->material && mc->material_path[0]) {
+    if (mc->material && mc->material_path[0] &&
+        mc->material_path[0] != '@') {
         char abs[1024];
         resolve_path(scene, mc->material_path, abs, sizeof(abs));
         qs_asset_cache_release_material(abs);
@@ -1649,18 +1655,41 @@ void qs_scene_submit_renderables(Qs_Scene *scene,
                Material is created immediately (same frame) with fallback
                textures; .qstex files stream in via the pump afterwards. */
             Qs_JobSystem *jobs = engine ? qs_engine_job_system(engine) : NULL;
-            if (!mc->mesh && mc->mesh_path[0] && !mc->mesh_load_failed && jobs) {
-                char abs[1024];
-                resolve_path(scene, mc->mesh_path, abs, sizeof(abs));
-                mc->mesh = qs_asset_cache_mesh_async(engine, jobs, abs);
-                /* NULL is normal while loading — don't mark failed yet. */
+            if (!mc->mesh && mc->mesh_path[0] && !mc->mesh_load_failed) {
+                int prim = qs_primitive_type_from_path(mc->mesh_path);
+                if (prim >= 0) {
+                    /* Built-in primitive — resolve immediately, no job needed */
+                    mc->mesh = qs_primitive_mesh((Qs_PrimitiveType)prim);
+                    if (!mc->mesh)
+                        mc->mesh_load_failed = true;
+                } else if (jobs) {
+                    char abs[1024];
+                    resolve_path(scene, mc->mesh_path, abs, sizeof(abs));
+                    mc->mesh = qs_asset_cache_mesh_async(engine, jobs, abs);
+                    /* NULL is normal while loading — don't mark failed yet. */
+                }
             }
-            if (!mc->material && mc->material_path[0] && !mc->material_load_failed && jobs) {
-                char abs[1024];
-                resolve_path(scene, mc->material_path, abs, sizeof(abs));
-                mc->material = qs_asset_cache_material_async(engine, jobs, abs);
-                if (!mc->material)
-                    mc->material_load_failed = true;
+            if (!mc->material_path[0]) {
+                /* Legacy scenes may omit material_path; default to built-in. */
+                snprintf(mc->material_path, sizeof(mc->material_path), "%s", "@default");
+                mc->material_load_failed = false;
+            }
+            if (!mc->material && mc->material_path[0] && !mc->material_load_failed) {
+                if (mc->material_path[0] == '@') {
+                    /* Built-in material path (e.g. "@default") */
+                    if (strcmp(mc->material_path, "@default") == 0) {
+                        mc->material = qs_default_material();
+                        if (!mc->material) mc->material_load_failed = true;
+                    } else {
+                        mc->material_load_failed = true; /* unknown built-in */
+                    }
+                } else if (jobs) {
+                    char abs[1024];
+                    resolve_path(scene, mc->material_path, abs, sizeof(abs));
+                    mc->material = qs_asset_cache_material_async(engine, jobs, abs);
+                    if (!mc->material)
+                        mc->material_load_failed = true;
+                }
             }
 
             if (!mc->mesh || !mc->material) continue;

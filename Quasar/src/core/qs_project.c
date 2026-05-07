@@ -155,6 +155,75 @@ static bool write_project_file(const Qs_Project *p)
     return true;
 }
 
+static bool write_default_scene(const char *scenes_dir)
+{
+    char path[QS_MAX_PATH];
+    snprintf(path, sizeof(path), "%s/default.qscene", scenes_dir);
+
+    /* A minimal scene with a directional light and a cube primitive. */
+    static const char s_default_scene[] =
+        "{\n"
+        "    \"name\": \"default\",\n"
+        "    \"next_entity_id\": 3,\n"
+        "    \"entities\": [\n"
+        "        {\n"
+        "            \"name\": \"Directional Light\",\n"
+        "            \"enabled\": true,\n"
+        "            \"parent\": -1,\n"
+        "            \"components\": {\n"
+        "                \"IdComp\": { \"id\": 1 },\n"
+        "                \"TagComp\": { \"tag\": \"Untagged\" },\n"
+        "                \"Transform\": {\n"
+        "                    \"position\": [0, 3, 0],\n"
+        "                    \"rotation\": [0, 0, 0, 1],\n"
+        "                    \"scale\": [1, 1, 1]\n"
+        "                },\n"
+        "                \"LightComp\": {\n"
+        "                    \"type\": 0,\n"
+        "                    \"direction\": [-0.577, -0.577, -0.577],\n"
+        "                    \"color\": [1, 1, 1],\n"
+        "                    \"intensity\": 1,\n"
+        "                    \"range\": 0,\n"
+        "                    \"inner_cone_deg\": 0,\n"
+        "                    \"outer_cone_deg\": 30,\n"
+        "                    \"cast_shadows\": true,\n"
+        "                    \"enabled\": true\n"
+        "                }\n"
+        "            }\n"
+        "        },\n"
+        "        {\n"
+        "            \"name\": \"Cube\",\n"
+        "            \"enabled\": true,\n"
+        "            \"parent\": -1,\n"
+        "            \"components\": {\n"
+        "                \"IdComp\": { \"id\": 2 },\n"
+        "                \"TagComp\": { \"tag\": \"Untagged\" },\n"
+        "                \"Transform\": {\n"
+        "                    \"position\": [0, 0, 0],\n"
+        "                    \"rotation\": [0, 0, 0, 1],\n"
+        "                    \"scale\": [1, 1, 1]\n"
+        "                },\n"
+        "                \"MeshComp\": {\n"
+        "                    \"visible\": true,\n"
+        "                    \"mesh_path\": \"@cube\",\n"
+                "                    \"material_path\": \"@default\"\n"
+        "                }\n"
+        "            }\n"
+        "        }\n"
+        "    ]\n"
+        "}\n";
+
+    FILE *f = fopen(path, "w");
+    if (!f) {
+        QS_LOG_ERROR("Failed to write default scene: %s", path);
+        return false;
+    }
+    fputs(s_default_scene, f);
+    fclose(f);
+    QS_LOG_INFO("Default scene written: %s", path);
+    return true;
+}
+
 /* ================================================================
    PUBLIC API
    ================================================================ */
@@ -177,6 +246,11 @@ Qs_Project *qs_project_create(const Qs_ProjectDesc *desc)
     ensure_dir(sub);
     snprintf(sub, sizeof(sub), "%s/scripts", desc->path);
     ensure_dir(sub);
+
+    /* Write the default scene */
+    char scenes_dir[QS_MAX_PATH];
+    snprintf(scenes_dir, sizeof(scenes_dir), "%s/scenes", desc->path);
+    write_default_scene(scenes_dir);
 
     /* Stage a project struct then write it */
     Qs_Project staged = {0};

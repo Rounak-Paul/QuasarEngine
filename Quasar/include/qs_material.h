@@ -144,4 +144,9 @@ uint32_t qs_material_count(void);
 /// Returns NULL if index >= qs_material_count().
 Qs_Material *qs_material_at(uint32_t index);
 
+/// Returns the shared engine default material (plain gray PBR, no textures).
+/// This is the same material assigned to new primitives.  Never destroy it.
+/// Returns NULL if the material system has not been initialised.
+Qs_Material *qs_default_material(void);
+
 #endif

@@ -4,6 +4,7 @@
 #include "ed_commands.h"
 #include "ca_theme.h"
 #include "qs_asset_pack.h"
+#include "qs_primitive.h"
 
 #include <stddef.h>
 #include <stdio.h>
@@ -818,7 +819,7 @@ static void refresh_mat_options(void)
     Qs_Project *proj = s_editor ? editor_project(s_editor) : NULL;
     uint32_t n = proj ? qs_project_material_count(proj) : 0;
 
-    uint32_t need = n + 1;
+    uint32_t need = n + 1; /* @default + project materials */
     if (need > s_mat_option_cap) {
         uint32_t cap = need < 16 ? 16 : need;
         const char **a = realloc(s_mat_options, cap * sizeof(*a));
@@ -826,8 +827,11 @@ static void refresh_mat_options(void)
         if (a) { s_mat_options = a; s_mat_option_cap = cap; }
         if (c)   s_mat_paths   = c;
     }
-    if (!s_mat_options) return;  /* OOM guard: first alloc may have failed */
-    s_mat_options[s_mat_option_count++] = "(none)";
+    if (!s_mat_options || !s_mat_paths) return;
+    /* Built-in default material is always selectable as index 0. */
+    s_mat_paths[s_mat_option_count]   = (char *)"@default";
+    s_mat_options[s_mat_option_count] = "Default (built-in)";
+    s_mat_option_count++;
 
     for (uint32_t i = 0; i < n; i++) {
         const char *rel = qs_project_material_path(proj, i);
@@ -849,8 +853,8 @@ static void refresh_mat_options(void)
 
         uint32_t idx = s_mat_option_count;
         if (idx < s_mat_option_cap) {
-            s_mat_paths  [idx - 1] = (char *)rel;   /* project-relative, owned by project */
-            s_mat_options[idx]     = dst;
+            s_mat_paths[idx]   = (char *)rel;   /* project-relative, owned by project */
+            s_mat_options[idx] = dst;
             s_mat_option_count++;
         }
     }
@@ -863,7 +867,7 @@ static void refresh_tex_options(void)
     Qs_Project *proj = s_editor ? editor_project(s_editor) : NULL;
     uint32_t n = proj ? qs_project_texture_count(proj) : 0;
 
-    uint32_t need = n + 1;
+    uint32_t need = n + 1; /* (none) + project textures */
     if (need > s_tex_option_cap) {
         uint32_t cap = need < 16 ? 16 : need;
         const char **a = realloc(s_tex_options, cap * sizeof(*a));
@@ -892,7 +896,7 @@ static void refresh_mesh_options(void)
     Qs_Project *proj = s_editor ? editor_project(s_editor) : NULL;
     uint32_t n = proj ? qs_project_mesh_count(proj) : 0;
 
-    uint32_t need = n + 1;
+    uint32_t need = n + QS_PRIMITIVE_COUNT + 1;
     if (need > s_mesh_option_cap) {
         uint32_t cap = need < 16 ? 16 : need;
         const char **a = realloc(s_mesh_options, cap * sizeof(*a));
@@ -902,6 +906,17 @@ static void refresh_mesh_options(void)
     }
     if (!s_mesh_options || !s_mesh_paths) return;
     s_mesh_options[s_mesh_option_count++] = "(none)";
+
+    /* Built-in primitive entries */
+    static const char *s_prim_display[QS_PRIMITIVE_COUNT] = {
+        "Cube (built-in)", "Sphere (built-in)",
+        "Plane (built-in)", "Cylinder (built-in)",
+    };
+    for (uint32_t p = 0; p < QS_PRIMITIVE_COUNT; p++) {
+        s_mesh_paths  [s_mesh_option_count - 1] = (char *)qs_primitive_path((Qs_PrimitiveType)p);
+        s_mesh_options[s_mesh_option_count]     = s_prim_display[p];
+        s_mesh_option_count++;
+    }
 
     for (uint32_t i = 0; i < n; i++) {
         const char *rel = qs_project_mesh_path(proj, i);
@@ -929,22 +944,28 @@ static void on_material_select(Ca_Select *sel, void *user_data)
 
     /* Release the old material's ref before assigning a new one */
     if (mc->material_path[0]) {
-        char abs[1024];
-        qs_project_resolve(proj, mc->material_path, abs, sizeof(abs));
-        qs_asset_cache_release_material(abs);
+        if (mc->material_path[0] != '@') {
+            char abs[1024];
+            qs_project_resolve(proj, mc->material_path, abs, sizeof(abs));
+            qs_asset_cache_release_material(abs);
+        }
         mc->material = NULL;
     }
     mc->material_load_failed = false;  /* allow new path to load */
 
     int idx = ca_select_get(sel);
-    if (idx <= 0) {
-        mc->material_path[0] = '\0';
-    } else if ((uint32_t)idx < s_mat_option_count) {
-        const char *rel = s_mat_paths[idx - 1];
+    if (idx < 0 || (uint32_t)idx >= s_mat_option_count) idx = 0;
+
+    const char *rel = s_mat_paths[idx];
+    if (!rel || !rel[0]) rel = "@default";
+    snprintf(mc->material_path, sizeof(mc->material_path), "%s", rel);
+    if (rel[0] == '@') {
+        /* Built-in material — scene resolves on next frame */
+        mc->material = NULL;
+    } else {
         char abs[1024];
         qs_project_resolve(proj, rel, abs, sizeof(abs));
         mc->material = qs_asset_cache_material_async(eng, qs_engine_job_system(eng), abs);
-        snprintf(mc->material_path, sizeof(mc->material_path), "%s", rel ? rel : "");
     }
     /* Force material editor rebuild */
     s_displayed_entity = QS_ENTITY_INVALID;
@@ -988,9 +1009,12 @@ static void on_mesh_select(Ca_Select *sel, void *user_data)
 
     /* Release old mesh ref before assigning a new one */
     if (mc->mesh_path[0]) {
-        char abs[1024];
-        qs_project_resolve(proj, mc->mesh_path, abs, sizeof(abs));
-        qs_asset_cache_release_mesh(abs);
+        /* Only release from cache if it was a file-based asset */
+        if (mc->mesh_path[0] != '@') {
+            char abs[1024];
+            qs_project_resolve(proj, mc->mesh_path, abs, sizeof(abs));
+            qs_asset_cache_release_mesh(abs);
+        }
         mc->mesh = NULL;
         mc->mesh_path[0] = '\0';
     }
@@ -999,12 +1023,15 @@ static void on_mesh_select(Ca_Select *sel, void *user_data)
     int idx = ca_select_get(sel);
     if (idx > 0 && (uint32_t)idx < s_mesh_option_count && s_mesh_paths) {
         const char *rel = s_mesh_paths[idx - 1];
-        char abs[1024];
-        qs_project_resolve(proj, rel, abs, sizeof(abs));
         snprintf(mc->mesh_path, sizeof(mc->mesh_path), "%s", rel);
-        mc->mesh = qs_asset_cache_mesh_async(eng, qs_engine_job_system(eng), abs);
-        /* NULL while background job runs; submit_renderables assigns mc->mesh
-           on the frame the pump completes the GPU upload. */
+        if (rel[0] == '@') {
+            /* Built-in primitive — scene resolves it on next frame */
+            mc->mesh = NULL;
+        } else {
+            char abs[1024];
+            qs_project_resolve(proj, rel, abs, sizeof(abs));
+            mc->mesh = qs_asset_cache_mesh_async(eng, qs_engine_job_system(eng), abs);
+        }
     }
 }
 
@@ -1204,10 +1231,15 @@ static void build_mesh_comp_section(Qs_Scene *scene, Qs_Entity entity,
     build_mat_subsection(ICON_MESH "  Material", "mat-sub-material");
 
     refresh_mat_options();
+    if (!mc->material_path[0]) {
+        snprintf(mc->material_path, sizeof(mc->material_path), "%s", "@default");
+        mc->material = NULL;
+        mc->material_load_failed = false;
+    }
     int sel_mat_idx = 0;
-    if (mc->material_path[0] && s_mat_paths) {
-        for (uint32_t i = 1; i < s_mat_option_count; i++) {
-            if (s_mat_paths[i - 1] && strcmp(s_mat_paths[i - 1], mc->material_path) == 0) {
+    if (s_mat_paths) {
+        for (uint32_t i = 0; i < s_mat_option_count; i++) {
+            if (s_mat_paths[i] && strcmp(s_mat_paths[i], mc->material_path) == 0) {
                 sel_mat_idx = (int)i; break;
             }
         }

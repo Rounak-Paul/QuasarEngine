@@ -242,6 +242,7 @@ Qs_Texture *qs_texture_at(uint32_t index)
    ================================================================ */
 
 #include "qs_mesh.h"
+#include "qs_primitive.h"
 #include "qs_system.h"
 #include "qs_gpu.h"
 #include "qs_log.h"
@@ -249,6 +250,7 @@ Qs_Texture *qs_texture_at(uint32_t index)
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
 
 #define QS_MAX_MESHES 512
 
@@ -270,6 +272,7 @@ typedef struct {
 } MeshSystemData;
 
 static MeshSystemData *g_mesh_sys;
+static Qs_Mesh        *g_primitives[QS_PRIMITIVE_COUNT];
 
 /* ================================================================
    SYSTEM LIFECYCLE
@@ -283,11 +286,275 @@ static void mesh_destroy_one(Qs_Mesh *m)
     m->in_use = false;
 }
 
+/* ================================================================
+   PRIMITIVE GEOMETRY BUILDERS
+   ================================================================ */
+
+static Qs_Mesh *build_primitive_cube(Qs_Engine *engine)
+{
+    /* 24 unique vertices (4 per face × 6 faces) + 36 indices */
+    static const Qs_Vertex verts[24] = {
+        /* +Z face */
+        {{-0.5f,-0.5f, 0.5f},{0,0,1},{1,0,0,1},{0,1}},
+        {{ 0.5f,-0.5f, 0.5f},{0,0,1},{1,0,0,1},{1,1}},
+        {{ 0.5f, 0.5f, 0.5f},{0,0,1},{1,0,0,1},{1,0}},
+        {{-0.5f, 0.5f, 0.5f},{0,0,1},{1,0,0,1},{0,0}},
+        /* -Z face */
+        {{ 0.5f,-0.5f,-0.5f},{0,0,-1},{-1,0,0,1},{0,1}},
+        {{-0.5f,-0.5f,-0.5f},{0,0,-1},{-1,0,0,1},{1,1}},
+        {{-0.5f, 0.5f,-0.5f},{0,0,-1},{-1,0,0,1},{1,0}},
+        {{ 0.5f, 0.5f,-0.5f},{0,0,-1},{-1,0,0,1},{0,0}},
+        /* +X face */
+        {{ 0.5f,-0.5f, 0.5f},{1,0,0},{0,0,-1,1},{0,1}},
+        {{ 0.5f,-0.5f,-0.5f},{1,0,0},{0,0,-1,1},{1,1}},
+        {{ 0.5f, 0.5f,-0.5f},{1,0,0},{0,0,-1,1},{1,0}},
+        {{ 0.5f, 0.5f, 0.5f},{1,0,0},{0,0,-1,1},{0,0}},
+        /* -X face */
+        {{-0.5f,-0.5f,-0.5f},{-1,0,0},{0,0,1,1},{0,1}},
+        {{-0.5f,-0.5f, 0.5f},{-1,0,0},{0,0,1,1},{1,1}},
+        {{-0.5f, 0.5f, 0.5f},{-1,0,0},{0,0,1,1},{1,0}},
+        {{-0.5f, 0.5f,-0.5f},{-1,0,0},{0,0,1,1},{0,0}},
+        /* +Y face */
+        {{-0.5f, 0.5f, 0.5f},{0,1,0},{1,0,0,1},{0,1}},
+        {{ 0.5f, 0.5f, 0.5f},{0,1,0},{1,0,0,1},{1,1}},
+        {{ 0.5f, 0.5f,-0.5f},{0,1,0},{1,0,0,1},{1,0}},
+        {{-0.5f, 0.5f,-0.5f},{0,1,0},{1,0,0,1},{0,0}},
+        /* -Y face */
+        {{-0.5f,-0.5f,-0.5f},{0,-1,0},{1,0,0,1},{0,1}},
+        {{ 0.5f,-0.5f,-0.5f},{0,-1,0},{1,0,0,1},{1,1}},
+        {{ 0.5f,-0.5f, 0.5f},{0,-1,0},{1,0,0,1},{1,0}},
+        {{-0.5f,-0.5f, 0.5f},{0,-1,0},{1,0,0,1},{0,0}},
+    };
+    static const uint16_t idx[36] = {
+        0,1,2, 0,2,3,   4,5,6, 4,6,7,
+        8,9,10,8,10,11, 12,13,14,12,14,15,
+        16,17,18,16,18,19, 20,21,22,20,22,23,
+    };
+    return qs_mesh_create(engine, &(Qs_MeshDesc){
+        .name         = "@cube",
+        .vertices     = verts,
+        .vertex_count = 24,
+        .indices      = idx,
+        .index_count  = 36,
+        .index_type   = QS_INDEX_TYPE_UINT16,
+    });
+}
+
+static Qs_Mesh *build_primitive_plane(Qs_Engine *engine)
+{
+    /* 4-vertex unit XZ plane, Y-up normal */
+    static const Qs_Vertex verts[4] = {
+        {{-0.5f,0, 0.5f},{0,1,0},{1,0,0,1},{0,1}},
+        {{ 0.5f,0, 0.5f},{0,1,0},{1,0,0,1},{1,1}},
+        {{ 0.5f,0,-0.5f},{0,1,0},{1,0,0,1},{1,0}},
+        {{-0.5f,0,-0.5f},{0,1,0},{1,0,0,1},{0,0}},
+    };
+    static const uint16_t idx[6] = { 0,1,2, 0,2,3 };
+    return qs_mesh_create(engine, &(Qs_MeshDesc){
+        .name         = "@plane",
+        .vertices     = verts,
+        .vertex_count = 4,
+        .indices      = idx,
+        .index_count  = 6,
+        .index_type   = QS_INDEX_TYPE_UINT16,
+    });
+}
+
+#ifndef QS_PI
+#define QS_PI 3.14159265358979323846f
+#endif
+
+static Qs_Mesh *build_primitive_sphere(Qs_Engine *engine)
+{
+    enum { RINGS = 16, SEGS = 32 };
+    const uint32_t vc = (RINGS + 1) * (SEGS + 1);
+    const uint32_t ic = RINGS * SEGS * 6;
+
+    Qs_Vertex  *verts = (Qs_Vertex  *)malloc(vc * sizeof(Qs_Vertex));
+    uint32_t   *idx   = (uint32_t   *)malloc(ic * sizeof(uint32_t));
+    if (!verts || !idx) { free(verts); free(idx); return NULL; }
+
+    uint32_t vi = 0;
+    for (int r = 0; r <= RINGS; r++) {
+        float phi = QS_PI * (float)r / (float)RINGS;          /* 0 … π   */
+        float sp  = sinf(phi), cp = cosf(phi);
+        for (int s = 0; s <= SEGS; s++) {
+            float theta = 2.0f * QS_PI * (float)s / (float)SEGS;  /* 0 … 2π  */
+            float st = sinf(theta), ct = cosf(theta);
+            float nx = ct * sp, ny = cp, nz = st * sp;
+            verts[vi].position[0] = 0.5f * nx;
+            verts[vi].position[1] = 0.5f * ny;
+            verts[vi].position[2] = 0.5f * nz;
+            verts[vi].normal[0]   = nx;
+            verts[vi].normal[1]   = ny;
+            verts[vi].normal[2]   = nz;
+            /* tangent = dP/dtheta normalised */
+            verts[vi].tangent[0]  = -st;
+            verts[vi].tangent[1]  = 0.0f;
+            verts[vi].tangent[2]  = ct;
+            verts[vi].tangent[3]  = 1.0f;
+            verts[vi].uv[0]       = (float)s / (float)SEGS;
+            verts[vi].uv[1]       = (float)r / (float)RINGS;
+            vi++;
+        }
+    }
+
+    uint32_t ii = 0;
+    for (int r = 0; r < RINGS; r++) {
+        for (int s = 0; s < SEGS; s++) {
+            uint32_t a = (uint32_t)(r       * (SEGS + 1) + s);
+            uint32_t b = (uint32_t)(r       * (SEGS + 1) + s + 1);
+            uint32_t c = (uint32_t)((r + 1) * (SEGS + 1) + s);
+            uint32_t d = (uint32_t)((r + 1) * (SEGS + 1) + s + 1);
+            idx[ii++] = a; idx[ii++] = c; idx[ii++] = b;
+            idx[ii++] = b; idx[ii++] = c; idx[ii++] = d;
+        }
+    }
+
+    Qs_Mesh *m = qs_mesh_create(engine, &(Qs_MeshDesc){
+        .name         = "@sphere",
+        .vertices     = verts,
+        .vertex_count = vc,
+        .indices      = idx,
+        .index_count  = ic,
+        .index_type   = QS_INDEX_TYPE_UINT32,
+    });
+    free(verts); free(idx);
+    return m;
+}
+
+static Qs_Mesh *build_primitive_cylinder(Qs_Engine *engine)
+{
+    enum { SEGS = 32 };
+    /* Side: (SEGS+1)*2 verts; top cap: SEGS+1; bottom cap: SEGS+1 */
+    const uint32_t vc = (SEGS + 1) * 2 + (SEGS + 1) * 2;
+    /* Side: SEGS*6; top: SEGS*3; bottom: SEGS*3 */
+    const uint32_t ic = SEGS * 6 + SEGS * 3 + SEGS * 3;
+
+    Qs_Vertex *verts = (Qs_Vertex *)malloc(vc * sizeof(Qs_Vertex));
+    uint32_t  *idx   = (uint32_t  *)malloc(ic * sizeof(uint32_t));
+    if (!verts || !idx) { free(verts); free(idx); return NULL; }
+
+    const float R = 0.5f, H = 0.5f; /* half-height */
+    uint32_t vi = 0, ii = 0;
+
+    /* Side rings — two rows (bottom y=-H, top y=+H) */
+    for (int s = 0; s <= SEGS; s++) {
+        float theta = 2.0f * QS_PI * (float)s / (float)SEGS;
+        float ct = cosf(theta), st = sinf(theta);
+        /* Bottom ring */
+        verts[vi].position[0] = R * ct;
+        verts[vi].position[1] = -H;
+        verts[vi].position[2] = R * st;
+        verts[vi].normal[0]   = ct;
+        verts[vi].normal[1]   = 0.0f;
+        verts[vi].normal[2]   = st;
+        verts[vi].tangent[0]  = -st;
+        verts[vi].tangent[1]  = 0.0f;
+        verts[vi].tangent[2]  = ct;
+        verts[vi].tangent[3]  = 1.0f;
+        verts[vi].uv[0]       = (float)s / (float)SEGS;
+        verts[vi].uv[1]       = 1.0f;
+        vi++;
+        /* Top ring */
+        verts[vi].position[0] = R * ct;
+        verts[vi].position[1] =  H;
+        verts[vi].position[2] = R * st;
+        verts[vi].normal[0]   = ct;
+        verts[vi].normal[1]   = 0.0f;
+        verts[vi].normal[2]   = st;
+        verts[vi].tangent[0]  = -st;
+        verts[vi].tangent[1]  = 0.0f;
+        verts[vi].tangent[2]  = ct;
+        verts[vi].tangent[3]  = 1.0f;
+        verts[vi].uv[0]       = (float)s / (float)SEGS;
+        verts[vi].uv[1]       = 0.0f;
+        vi++;
+    }
+    /* Side indices */
+    for (uint32_t s = 0; s < SEGS; s++) {
+        uint32_t bl = s * 2;       /* bottom-left  */
+        uint32_t tl = s * 2 + 1;  /* top-left     */
+        uint32_t br = (s+1) * 2;  /* bottom-right */
+        uint32_t tr = (s+1) * 2 + 1;
+        idx[ii++] = bl; idx[ii++] = br; idx[ii++] = tl;
+        idx[ii++] = tl; idx[ii++] = br; idx[ii++] = tr;
+    }
+
+    /* Cap base vertex offset */
+    uint32_t cap_base = vi;
+
+    /* Top cap — centre + rim */
+    verts[vi].position[0] = 0; verts[vi].position[1] =  H; verts[vi].position[2] = 0;
+    verts[vi].normal[0] = 0; verts[vi].normal[1] = 1; verts[vi].normal[2] = 0;
+    verts[vi].tangent[0]=1; verts[vi].tangent[1]=0; verts[vi].tangent[2]=0; verts[vi].tangent[3]=1;
+    verts[vi].uv[0]=0.5f; verts[vi].uv[1]=0.5f;
+    uint32_t top_center = vi++;
+
+    for (int s = 0; s < SEGS; s++) {
+        float theta = 2.0f * QS_PI * (float)s / (float)SEGS;
+        float ct = cosf(theta), st = sinf(theta);
+        verts[vi].position[0] = R * ct; verts[vi].position[1] = H; verts[vi].position[2] = R * st;
+        verts[vi].normal[0] = 0; verts[vi].normal[1] = 1; verts[vi].normal[2] = 0;
+        verts[vi].tangent[0]=1; verts[vi].tangent[1]=0; verts[vi].tangent[2]=0; verts[vi].tangent[3]=1;
+        verts[vi].uv[0] = ct * 0.5f + 0.5f; verts[vi].uv[1] = st * 0.5f + 0.5f;
+        vi++;
+    }
+    for (uint32_t s = 0; s < SEGS; s++) {
+        uint32_t a = top_center;
+        uint32_t b = cap_base + 1 + s;
+        uint32_t c = cap_base + 1 + (s + 1) % SEGS;
+        idx[ii++] = a; idx[ii++] = b; idx[ii++] = c;
+    }
+
+    /* Bottom cap */
+    verts[vi].position[0] = 0; verts[vi].position[1] = -H; verts[vi].position[2] = 0;
+    verts[vi].normal[0] = 0; verts[vi].normal[1] = -1; verts[vi].normal[2] = 0;
+    verts[vi].tangent[0]=1; verts[vi].tangent[1]=0; verts[vi].tangent[2]=0; verts[vi].tangent[3]=1;
+    verts[vi].uv[0]=0.5f; verts[vi].uv[1]=0.5f;
+    uint32_t bot_center = vi++;
+    uint32_t bot_rim_base = vi;
+
+    for (int s = 0; s < SEGS; s++) {
+        float theta = 2.0f * QS_PI * (float)s / (float)SEGS;
+        float ct = cosf(theta), st = sinf(theta);
+        verts[vi].position[0] = R * ct; verts[vi].position[1] = -H; verts[vi].position[2] = R * st;
+        verts[vi].normal[0] = 0; verts[vi].normal[1] = -1; verts[vi].normal[2] = 0;
+        verts[vi].tangent[0]=1; verts[vi].tangent[1]=0; verts[vi].tangent[2]=0; verts[vi].tangent[3]=1;
+        verts[vi].uv[0] = ct * 0.5f + 0.5f; verts[vi].uv[1] = st * 0.5f + 0.5f;
+        vi++;
+    }
+    for (uint32_t s = 0; s < SEGS; s++) {
+        uint32_t a = bot_center;
+        uint32_t b = bot_rim_base + (s + 1) % SEGS;
+        uint32_t c = bot_rim_base + s;
+        idx[ii++] = a; idx[ii++] = b; idx[ii++] = c;
+    }
+
+    Qs_Mesh *m = qs_mesh_create(engine, &(Qs_MeshDesc){
+        .name         = "@cylinder",
+        .vertices     = verts,
+        .vertex_count = vc,
+        .indices      = idx,
+        .index_count  = ic,
+        .index_type   = QS_INDEX_TYPE_UINT32,
+    });
+    free(verts); free(idx);
+    return m;
+}
+
 static bool mesh_sys_init(Qs_System *sys, Qs_Engine *engine)
 {
     MeshSystemData *data = (MeshSystemData *)qs_system_data(sys);
     data->gpu  = qs_engine_gpu(engine);
     g_mesh_sys = data;
+
+    /* Build built-in primitives */
+    g_primitives[QS_PRIMITIVE_CUBE]     = build_primitive_cube(engine);
+    g_primitives[QS_PRIMITIVE_SPHERE]   = build_primitive_sphere(engine);
+    g_primitives[QS_PRIMITIVE_PLANE]    = build_primitive_plane(engine);
+    g_primitives[QS_PRIMITIVE_CYLINDER] = build_primitive_cylinder(engine);
+
     QS_LOG_INFO("Mesh system initialised");
     return true;
 }
@@ -296,6 +563,11 @@ static void mesh_sys_shutdown(Qs_System *sys, Qs_Engine *engine)
 {
     (void)engine;
     MeshSystemData *data = (MeshSystemData *)qs_system_data(sys);
+    /* Primitives are owned by the mesh pool; the pool loop below destroys
+       them. Just clear the pointer table so qs_primitive_mesh() returns NULL
+       after shutdown. */
+    for (uint32_t i = 0; i < QS_PRIMITIVE_COUNT; i++)
+        g_primitives[i] = NULL;
     for (uint32_t i = 0; i < QS_MAX_MESHES; i++)
         mesh_destroy_one(&data->meshes[i]);
     g_mesh_sys = NULL;
@@ -316,6 +588,35 @@ Qs_SystemDesc qs_mesh_system_desc(void)
 /* ================================================================
    PUBLIC API
    ================================================================ */
+
+/* --- Primitive API --- */
+
+Qs_Mesh *qs_primitive_mesh(Qs_PrimitiveType type)
+{
+    if ((unsigned)type >= QS_PRIMITIVE_COUNT) return NULL;
+    return g_primitives[type];
+}
+
+const char *qs_primitive_path(Qs_PrimitiveType type)
+{
+    static const char *s_paths[QS_PRIMITIVE_COUNT] = {
+        "@cube", "@sphere", "@plane", "@cylinder",
+    };
+    if ((unsigned)type >= QS_PRIMITIVE_COUNT) return NULL;
+    return s_paths[type];
+}
+
+int qs_primitive_type_from_path(const char *path)
+{
+    if (!path || path[0] != '@') return -1;
+    if (strcmp(path, "@cube")     == 0) return (int)QS_PRIMITIVE_CUBE;
+    if (strcmp(path, "@sphere")   == 0) return (int)QS_PRIMITIVE_SPHERE;
+    if (strcmp(path, "@plane")    == 0) return (int)QS_PRIMITIVE_PLANE;
+    if (strcmp(path, "@cylinder") == 0) return (int)QS_PRIMITIVE_CYLINDER;
+    return -1;
+}
+
+/* --- Mesh API --- */
 
 Qs_Mesh *qs_mesh_create(Qs_Engine *engine, const Qs_MeshDesc *desc)
 {
@@ -447,6 +748,7 @@ typedef struct {
 } MaterialSystemData;
 
 static MaterialSystemData *g_material_sys;
+static Qs_Material        *g_default_material;
 
 /* ================================================================
    DESCRIPTOR LAYOUT + POOL
@@ -565,6 +867,19 @@ static bool material_sys_init(Qs_System *sys, Qs_Engine *engine)
         return false;
     }
 
+    /* Built-in default material — plain gray PBR, no textures */
+    Qs_MaterialDesc dmd = qs_material_desc_defaults();
+    dmd.name = "@default";
+    dmd.base_color_factor[0] = 0.8f;
+    dmd.base_color_factor[1] = 0.8f;
+    dmd.base_color_factor[2] = 0.8f;
+    dmd.base_color_factor[3] = 1.0f;
+    dmd.metallic_factor      = 0.0f;
+    dmd.roughness_factor     = 0.5f;
+    g_default_material = qs_material_create(engine, &dmd);
+    if (!g_default_material)
+        QS_LOG_WARN("Material system: failed to create default material");
+
     QS_LOG_INFO("Material system initialised");
     return true;
 }
@@ -574,6 +889,7 @@ static void material_sys_shutdown(Qs_System *sys, Qs_Engine *engine)
     (void)engine;
     MaterialSystemData *data = (MaterialSystemData *)qs_system_data(sys);
 
+    g_default_material = NULL; /* owned by the pool below */
     for (uint32_t i = 0; i < QS_MAX_MATERIALS; i++) {
         if (data->materials[i].in_use)
             material_destroy_one(&data->materials[i]);
@@ -601,9 +917,10 @@ Qs_SystemDesc qs_material_system_desc(void)
     };
 }
 
-/* ================================================================
-   PUBLIC API
-   ================================================================ */
+Qs_Material *qs_default_material(void)
+{
+    return g_default_material;
+}
 
 Qs_Material *qs_material_create(Qs_Engine *engine, const Qs_MaterialDesc *desc)
 {
@@ -857,7 +1174,6 @@ Qs_SystemDesc qs_light_system_desc(void)
         .update    = NULL,
     };
 }
-
 /* ================================================================
    PUBLIC API
    ================================================================ */

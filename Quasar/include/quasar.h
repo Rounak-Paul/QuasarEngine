@@ -11,6 +11,7 @@
 #include "qs_renderer.h"
 #include "qs_texture.h"
 #include "qs_mesh.h"
+#include "qs_primitive.h"
 #include "qs_material.h"
 #include "qs_light.h"
 #include "qs_scene.h"

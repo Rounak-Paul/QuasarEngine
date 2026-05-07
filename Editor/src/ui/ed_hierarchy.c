@@ -2,6 +2,7 @@
 #include "editor.h"
 #include "ed_layout.h"
 #include "ca_theme.h"
+#include "qs_primitive.h"
 
 #include <string.h>
 #include <stdio.h>
@@ -115,14 +116,20 @@ static Qs_Entity duplicate_entity(Qs_Scene *scene, Qs_Entity src)
 enum {
     ROOT_CTX_EMPTY     = 0,
     ROOT_CTX_LIGHT     = 1,
-    ROOT_CTX_PROTO     = 2,
-    /* 3 = "-" */
-    ROOT_CTX_FRAME_ALL = 4,
+    ROOT_CTX_CUBE      = 2,
+    ROOT_CTX_SPHERE    = 3,
+    ROOT_CTX_PLANE     = 4,
+    ROOT_CTX_CYLINDER  = 5,
+    /* 6 = "-" */
+    ROOT_CTX_FRAME_ALL = 7,
 };
 static const char *s_root_ctx_items[] = {
     "Add Empty Entity",
     "Add Light",
-    "Add Prototype",
+    "Add Cube",
+    "Add Sphere",
+    "Add Plane",
+    "Add Cylinder",
     "-",
     "Frame All",
 };
@@ -211,10 +218,22 @@ static void on_root_ctx(int item_index, void *user_data)
         e = create_entity_with_parent("Light", QS_ENTITY_INVALID);
         if (e != QS_ENTITY_INVALID) qs_entity_add(scene, e, qs_light_comp_type());
         break;
-    case ROOT_CTX_PROTO:
-        e = create_entity_with_parent("Prototype", QS_ENTITY_INVALID);
-        if (e != QS_ENTITY_INVALID) qs_entity_add(scene, e, qs_prototype_comp_type());
+    case ROOT_CTX_CUBE:
+    case ROOT_CTX_SPHERE:
+    case ROOT_CTX_PLANE:
+    case ROOT_CTX_CYLINDER: {
+        static const char *names[]  = { "Cube", "Sphere", "Plane", "Cylinder" };
+        Qs_PrimitiveType   prim     = (Qs_PrimitiveType)(item_index - ROOT_CTX_CUBE);
+        e = create_entity_with_parent(names[prim], QS_ENTITY_INVALID);
+        if (e != QS_ENTITY_INVALID) {
+            Qs_MeshComp *mc = (Qs_MeshComp *)qs_entity_add(scene, e, qs_mesh_comp_type());
+            if (mc) {
+                snprintf(mc->mesh_path,     sizeof(mc->mesh_path),     "%s", qs_primitive_path(prim));
+                snprintf(mc->material_path, sizeof(mc->material_path), "@default");
+            }
+        }
         break;
+    }
     case ROOT_CTX_FRAME_ALL:
         editor_focus_all(ed);
         return;
