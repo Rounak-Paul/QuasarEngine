@@ -1,5 +1,6 @@
 #include "ed_project_launcher.h"
 #include "ed_file_browser.h"
+#include "ed_layout.h"
 #include "../ed_style.h"
 #include "quasar.h"
 
@@ -218,6 +219,7 @@ static struct {
 
     RecentProject  recent[MAX_RECENT];
     int            recent_count;
+    bool           project_list_dirty;
 
     LauncherTab    active_tab;
 
@@ -261,6 +263,8 @@ static void switch_tab(LauncherTab tab)
    CALLBACKS
    ================================================================ */
 
+static void rebuild_project_list(void);
+
 static void on_tab_projects(Ca_Button *btn, void *data)
 {
     (void)btn; (void)data;
@@ -285,6 +289,40 @@ static void on_entry_click(Ca_Button *btn, void *data)
     s_launcher.done = true;
 
     ca_window_close(s_launcher.window);
+}
+
+static void on_remove_popup_result(Ca_PopupResult result, void *user_data)
+{
+    int idx = (int)(intptr_t)user_data;
+    if (result != CA_POPUP_RESULT_YES && result != CA_POPUP_RESULT_OK)
+        return;
+    if (idx >= 0 && idx < s_launcher.recent_count) {
+        memmove(&s_launcher.recent[idx], &s_launcher.recent[idx + 1],
+                (size_t)(s_launcher.recent_count - idx - 1) * sizeof(RecentProject));
+        s_launcher.recent_count--;
+        save_recent_projects(s_launcher.recent, s_launcher.recent_count);
+        s_launcher.project_list_dirty = true;
+    }
+}
+
+static void on_entry_remove_request(Ca_Button *btn, void *data)
+{
+    (void)btn;
+    int idx = (int)(intptr_t)data;
+    if (idx < 0 || idx >= s_launcher.recent_count) return;
+
+    char msg[256];
+    snprintf(msg, sizeof(msg), "Remove '%s' from recent projects?", s_launcher.recent[idx].name);
+
+    (void)ca_popup_show(s_launcher.instance, &(Ca_PopupDesc){
+        .title          = "Remove Project",
+        .message        = msg,
+        .buttons        = CA_POPUP_BUTTONS_YES_NO,
+        .replace_active = true,
+        .queue_if_busy  = false,
+        .on_result      = on_remove_popup_result,
+        .result_data    = (void *)(intptr_t)idx,
+    });
 }
 
 static void on_open_confirm(const char *path, void *user_data)
@@ -396,10 +434,15 @@ static void rebuild_project_list(void)
     }
 
     for (int i = 0; i < s_launcher.recent_count; i++) {
+        ca_div_begin(&(Ca_DivDesc){
+            .direction = CA_HORIZONTAL,
+            .style     = "launcher-entry-row",
+        });
+
         ca_btn_begin(&(Ca_BtnDesc){
             .on_click   = on_entry_click,
             .click_data = (void *)(intptr_t)i,
-            .style      = "launcher-entry",
+            .style      = "launcher-entry-open",
             .direction  = CA_VERTICAL,
         });
         ca_text(&(Ca_TextDesc){
@@ -411,6 +454,16 @@ static void rebuild_project_list(void)
             .style = "launcher-entry-path",
         });
         ca_btn_end();
+
+        ca_btn_begin(&(Ca_BtnDesc){
+            .text       = ICON_TRASH,
+            .on_click   = on_entry_remove_request,
+            .click_data = (void *)(intptr_t)i,
+            .style      = "launcher-entry-action",
+        });
+        ca_btn_end();
+
+        ca_div_end();
     }
 
     ca_div_end();
@@ -602,6 +655,10 @@ static void build_launcher_ui(void)
 static void launcher_on_frame(void *data)
 {
     (void)data;
+    if (s_launcher.project_list_dirty && s_launcher.project_list) {
+        rebuild_project_list();
+        s_launcher.project_list_dirty = false;
+    }
     ed_file_browser_update();
 }
 

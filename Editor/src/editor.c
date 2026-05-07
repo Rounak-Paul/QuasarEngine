@@ -124,9 +124,12 @@ static void editor_build_ui(Editor *ed)
     ca_div_end();
 
     ed_layout(window, ed);
-    ed_status_bar(window, ed);
 
     ca_ui_end();
+
+    /* Status bar is a system-managed Causality control, not part of the
+       editor content layout tree. */
+    ca_window_set_status_bar(window, ed_status_bar, ed, ED_H_TAB_BAR_F);
 }
 
 static void on_mouse_button(const Ca_Event *event, void *userdata)

@@ -53,6 +53,10 @@
 /* Unified font size */
 #define ED_FS            "12"
 
+/* Runtime logical sizes for APIs that take float values (not CSS strings). */
+#define ED_H_CHROME_F    20.0f
+#define ED_H_TAB_BAR_F   22.0f
+
 /* Heights (logical pixels) */
 #define ED_H_ROW_TIGHT   "16"   /* tight list rows: hierarchy, console     */
 #define ED_H_INPUT_MINI  "17"   /* compact vec/scalar inspector inputs     */

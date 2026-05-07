@@ -15,6 +15,23 @@ static Ca_Label  *s_console_lines[CONSOLE_MAX_LINES];
 static uint32_t   s_prev_log_count;
 static bool        s_needs_scroll;
 
+static void panel_tabs(const char **labels, int count, int active)
+{
+    ca_tabs(&(Ca_TabBarDesc){
+        .labels        = labels,
+        .count         = count,
+        .active        = active,
+        .style         = "panel-tab-bar",
+        .active_text   = CA_THEME_TEXT_BRIGHT,
+        .inactive_text = CA_THEME_TEXT_DIM,
+        .active_bg     = CA_THEME_BG_OVERLAY,
+        .inactive_bg   = CA_THEME_TRANSPARENT,
+        .tab_padding_x = 2.0f,
+        .tabs_fill     = (count == 1),
+        .tabs_left_align = true,
+    });
+}
+
 static uint32_t log_level_color(Qs_LogLevel level)
 {
     switch (level) {
@@ -65,7 +82,10 @@ void ed_layout(Ca_Window *window, void *editor)
                 .direction = CA_HORIZONTAL,
                 .style     = "panel-tab-bar",
             });
-            ca_text(&(Ca_TextDesc){ .text = "Hierarchy", .style = "panel-tab active" });
+            {
+                static const char *tabs[] = { "Hierarchy" };
+                panel_tabs(tabs, 1, 0);
+            }
             ca_div_end();
             ed_hierarchy(editor);
             ca_div_end();
@@ -90,7 +110,10 @@ void ed_layout(Ca_Window *window, void *editor)
                     .direction = CA_HORIZONTAL,
                     .style     = "panel-tab-bar",
                 });
-                ca_text(&(Ca_TextDesc){ .text = "Scene", .style = "panel-tab active" });
+                {
+                    static const char *tabs[] = { "Scene" };
+                    panel_tabs(tabs, 1, 0);
+                }
                 ca_div_end();
                 {
                     Ca_Viewport *vp = ca_viewport(&(Ca_ViewportDesc){ 0 });
@@ -108,7 +131,10 @@ void ed_layout(Ca_Window *window, void *editor)
                     .direction = CA_HORIZONTAL,
                     .style     = "panel-tab-bar",
                 });
-                ca_text(&(Ca_TextDesc){ .text = "Inspector", .style = "panel-tab active" });
+                {
+                    static const char *tabs[] = { "Inspector" };
+                    panel_tabs(tabs, 1, 0);
+                }
                 ca_div_end();
                 ed_inspector(editor);
                 ca_div_end();
@@ -124,16 +150,7 @@ void ed_layout(Ca_Window *window, void *editor)
         });
         {
             static const char *bottom_tabs[] = { "Console", "Assets" };
-            ca_tabs(&(Ca_TabBarDesc){
-                .labels        = bottom_tabs,
-                .count         = 2,
-                .active        = 0,
-                .style         = "panel-tab-bar",
-                .active_text   = CA_THEME_ACCENT,
-                .inactive_text = CA_THEME_TEXT_DIM,
-                .active_bg     = CA_THEME_BG_OVERLAY,
-                .inactive_bg   = CA_THEME_TRANSPARENT,
-            });
+            panel_tabs(bottom_tabs, 2, 0);
 
             /* Console content — scrollable log lines */
             ca_div_begin(&(Ca_DivDesc){
