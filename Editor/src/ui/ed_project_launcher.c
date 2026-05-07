@@ -223,6 +223,7 @@ static struct {
 
     /* Sidebar tab buttons */
     Ca_Button     *tab_btns[TAB_COUNT];
+    Ca_Label      *tab_labels[TAB_COUNT];
 
     /* Projects page */
     Ca_Div        *page_projects;
@@ -250,6 +251,9 @@ static void switch_tab(LauncherTab tab)
         ca_set_style(s_launcher.tab_btns[i],
             i == (int)tab ? "launcher-tab launcher-tab-active"
                           : "launcher-tab");
+        ca_set_style(s_launcher.tab_labels[i],
+            i == (int)tab ? "launcher-tab-label launcher-tab-label-active"
+                          : "launcher-tab-label");
     }
 }
 
@@ -415,6 +419,7 @@ static void rebuild_project_list(void)
 static void build_launcher_ui(void)
 {
     Ca_Window *win = s_launcher.window;
+    s_launcher.active_tab = TAB_PROJECTS;
 
     /* Root: horizontal layout — sidebar | content */
     ca_ui_begin(win, &(Ca_DivDesc){
@@ -445,15 +450,21 @@ static void build_launcher_ui(void)
 
         /* Tab buttons */
         s_launcher.tab_btns[TAB_PROJECTS] = ca_btn_begin(&(Ca_BtnDesc){
-            .text       = "Projects",
             .on_click   = on_tab_projects,
-            .style      = "launcher-tab",
+            .style      = "launcher-tab launcher-tab-active",
+        });
+        s_launcher.tab_labels[TAB_PROJECTS] = ca_text(&(Ca_TextDesc){
+            .text  = "Projects",
+            .style = "launcher-tab-label launcher-tab-label-active",
         });
         ca_btn_end();
         s_launcher.tab_btns[TAB_NEW_PROJECT] = ca_btn_begin(&(Ca_BtnDesc){
-            .text       = "New Project",
             .on_click   = on_tab_new_project,
             .style      = "launcher-tab",
+        });
+        s_launcher.tab_labels[TAB_NEW_PROJECT] = ca_text(&(Ca_TextDesc){
+            .text  = "New Project",
+            .style = "launcher-tab-label",
         });
         ca_btn_end();
 
@@ -576,9 +587,6 @@ static void build_launcher_ui(void)
         ca_div_end(); /* content */
     }
     ca_ui_end();
-
-    /* Highlight initial active tab */
-    switch_tab(TAB_PROJECTS);
 }
 
 /* ================================================================

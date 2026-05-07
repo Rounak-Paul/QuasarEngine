@@ -935,7 +935,7 @@ const char *g_launcher_css =
 
     /* ---- Left sidebar ---- */
     ".launcher-sidebar {"
-    "  width: 200px;"
+    "  width: 128px;"
     "  background: " ED_COL_ELEVATED ";"
     "  padding-top: 0px;"
     "  gap: 0px;"
@@ -966,16 +966,25 @@ const char *g_launcher_css =
     "  width: 100%;"
     "  height: " ED_H_ITEM_MD "px;"
     "  background: transparent;"
-    "  color: " ED_COL_TEXT_DIM ";"
     "  font-size: " ED_FS "px;"
-    "  text-align: left;"
+    "  align-items: center;"
+    "  justify-content: flex-start;"
     "  padding-left: 18px;"
     "  corner-radius: 0px;"
     "}"
 
+    ".launcher-tab-label {"
+    "  color: " ED_COL_TEXT_DIM ";"
+    "  font-size: " ED_FS "px;"
+    "  text-align: left;"
+    "}"
+
+    ".launcher-tab-label-active {"
+    "  color: " ED_COL_PRIMARY ";"
+    "}"
+
     ".launcher-tab-active {"
     "  background: " ED_COL_OVERLAY ";"
-    "  color: " ED_COL_PRIMARY ";"
     "}"
 
     /* ---- Right content area ---- */
