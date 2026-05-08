@@ -430,12 +430,27 @@ static bool dir_has_subdirs(const char *abs_dir)
 #endif
 }
 
+/* FNV-1a hash of a path → short stable ID that always fits in CA_NODE_ID_MAX.
+   Using the full path as an ID causes truncation at 63 chars, which breaks
+   Causality's reconcile matching and forces every tree node to be recreated
+   as a fresh node (expanded=true) on every dirty rebuild. */
+static void path_stable_id(const char *path, char *out, size_t out_size)
+{
+    uint32_t h = 2166136261u;
+    for (const char *p = path; *p; p++) {
+        h ^= (uint8_t)*p;
+        h *= 16777619u;
+    }
+    snprintf(out, out_size, "atr-%08x", h);
+}
+
 static void assets_build_tree_node(const char *abs_dir)
 {
     if (!abs_dir || !abs_dir[0]) return;
 
     const char *label = abs_dir;
-    if (strcmp(abs_dir, s_assets_root) == 0) {
+    const bool is_root = strcmp(abs_dir, s_assets_root) == 0;
+    if (is_root) {
         label = "assets";
     } else {
         const char *p = strrchr(abs_dir, ED_PATH_SEP);
@@ -445,8 +460,8 @@ static void assets_build_tree_node(const char *abs_dir)
     const bool has_children = dir_has_subdirs(abs_dir);
     const bool selected = strcmp(abs_dir, s_assets_folder) == 0;
 
-    char node_id[ASSETS_MAX_PATH + 32];
-    snprintf(node_id, sizeof(node_id), "assets-tree-%s", abs_dir);
+    char node_id[16];
+    path_stable_id(abs_dir, node_id, sizeof(node_id));
 
     AssetsTreeClickCtx *ctx = NULL;
     if (s_assets_tree_click_count < ASSETS_TREE_CTX_MAX) {
@@ -461,7 +476,7 @@ static void assets_build_tree_node(const char *abs_dir)
         .icon = ICON_FOLDER,
         .icon_color = selected ? CA_THEME_TEXT_BRIGHT : CA_THEME_ACCENT,
         .is_leaf = !has_children,
-        .expanded = true,
+        .expanded = is_root,
         .on_toggle = on_assets_tree_toggle,
         .toggle_data = ctx,
     });
@@ -518,6 +533,9 @@ static void on_assets_tree_toggle(Ca_TreeNode *tn, void *user_data)
 
 static void assets_sync_widgets(void)
 {
+    /* Reset per-frame mesh GPU budget before any thumbnail lookups. */
+    ed_thumbnail_begin_frame();
+
     if (s_assets_search_input) {
         const char *txt = ca_get_text(s_assets_search_input);
         if (!txt) txt = "";
@@ -539,6 +557,12 @@ static void assets_sync_widgets(void)
                 (s_assets_view_mode == (AssetsViewMode)vi)
                     ? CA_THEME_ACCENT : CA_THEME_TEXT_DIM);
     }
+
+    /* While thumbnails are loading or waiting for GPU budget, force a
+       reconcile on each frame so newly-ready images appear immediately
+       without requiring any user interaction to trigger a redraw. */
+    if (!s_assets_dirty && s_assets_view_mode == ASSETS_VIEW_THUMBNAIL)
+        s_assets_dirty = ed_thumbnail_any_ready();
 
     if (!s_assets_dirty) return;
 
@@ -826,6 +850,9 @@ static void assets_init(Editor *editor)
 
     Qs_Project *project = editor_project(editor);
     if (!project) return;
+
+    /* Invalidate stale thumbnails from any previous project. */
+    ed_thumbnail_flush();
 
     const char *proj_path = qs_project_path(project);
 
