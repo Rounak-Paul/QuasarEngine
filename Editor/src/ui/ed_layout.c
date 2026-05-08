@@ -16,6 +16,8 @@
     #include <strings.h>
     #include <unistd.h>
     #include <sys/wait.h>
+#else
+    #define strcasecmp _stricmp
 #endif
 
 #define ICON_FOLDER    "\xEF\x81\xBB"   /* fa-folder       U+F07B */
@@ -115,7 +117,7 @@ static int                s_assets_tree_click_count;
 
 static void on_assets_row_click(Ca_Button *btn, void *user_data);
 static void on_assets_ctx_menu(int item_index, void *user_data);
-static const char *s_assets_ctx_items[];
+static const char *s_assets_ctx_items[] = { "Import", "Rename", "Delete", "Reveal" };
 static void assets_entry_abs_path(int idx, char *out, size_t out_size);
 static void on_assets_tree_toggle(Ca_TreeNode *tn, void *user_data);
 static void on_assets_filter_select(Ca_Select *sel, void *user_data);
@@ -782,8 +784,6 @@ static void on_assets_view_mode_click(Ca_Button *btn, void *user_data)
     s_assets_view_mode = (AssetsViewMode)(intptr_t)user_data;
     s_assets_dirty = true;
 }
-
-static const char *s_assets_ctx_items[] = { "Import", "Rename", "Delete", "Reveal" };
 
 static void on_assets_ctx_menu(int item_index, void *user_data)
 {
