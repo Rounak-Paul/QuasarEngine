@@ -25,12 +25,18 @@
 
 #define QS_MAX_PATH       1024
 #define QS_MAX_PROTOTYPES 1024
+#define QS_MAX_SCENES     256
 #define QS_MAX_SCAN       4096   /* max scanned assets per type */
 
 struct Qs_Project {
     char name[64];
     char path[QS_MAX_PATH];
     char file[QS_MAX_PATH];   /* full path to the .quasar file */
+
+    /* Scenes — project-relative paths */
+    char    *scenes[QS_MAX_SCENES];
+    uint32_t scene_count;
+    char     startup_scene[QS_MAX_PATH]; /* project-relative path */
 
     /* Asset DB — project-relative paths of registered prototypes */
     char  *prototypes[QS_MAX_PROTOTYPES];
@@ -135,6 +141,14 @@ static bool write_project_file(const Qs_Project *p)
     cJSON_AddStringToObject(root, "version", "0.1.0");
     cJSON_AddStringToObject(root, "engine_version", "0.1.0");
 
+    /* startup_scene + scenes list */
+    if (p->startup_scene[0])
+        cJSON_AddStringToObject(root, "startup_scene", p->startup_scene);
+    cJSON *scenes_arr = cJSON_CreateArray();
+    for (uint32_t i = 0; i < p->scene_count; i++)
+        cJSON_AddItemToArray(scenes_arr, cJSON_CreateString(p->scenes[i]));
+    cJSON_AddItemToObject(root, "scenes", scenes_arr);
+
     /* asset_db */
     cJSON *asset_db = cJSON_CreateObject();
     cJSON *protos   = cJSON_CreateArray();
@@ -238,18 +252,22 @@ Qs_Project *qs_project_create(const Qs_ProjectDesc *desc)
         return NULL;
     }
 
-    /* Create subdirectories */
+    /* Create subdirectory layout:
+         <project>/assets/
+         <project>/assets/scenes/
+         <project>/assets/scripts/ */
+    char assets_dir[QS_MAX_PATH];
+    snprintf(assets_dir, sizeof(assets_dir), "%s/assets", desc->path);
+    ensure_dir(assets_dir);
     char sub[QS_MAX_PATH];
-    snprintf(sub, sizeof(sub), "%s/Assets", desc->path);
+    snprintf(sub, sizeof(sub), "%s/scenes", assets_dir);
     ensure_dir(sub);
-    snprintf(sub, sizeof(sub), "%s/scenes", desc->path);
-    ensure_dir(sub);
-    snprintf(sub, sizeof(sub), "%s/scripts", desc->path);
+    snprintf(sub, sizeof(sub), "%s/scripts", assets_dir);
     ensure_dir(sub);
 
-    /* Write the default scene */
+    /* Write the default scene inside assets/scenes/ */
     char scenes_dir[QS_MAX_PATH];
-    snprintf(scenes_dir, sizeof(scenes_dir), "%s/scenes", desc->path);
+    snprintf(scenes_dir, sizeof(scenes_dir), "%s/scenes", assets_dir);
     write_default_scene(scenes_dir);
 
     /* Stage a project struct then write it */
@@ -261,7 +279,14 @@ Qs_Project *qs_project_create(const Qs_ProjectDesc *desc)
     normalize_slashes(staged.path);
     normalize_slashes(staged.file);
 
+    /* Register the default scene */
+    staged.scenes[0] = strdup("assets/scenes/default.qscene");
+    staged.scene_count = 1;
+    snprintf(staged.startup_scene, sizeof(staged.startup_scene),
+             "assets/scenes/default.qscene");
+
     if (!write_project_file(&staged)) {
+        free(staged.scenes[0]);
         QS_LOG_ERROR("Failed to write project file: %s", staged.file);
         return NULL;
     }
@@ -304,6 +329,22 @@ Qs_Project *qs_project_open(const char *project_dir)
     snprintf(proj->file, sizeof(proj->file), "%s", quasar_path);
     normalize_slashes(proj->path);
     normalize_slashes(proj->file);
+
+    /* startup_scene */
+    const cJSON *ss_val = cJSON_GetObjectItemCaseSensitive(root, "startup_scene");
+    if (cJSON_IsString(ss_val))
+        snprintf(proj->startup_scene, sizeof(proj->startup_scene),
+                 "%s", ss_val->valuestring);
+
+    /* scenes list */
+    const cJSON *scenes_arr = cJSON_GetObjectItemCaseSensitive(root, "scenes");
+    if (cJSON_IsArray(scenes_arr)) {
+        const cJSON *s;
+        cJSON_ArrayForEach(s, scenes_arr) {
+            if (cJSON_IsString(s) && proj->scene_count < QS_MAX_SCENES)
+                proj->scenes[proj->scene_count++] = strdup(s->valuestring);
+        }
+    }
 
     /* asset_db.prototypes */
     const cJSON *asset_db = cJSON_GetObjectItemCaseSensitive(root, "asset_db");
@@ -351,6 +392,8 @@ const char *qs_project_path(const Qs_Project *project)
 void qs_project_destroy(Qs_Project *project)
 {
     if (!project) return;
+    for (uint32_t i = 0; i < project->scene_count; i++)
+        free(project->scenes[i]);
     for (uint32_t i = 0; i < project->prototype_count; i++)
         free(project->prototypes[i]);
 
@@ -445,6 +488,65 @@ bool qs_project_unregister_prototype(Qs_Project *project, const char *path)
             free(project->prototypes[i]);
             project->prototypes[i] =
                 project->prototypes[--project->prototype_count];
+            return true;
+        }
+    }
+    return false;
+}
+
+/* ================================================================
+   SCENE LIST
+   ================================================================ */
+
+const char *qs_project_startup_scene(const Qs_Project *project)
+{
+    return (project && project->startup_scene[0]) ? project->startup_scene : NULL;
+}
+
+bool qs_project_set_startup_scene(Qs_Project *project, const char *path)
+{
+    if (!project || !path) return false;
+    char rel[QS_MAX_PATH];
+    qs_project_make_relative(project, path, rel, sizeof(rel));
+    snprintf(project->startup_scene, sizeof(project->startup_scene), "%s", rel);
+    return true;
+}
+
+uint32_t qs_project_scene_count(const Qs_Project *project)
+{
+    return project ? project->scene_count : 0;
+}
+
+const char *qs_project_scene_path(const Qs_Project *project, uint32_t index)
+{
+    if (!project || index >= project->scene_count) return NULL;
+    return project->scenes[index];
+}
+
+bool qs_project_register_scene(Qs_Project *project, const char *path)
+{
+    if (!project || !path || !*path) return false;
+    char rel[QS_MAX_PATH];
+    qs_project_make_relative(project, path, rel, sizeof(rel));
+    for (uint32_t i = 0; i < project->scene_count; i++)
+        if (strcmp(project->scenes[i], rel) == 0) return true;
+    if (project->scene_count >= QS_MAX_SCENES) return false;
+    project->scenes[project->scene_count++] = strdup(rel);
+    return true;
+}
+
+bool qs_project_unregister_scene(Qs_Project *project, const char *path)
+{
+    if (!project || !path) return false;
+    char rel[QS_MAX_PATH];
+    qs_project_make_relative(project, path, rel, sizeof(rel));
+    for (uint32_t i = 0; i < project->scene_count; i++) {
+        if (strcmp(project->scenes[i], rel) == 0) {
+            free(project->scenes[i]);
+            project->scenes[i] = project->scenes[--project->scene_count];
+            /* Clear startup_scene if it was the removed one */
+            if (strcmp(project->startup_scene, rel) == 0)
+                project->startup_scene[0] = '\0';
             return true;
         }
     }

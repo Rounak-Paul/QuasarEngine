@@ -3,6 +3,7 @@
 #include "ed_inspector.h"
 #include "ed_import_dialog.h"
 #include "editor.h"
+#include "ed_thumbnail.h"
 #include "ca_theme.h"
 
 #include <stdio.h>
@@ -10,13 +11,22 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
+#include <time.h>
 #ifndef _WIN32
     #include <strings.h>
     #include <unistd.h>
 #endif
 
-#define ICON_FOLDER "\xEF\x81\xBB"
-#define ICON_FILE   "\xEF\x85\x9B"
+#define ICON_FOLDER    "\xEF\x81\xBB"   /* fa-folder       U+F07B */
+#define ICON_FILE      "\xEF\x85\x9B"   /* fa-file         U+F15B */
+#define ICON_IMAGE     "\xEF\x80\xBE"   /* fa-picture-o    U+F03E */
+#define ICON_SCRIPT    "\xEF\x84\xA1"   /* fa-code         U+F121 */
+#define ICON_MATERIAL  "\xEF\x81\x82"   /* fa-adjust       U+F042 */
+#define ICON_UP        "\xEF\x81\xB7"   /* fa-chevron-up   U+F077 */
+#define ICON_REFRESH   "\xEF\x80\xA1"   /* fa-refresh      U+F021 */
+#define ICON_VIEW_LIST "\xEF\x80\xBA"   /* fa-list         U+F03A */
+#define ICON_VIEW_GRID "\xEF\x80\x8A"   /* fa-th           U+F00A */
+#define ICON_VIEW_THUMB "\xEF\x80\x89"  /* fa-th-large     U+F009 */
 
 #ifdef _WIN32
   #ifndef WIN32_LEAN_AND_MEAN
@@ -34,6 +44,8 @@
 #define CONSOLE_MAX_LINES 100
 #define ASSETS_MAX_ENTRIES 220
 #define ASSETS_MAX_PATH    1024
+#define ASSETS_THUMB_SIZE  72
+#define ASSETS_TREE_CTX_MAX 512
 
 static Ca_Window *s_console_window;
 static Ca_Label  *s_console_lines[CONSOLE_MAX_LINES];
@@ -44,6 +56,8 @@ static int         s_bottom_tab_active;
 typedef struct AssetEntry {
     char rel_path[ASSETS_MAX_PATH];
     bool is_dir;
+    uint64_t size_bytes;
+    int64_t mtime_sec;
 } AssetEntry;
 
 static char      s_assets_root[ASSETS_MAX_PATH];
@@ -68,14 +82,41 @@ typedef enum AssetsFilter {
 static Ca_Div    *s_console_panel;
 static Ca_Div    *s_assets_panel;
 static Ca_Label  *s_assets_path_label;
-static Ca_Label  *s_assets_empty_label;
-static Ca_Label  *s_assets_truncated_label;
+static Ca_Div    *s_assets_tree_div;
+static Ca_Div    *s_assets_scroll_div;
 static Ca_TextInput  *s_assets_search_input;
-static Ca_Button *s_assets_rows[ASSETS_MAX_ENTRIES];
-static int        s_assets_row_index[ASSETS_MAX_ENTRIES];
+static int        s_assets_visible_indices[ASSETS_MAX_ENTRIES];
+static int        s_assets_visible_count;
 static AssetsFilter s_assets_filter;
 static char       s_assets_search[128];
 static int        s_assets_last_click_index;
+
+/* Pointers to toolbar buttons so we can update active-state colours every frame */
+static Ca_Button *s_assets_up_btn;
+static Ca_Select *s_assets_filter_select;  /* filter dropdown         */
+static Ca_Button *s_assets_view_btns[3];   /* indexed by AssetsViewMode */
+
+typedef enum AssetsViewMode {
+    ASSETS_VIEW_LIST = 0,
+    ASSETS_VIEW_GRID,
+    ASSETS_VIEW_THUMBNAIL,
+} AssetsViewMode;
+
+static AssetsViewMode s_assets_view_mode;
+
+typedef struct AssetsTreeClickCtx {
+    char abs_path[ASSETS_MAX_PATH];
+} AssetsTreeClickCtx;
+
+static AssetsTreeClickCtx s_assets_tree_click_ctx[ASSETS_TREE_CTX_MAX];
+static int                s_assets_tree_click_count;
+
+static void on_assets_row_click(Ca_Button *btn, void *user_data);
+static void on_assets_ctx_menu(int item_index, void *user_data);
+static const char *s_assets_ctx_items[];
+static void assets_entry_abs_path(int idx, char *out, size_t out_size);
+static void on_assets_tree_toggle(Ca_TreeNode *tn, void *user_data);
+static void on_assets_filter_select(Ca_Select *sel, void *user_data);
 
 static bool path_is_prefix(const char *prefix, const char *path)
 {
@@ -141,6 +182,54 @@ static bool assets_matches_filter(const AssetEntry *e)
     }
 }
 
+/* Returns a font-awesome icon string for a given asset entry. */
+static const char *entry_icon(const AssetEntry *e)
+{
+    if (e->is_dir) return ICON_FOLDER;
+    const char *p = e->rel_path;
+    if (has_ext_ci(p, ".qstex") || has_ext_ci(p, ".png") ||
+        has_ext_ci(p, ".jpg")   || has_ext_ci(p, ".jpeg") ||
+        has_ext_ci(p, ".ktx"))
+        return ICON_IMAGE;
+    if (has_ext_ci(p, ".qsmesh") || has_ext_ci(p, ".gltf") ||
+        has_ext_ci(p, ".glb")    || has_ext_ci(p, ".fbx")  ||
+        has_ext_ci(p, ".obj"))
+        return ICON_MESH;
+    if (has_ext_ci(p, ".qscene") || has_ext_ci(p, ".qproto"))
+        return ICON_SCENE;
+    if (has_ext_ci(p, ".lua") || has_ext_ci(p, ".py") ||
+        has_ext_ci(p, ".js")  || has_ext_ci(p, ".ts") ||
+        has_ext_ci(p, ".cs"))
+        return ICON_SCRIPT;
+    if (has_ext_ci(p, ".qsmat"))
+        return ICON_MATERIAL;
+    return ICON_FILE;
+}
+
+/* Returns the accent colour for a given asset entry. */
+static uint32_t entry_color(const AssetEntry *e)
+{
+    if (e->is_dir) return CA_THEME_ACCENT;
+    const char *p = e->rel_path;
+    if (has_ext_ci(p, ".qstex") || has_ext_ci(p, ".png") ||
+        has_ext_ci(p, ".jpg")   || has_ext_ci(p, ".jpeg") ||
+        has_ext_ci(p, ".ktx"))
+        return CA_THEME_SUCCESS;
+    if (has_ext_ci(p, ".qsmesh") || has_ext_ci(p, ".gltf") ||
+        has_ext_ci(p, ".glb")    || has_ext_ci(p, ".fbx")  ||
+        has_ext_ci(p, ".obj"))
+        return CA_THEME_WARNING;
+    if (has_ext_ci(p, ".qscene") || has_ext_ci(p, ".qproto"))
+        return CA_THEME_ACCENT;
+    if (has_ext_ci(p, ".lua") || has_ext_ci(p, ".py") ||
+        has_ext_ci(p, ".js")  || has_ext_ci(p, ".ts") ||
+        has_ext_ci(p, ".cs"))
+        return CA_THEME_WARNING;
+    if (has_ext_ci(p, ".qsmat"))
+        return CA_THEME_DANGER;
+    return CA_THEME_TEXT_MUTED;
+}
+
 static bool contains_ci(const char *haystack, const char *needle)
 {
     if (!haystack || !needle || !needle[0]) return true;
@@ -166,6 +255,36 @@ static bool assets_matches_search(const AssetEntry *e)
     if (!e) return false;
     if (!s_assets_search[0]) return true;
     return contains_ci(e->rel_path, s_assets_search);
+}
+
+static void format_size(uint64_t bytes, char *out, size_t out_size)
+{
+    const char *units[] = { "B", "KB", "MB", "GB", "TB" };
+    double v = (double)bytes;
+    int ui = 0;
+    while (v >= 1024.0 && ui < 4) {
+        v /= 1024.0;
+        ui++;
+    }
+    if (ui == 0) snprintf(out, out_size, "%llu %s", (unsigned long long)bytes, units[ui]);
+    else         snprintf(out, out_size, "%.1f %s", v, units[ui]);
+}
+
+static void format_mtime(int64_t mtime_sec, char *out, size_t out_size)
+{
+    if (mtime_sec <= 0) {
+        snprintf(out, out_size, "-");
+        return;
+    }
+
+    time_t t = (time_t)mtime_sec;
+    struct tm tmv;
+#ifdef _WIN32
+    localtime_s(&tmv, &t);
+#else
+    localtime_r(&t, &tmv);
+#endif
+    strftime(out, out_size, "%Y-%m-%d %H:%M", &tmv);
 }
 
 static void assets_entry_abs_path(int idx, char *out, size_t out_size)
@@ -202,6 +321,11 @@ static void assets_scan_folder(void)
         AssetEntry *e = &s_assets_entries[s_assets_entry_count++];
         snprintf(e->rel_path, sizeof(e->rel_path), "%s", fd.cFileName);
         e->is_dir = (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0;
+        e->size_bytes = e->is_dir ? 0u : (uint64_t)(((uint64_t)fd.nFileSizeHigh << 32) | fd.nFileSizeLow);
+        ULARGE_INTEGER ull;
+        ull.LowPart = fd.ftLastWriteTime.dwLowDateTime;
+        ull.HighPart = fd.ftLastWriteTime.dwHighDateTime;
+        e->mtime_sec = (int64_t)((ull.QuadPart / 10000000ULL) - 11644473600ULL);
     } while (FindNextFileA(h, &fd));
     FindClose(h);
 #else
@@ -226,7 +350,15 @@ static void assets_scan_folder(void)
         char full[ASSETS_MAX_PATH];
         path_join(full, sizeof(full), s_assets_folder, ent->d_name);
         struct stat st;
-        e->is_dir = (stat(full, &st) == 0) ? S_ISDIR(st.st_mode) : false;
+        if (stat(full, &st) == 0) {
+            e->is_dir = S_ISDIR(st.st_mode);
+            e->size_bytes = e->is_dir ? 0u : (uint64_t)st.st_size;
+            e->mtime_sec = (int64_t)st.st_mtime;
+        } else {
+            e->is_dir = false;
+            e->size_bytes = 0u;
+            e->mtime_sec = 0;
+        }
     }
 
     closedir(d);
@@ -241,7 +373,7 @@ static void assets_set_path_label(void)
 {
     if (!s_assets_path_label) return;
     if (s_assets_root[0] == '\0' || s_assets_folder[0] == '\0') {
-        ca_set_text(s_assets_path_label, "No project assets folder");
+        ca_set_text(s_assets_path_label, "No project open");
         return;
     }
 
@@ -251,13 +383,137 @@ static void assets_set_path_label(void)
         rel = s_assets_folder + root_len;
 
     while (*rel == ED_PATH_SEP) rel++;
+
+    char buf[ASSETS_MAX_PATH + 16];
     if (*rel == '\0')
-        ca_set_text(s_assets_path_label, "assets/");
+        ca_set_text(s_assets_path_label, "assets");
     else {
-        char buf[ASSETS_MAX_PATH + 16];
         snprintf(buf, sizeof(buf), "assets/%s", rel);
         ca_set_text(s_assets_path_label, buf);
     }
+}
+
+static bool dir_has_subdirs(const char *abs_dir)
+{
+#ifdef _WIN32
+    char pattern[ASSETS_MAX_PATH];
+    snprintf(pattern, sizeof(pattern), "%s\\*", abs_dir);
+    WIN32_FIND_DATAA fd;
+    HANDLE h = FindFirstFileA(pattern, &fd);
+    if (h == INVALID_HANDLE_VALUE) return false;
+    bool has = false;
+    do {
+        if (strcmp(fd.cFileName, ".") == 0 || strcmp(fd.cFileName, "..") == 0)
+            continue;
+        if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) { has = true; break; }
+    } while (FindNextFileA(h, &fd));
+    FindClose(h);
+    return has;
+#else
+    DIR *d = opendir(abs_dir);
+    if (!d) return false;
+    bool has = false;
+    struct dirent *ent = NULL;
+    while ((ent = readdir(d)) != NULL) {
+        if (strcmp(ent->d_name, ".") == 0 || strcmp(ent->d_name, "..") == 0)
+            continue;
+        char full[ASSETS_MAX_PATH];
+        path_join(full, sizeof(full), abs_dir, ent->d_name);
+        struct stat st;
+        if (stat(full, &st) == 0 && S_ISDIR(st.st_mode)) {
+            has = true;
+            break;
+        }
+    }
+    closedir(d);
+    return has;
+#endif
+}
+
+static void assets_build_tree_node(const char *abs_dir)
+{
+    if (!abs_dir || !abs_dir[0]) return;
+
+    const char *label = abs_dir;
+    if (strcmp(abs_dir, s_assets_root) == 0) {
+        label = "assets";
+    } else {
+        const char *p = strrchr(abs_dir, ED_PATH_SEP);
+        if (p && p[1]) label = p + 1;
+    }
+
+    const bool has_children = dir_has_subdirs(abs_dir);
+    const bool selected = strcmp(abs_dir, s_assets_folder) == 0;
+
+    char node_id[ASSETS_MAX_PATH + 32];
+    snprintf(node_id, sizeof(node_id), "assets-tree-%s", abs_dir);
+
+    AssetsTreeClickCtx *ctx = NULL;
+    if (s_assets_tree_click_count < ASSETS_TREE_CTX_MAX) {
+        ctx = &s_assets_tree_click_ctx[s_assets_tree_click_count++];
+        snprintf(ctx->abs_path, sizeof(ctx->abs_path), "%s", abs_dir);
+    }
+
+    Ca_TreeNode *tn = ca_tree_node_begin(&(Ca_TreeNodeDesc){
+        .text = label,
+        .id = node_id,
+        .style = selected ? "assets-tree-node assets-tree-node-selected" : "assets-tree-node",
+        .icon = ICON_FOLDER,
+        .icon_color = selected ? CA_THEME_TEXT_BRIGHT : CA_THEME_ACCENT,
+        .is_leaf = !has_children,
+        .expanded = true,
+        .on_toggle = on_assets_tree_toggle,
+        .toggle_data = ctx,
+    });
+
+    if (has_children) {
+#ifdef _WIN32
+        char pattern[ASSETS_MAX_PATH];
+        snprintf(pattern, sizeof(pattern), "%s\\*", abs_dir);
+        WIN32_FIND_DATAA fd;
+        HANDLE h = FindFirstFileA(pattern, &fd);
+        if (h != INVALID_HANDLE_VALUE) {
+            do {
+                if (strcmp(fd.cFileName, ".") == 0 || strcmp(fd.cFileName, "..") == 0)
+                    continue;
+                if (!(fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY))
+                    continue;
+                char child[ASSETS_MAX_PATH];
+                path_join(child, sizeof(child), abs_dir, fd.cFileName);
+                assets_build_tree_node(child);
+            } while (FindNextFileA(h, &fd));
+            FindClose(h);
+        }
+#else
+        DIR *d = opendir(abs_dir);
+        if (d) {
+            struct dirent *ent = NULL;
+            while ((ent = readdir(d)) != NULL) {
+                if (strcmp(ent->d_name, ".") == 0 || strcmp(ent->d_name, "..") == 0)
+                    continue;
+                char child[ASSETS_MAX_PATH];
+                path_join(child, sizeof(child), abs_dir, ent->d_name);
+                struct stat st;
+                if (stat(child, &st) == 0 && S_ISDIR(st.st_mode))
+                    assets_build_tree_node(child);
+            }
+            closedir(d);
+        }
+#endif
+    }
+
+    (void)tn;
+    ca_tree_node_end();
+}
+
+static void on_assets_tree_toggle(Ca_TreeNode *tn, void *user_data)
+{
+    (void)tn;
+    AssetsTreeClickCtx *ctx = (AssetsTreeClickCtx *)user_data;
+    if (!ctx || !ctx->abs_path[0]) return;
+    if (strcmp(s_assets_folder, ctx->abs_path) == 0) return;
+    snprintf(s_assets_folder, sizeof(s_assets_folder), "%s", ctx->abs_path);
+    assets_scan_folder();
 }
 
 static void assets_sync_widgets(void)
@@ -271,45 +527,143 @@ static void assets_sync_widgets(void)
         }
     }
 
+    /* Update toolbar button active-state colours every frame */
+    if (s_assets_up_btn) {
+        ca_set_color(s_assets_up_btn,
+            (strcmp(s_assets_folder, s_assets_root) == 0)
+                ? CA_THEME_TEXT_DIM : CA_THEME_TEXT_MUTED);
+    }
+    for (int vi = 0; vi < 3; vi++) {
+        if (s_assets_view_btns[vi])
+            ca_set_color(s_assets_view_btns[vi],
+                (s_assets_view_mode == (AssetsViewMode)vi)
+                    ? CA_THEME_ACCENT : CA_THEME_TEXT_DIM);
+    }
+
     if (!s_assets_dirty) return;
 
     assets_set_path_label();
 
-    int visible_count = 0;
-    for (int i = 0; i < s_assets_entry_count; ++i) {
+    s_assets_visible_count = 0;
+    for (int i = 0; i < s_assets_entry_count && s_assets_visible_count < ASSETS_MAX_ENTRIES; ++i) {
         if (!assets_matches_filter(&s_assets_entries[i])) continue;
         if (!assets_matches_search(&s_assets_entries[i])) continue;
-        visible_count++;
+        s_assets_visible_indices[s_assets_visible_count++] = i;
     }
 
-    if (s_assets_empty_label)
-        ca_set_hidden(s_assets_empty_label, visible_count > 0);
-    if (s_assets_truncated_label)
-        ca_set_hidden(s_assets_truncated_label, !s_assets_truncated);
-
-    int row = 0;
-    for (int i = 0; i < s_assets_entry_count && row < ASSETS_MAX_ENTRIES; ++i) {
-        if (!assets_matches_filter(&s_assets_entries[i])) continue;
-        if (!assets_matches_search(&s_assets_entries[i])) continue;
-
-        if (!s_assets_rows[row]) continue;
-        s_assets_row_index[row] = i;
-
-        char label[ASSETS_MAX_PATH + 8];
-        snprintf(label, sizeof(label), "%s %s",
-                 s_assets_entries[i].is_dir ? ICON_FOLDER : ICON_FILE,
-                 s_assets_entries[i].rel_path);
-        ca_set_text(s_assets_rows[row], label);
-        ca_set_hidden(s_assets_rows[row], false);
-        ca_set_style(s_assets_rows[row], "assets-entry");
-        ca_set_color(s_assets_rows[row], s_assets_entries[i].is_dir
-            ? CA_THEME_ACCENT : CA_THEME_TEXT_MUTED);
-        ca_set_background(s_assets_rows[row], (s_assets_selected == i) ? CA_THEME_BG_OVERLAY : 0);
-        row++;
+    if (s_assets_tree_div) {
+        s_assets_tree_click_count = 0;
+        ca_reconcile_begin(s_assets_tree_div);
+        if (s_assets_root[0]) {
+            ca_tree_begin(&(Ca_DivDesc){
+                .direction = CA_VERTICAL,
+                .style = "assets-tree",
+            });
+            assets_build_tree_node(s_assets_root);
+            ca_tree_end();
+        } else {
+            ca_text(&(Ca_TextDesc){ .text = "No folders", .style = "assets-empty" });
+        }
+        ca_div_end();
     }
 
-    for (int i = row; i < ASSETS_MAX_ENTRIES; ++i)
-        if (s_assets_rows[i]) ca_set_hidden(s_assets_rows[i], true);
+    if (s_assets_scroll_div) {
+        if (s_assets_view_mode == ASSETS_VIEW_LIST)
+            ca_set_style(s_assets_scroll_div, "assets-scroll assets-scroll-list");
+        else
+            ca_set_style(s_assets_scroll_div, "assets-scroll assets-scroll-grid");
+
+        ca_div_clear(s_assets_scroll_div);
+
+        if (s_assets_visible_count == 0) {
+            ca_text(&(Ca_TextDesc){
+                .text = "No assets found in this folder.",
+                .style = "assets-empty",
+            });
+        } else {
+            for (int row = 0; row < s_assets_visible_count; ++row) {
+                int idx = s_assets_visible_indices[row];
+                const AssetEntry *e = &s_assets_entries[idx];
+
+                const char *icon  = entry_icon(e);
+                uint32_t    color = entry_color(e);
+
+                char icon_name[ASSETS_MAX_PATH + 16];
+                snprintf(icon_name, sizeof(icon_name), "%s %s", icon, e->rel_path);
+
+                const char *style = (s_assets_view_mode == ASSETS_VIEW_LIST)
+                    ? "assets-entry assets-entry-list"
+                    : (s_assets_view_mode == ASSETS_VIEW_GRID)
+                        ? "assets-entry assets-entry-grid"
+                        : "assets-entry assets-entry-thumb";
+
+                Ca_Button *btn = ca_btn_begin(&(Ca_BtnDesc){
+                    .text       = (s_assets_view_mode == ASSETS_VIEW_GRID) ? icon_name : "",
+                    .style      = style,
+                    .on_click   = on_assets_row_click,
+                    .click_data = &s_assets_visible_indices[row],
+                });
+
+                ca_set_color(btn, color);
+                ca_set_background(btn, (s_assets_selected == idx) ? CA_THEME_BG_OVERLAY : 0);
+
+                if (s_assets_view_mode == ASSETS_VIEW_LIST) {
+                    char size_txt[32], mt_txt[32], meta[96];
+                    format_size(e->size_bytes, size_txt, sizeof(size_txt));
+                    format_mtime(e->mtime_sec, mt_txt, sizeof(mt_txt));
+                    snprintf(meta, sizeof(meta), "%s  %s", size_txt, mt_txt);
+                    Ca_Label *name_widget = ca_text(&(Ca_TextDesc){
+                        .text = icon_name,
+                        .style = "assets-entry-name",
+                    });
+                    ca_set_color(name_widget, color);
+                    ca_text(&(Ca_TextDesc){
+                        .text = meta,
+                        .style = "assets-entry-meta",
+                    });
+                } else if (s_assets_view_mode == ASSETS_VIEW_THUMBNAIL) {
+                    char abs_buf[ASSETS_MAX_PATH];
+                    assets_entry_abs_path(idx, abs_buf, sizeof(abs_buf));
+                    Ca_Image *thumb = ed_thumbnail_get(abs_buf, e->mtime_sec);
+                    if (thumb) {
+                        ca_image(&(Ca_ImageDesc){
+                            .image = thumb,
+                            .width = (float)ASSETS_THUMB_SIZE,
+                            .height = (float)ASSETS_THUMB_SIZE,
+                            .style = "assets-thumb-image",
+                        });
+                    } else {
+                        Ca_Label *icon_widget = ca_text(&(Ca_TextDesc){
+                            .text = icon,
+                            .style = "assets-thumb-icon",
+                        });
+                        ca_set_color(icon_widget, color);
+                    }
+                    ca_text(&(Ca_TextDesc){
+                        .text = e->rel_path,
+                        .style = "assets-thumb-name",
+                    });
+                }
+
+                ca_context_menu(&(Ca_CtxMenuDesc){
+                    .items = s_assets_ctx_items,
+                    .item_count = 4,
+                    .on_select = on_assets_ctx_menu,
+                    .select_data = &s_assets_visible_indices[row],
+                });
+                ca_btn_end();
+            }
+        }
+
+        if (s_assets_truncated) {
+            ca_text(&(Ca_TextDesc){
+                .text = "Showing first 220 entries.",
+                .style = "assets-empty",
+            });
+        }
+
+        ca_div_end();
+    }
 
     s_assets_dirty = false;
 }
@@ -368,10 +722,17 @@ static void on_assets_refresh_click(Ca_Button *btn, void *user_data)
     assets_scan_folder();
 }
 
-static void on_assets_filter_chip(Ca_Button *btn, void *user_data)
+static void on_assets_filter_select(Ca_Select *sel, void *user_data)
+{
+    (void)user_data;
+    s_assets_filter = (AssetsFilter)ca_select_get(sel);
+    s_assets_dirty = true;
+}
+
+static void on_assets_view_mode_click(Ca_Button *btn, void *user_data)
 {
     (void)btn;
-    s_assets_filter = (AssetsFilter)(intptr_t)user_data;
+    s_assets_view_mode = (AssetsViewMode)(intptr_t)user_data;
     s_assets_dirty = true;
 }
 
@@ -459,14 +820,18 @@ static void assets_init(Editor *editor)
     s_assets_dirty = true;
     s_assets_truncated = false;
     s_assets_filter = ASSETS_FILTER_ALL;
+    s_assets_view_mode = ASSETS_VIEW_LIST;
     s_assets_search[0] = '\0';
     s_assets_last_click_index = -1;
 
     Qs_Project *project = editor_project(editor);
     if (!project) return;
 
+    const char *proj_path = qs_project_path(project);
+
+    /* Root the browser at project/assets/ */
     char root[ASSETS_MAX_PATH];
-    snprintf(root, sizeof(root), "%s%cassets", qs_project_path(project), ED_PATH_SEP);
+    snprintf(root, sizeof(root), "%s%cassets", proj_path, ED_PATH_SEP);
 
 #ifdef _WIN32
     DWORD attrs = GetFileAttributesA(root);
@@ -477,7 +842,8 @@ static void assets_init(Editor *editor)
 #endif
 
     if (!exists) {
-        snprintf(root, sizeof(root), "%s%cAssets", qs_project_path(project), ED_PATH_SEP);
+        /* Fallback: try capitalised variant */
+        snprintf(root, sizeof(root), "%s%cAssets", proj_path, ED_PATH_SEP);
 #ifdef _WIN32
         attrs = GetFileAttributesA(root);
         exists = (attrs != INVALID_FILE_ATTRIBUTES) && ((attrs & FILE_ATTRIBUTE_DIRECTORY) != 0);
@@ -487,7 +853,7 @@ static void assets_init(Editor *editor)
     }
 
     if (exists) {
-        snprintf(s_assets_root, sizeof(s_assets_root), "%s", root);
+        snprintf(s_assets_root,   sizeof(s_assets_root),   "%s", root);
         snprintf(s_assets_folder, sizeof(s_assets_folder), "%s", root);
         s_assets_needs_scan = true;
     }
@@ -530,6 +896,7 @@ void ed_layout(Ca_Window *window, void *editor)
     s_console_window = window;
     s_bottom_tab_active = 0;
 
+    ed_thumbnail_init(editor_engine(ed), window);
     assets_init(ed);
 
     /* Vertical split: top three-panel area | bottom panel (full width) */
@@ -670,73 +1037,108 @@ void ed_layout(Ca_Window *window, void *editor)
                 .hidden    = (s_bottom_tab_active != 1),
             });
             {
+                /* ── Single toolbar row ─────────────────────────────────── */
                 ca_div_begin(&(Ca_DivDesc){
                     .direction = CA_HORIZONTAL,
                     .style     = "assets-toolbar",
                 });
-                ca_btn_begin(&(Ca_BtnDesc){
-                    .text       = "Up",
-                    .style      = "assets-btn",
-                    .on_click   = on_assets_up_click,
-                    .click_data = NULL,
-                });
-                ca_btn_end();
-                ca_btn_begin(&(Ca_BtnDesc){
-                    .text       = "Refresh",
-                    .style      = "assets-btn",
-                    .on_click   = on_assets_refresh_click,
-                    .click_data = NULL,
-                });
-                ca_btn_end();
-                s_assets_path_label = ca_text(&(Ca_TextDesc){
-                    .text  = "assets/",
-                    .style = "assets-path",
-                });
-                s_assets_search_input = ca_input(&(Ca_InputDesc){
-                    .text        = s_assets_search,
-                    .placeholder = "Search assets...",
-                    .style       = "assets-search-input",
-                });
-                ca_btn_begin(&(Ca_BtnDesc){ .text = "All", .style = "assets-chip", .on_click = on_assets_filter_chip, .click_data = (void *)(intptr_t)ASSETS_FILTER_ALL }); ca_btn_end();
-                ca_btn_begin(&(Ca_BtnDesc){ .text = "Model", .style = "assets-chip", .on_click = on_assets_filter_chip, .click_data = (void *)(intptr_t)ASSETS_FILTER_MODEL }); ca_btn_end();
-                ca_btn_begin(&(Ca_BtnDesc){ .text = "Tex", .style = "assets-chip", .on_click = on_assets_filter_chip, .click_data = (void *)(intptr_t)ASSETS_FILTER_TEXTURE }); ca_btn_end();
-                ca_btn_begin(&(Ca_BtnDesc){ .text = "Mat", .style = "assets-chip", .on_click = on_assets_filter_chip, .click_data = (void *)(intptr_t)ASSETS_FILTER_MATERIAL }); ca_btn_end();
-                ca_btn_begin(&(Ca_BtnDesc){ .text = "Mesh", .style = "assets-chip", .on_click = on_assets_filter_chip, .click_data = (void *)(intptr_t)ASSETS_FILTER_MESH }); ca_btn_end();
-                ca_div_end();
-
-                ca_div_begin(&(Ca_DivDesc){
-                    .direction = CA_VERTICAL,
-                    .style     = "assets-scroll",
-                    .id        = "assets-scroll",
-                });
-                s_assets_empty_label = ca_text(&(Ca_TextDesc){
-                    .text  = "No assets found in this folder.",
-                    .style = "assets-empty",
-                });
-                s_assets_truncated_label = ca_text(&(Ca_TextDesc){
-                    .text  = "Showing first 220 entries.",
-                    .style = "assets-empty",
-                    .hidden = true,
-                });
-
-                for (int i = 0; i < ASSETS_MAX_ENTRIES; ++i) {
-                    s_assets_row_index[i] = i;
-                    s_assets_rows[i] = ca_btn_begin(&(Ca_BtnDesc){
-                        .text       = "",
-                        .style      = "assets-entry",
-                        .on_click   = on_assets_row_click,
-                        .click_data = &s_assets_row_index[i],
-                        .hidden     = true,
-                    });
-                    ca_context_menu(&(Ca_CtxMenuDesc){
-                        .items = s_assets_ctx_items,
-                        .item_count = 4,
-                        .on_select = on_assets_ctx_menu,
-                        .select_data = &s_assets_row_index[i],
+                {
+                    /* Navigation icons */
+                    s_assets_up_btn = ca_btn_begin(&(Ca_BtnDesc){
+                        .text       = ICON_UP,
+                        .style      = "assets-btn",
+                        .on_click   = on_assets_up_click,
+                        .click_data = NULL,
                     });
                     ca_btn_end();
+
+                    ca_btn_begin(&(Ca_BtnDesc){
+                        .text       = ICON_REFRESH,
+                        .style      = "assets-btn",
+                        .on_click   = on_assets_refresh_click,
+                        .click_data = NULL,
+                    });
+                    ca_btn_end();
+
+                    /* Current path — grows to fill available space */
+                    s_assets_path_label = ca_text(&(Ca_TextDesc){
+                        .text  = "assets",
+                        .style = "assets-path",
+                    });
+
+                    /* Filter dropdown */
+                    static const char *filter_options[] = {
+                        "All", "Model", "Texture", "Material",
+                        "Mesh", "Scene", "Script",
+                    };
+                    s_assets_filter_select = ca_select(&(Ca_SelectDesc){
+                        .options      = filter_options,
+                        .option_count = 7,
+                        .selected     = 0,
+                        .id           = "assets-filter-select",
+                        .style        = "assets-filter-select",
+                        .on_change    = on_assets_filter_select,
+                    });
+
+                    /* View mode buttons — icon-only, one active at a time */
+                    s_assets_view_btns[ASSETS_VIEW_LIST] = ca_btn_begin(&(Ca_BtnDesc){
+                        .text       = ICON_VIEW_LIST,
+                        .style      = "assets-btn",
+                        .on_click   = on_assets_view_mode_click,
+                        .click_data = (void *)(intptr_t)ASSETS_VIEW_LIST,
+                    });
+                    ca_btn_end();
+
+                    s_assets_view_btns[ASSETS_VIEW_GRID] = ca_btn_begin(&(Ca_BtnDesc){
+                        .text       = ICON_VIEW_GRID,
+                        .style      = "assets-btn",
+                        .on_click   = on_assets_view_mode_click,
+                        .click_data = (void *)(intptr_t)ASSETS_VIEW_GRID,
+                    });
+                    ca_btn_end();
+
+                    s_assets_view_btns[ASSETS_VIEW_THUMBNAIL] = ca_btn_begin(&(Ca_BtnDesc){
+                        .text       = ICON_VIEW_THUMB,
+                        .style      = "assets-btn",
+                        .on_click   = on_assets_view_mode_click,
+                        .click_data = (void *)(intptr_t)ASSETS_VIEW_THUMBNAIL,
+                    });
+                    ca_btn_end();
+
+                    /* Search — intentionally narrow and flex-shrink */
+                    s_assets_search_input = ca_input(&(Ca_InputDesc){
+                        .text        = s_assets_search,
+                        .placeholder = "Search...",
+                        .style       = "assets-search-input",
+                    });
                 }
                 ca_div_end();
+
+                ca_split_begin(&(Ca_SplitDesc){
+                    .direction = CA_HORIZONTAL,
+                    .ratio = 0.24f,
+                    .min_ratio = 0.14f,
+                    .max_ratio = 0.45f,
+                    .bar_size = 1.0f,
+                    .bar_color = CA_THEME_BG_VOID,
+                    .bar_hover_color = CA_THEME_ACCENT,
+                });
+                {
+                    s_assets_tree_div = ca_div_begin(&(Ca_DivDesc){
+                        .direction = CA_VERTICAL,
+                        .style = "assets-tree-pane",
+                        .id = "assets-tree",
+                    });
+                    ca_div_end();
+
+                    s_assets_scroll_div = ca_div_begin(&(Ca_DivDesc){
+                        .direction = CA_VERTICAL,
+                        .style     = "assets-scroll",
+                        .id        = "assets-scroll",
+                    });
+                    ca_div_end();
+                }
+                ca_split_end();
             }
             ca_div_end();
         }

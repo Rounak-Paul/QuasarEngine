@@ -2,7 +2,9 @@
 	"name":	"Sandbox",
 	"version":	"0.1.0",
 	"engine_version":	"0.1.0",
+	"startup_scene":	"assets/scenes/default.qscene",
+	"scenes":	["assets/scenes/default.qscene"],
 	"asset_db":	{
-		"prototypes":	["Assets/ABeautifulGame/ABeautifulGame.qproto"]
+		"prototypes":	["assets/ABeautifulGame/ABeautifulGame.qproto"]
 	}
 }

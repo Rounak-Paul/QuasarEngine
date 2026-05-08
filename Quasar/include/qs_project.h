@@ -14,7 +14,7 @@ typedef struct Qs_ProjectDesc {
 } Qs_ProjectDesc;
 
 /// Creates a new project: writes .quasar file, creates subdirectories
-/// (Assets/, scenes/, scripts/).  Returns the project handle, or NULL on failure.
+/// (assets/, assets/scenes/, assets/scripts/).  Returns the project handle, or NULL on failure.
 Qs_Project *qs_project_create(const Qs_ProjectDesc *desc);
 
 /// Opens an existing project from a directory containing a .quasar file.
@@ -32,6 +32,31 @@ const char *qs_project_path(const Qs_Project *project);
 
 /// Destroys the project handle (does NOT delete project files).
 void qs_project_destroy(Qs_Project *project);
+
+/* ================================================================
+   SCENE LIST — scenes tracked in the project file
+   ================================================================ */
+
+/// Project-relative path of the startup (first-loaded) scene, or NULL if unset.
+const char *qs_project_startup_scene(const Qs_Project *project);
+
+/// Set the startup scene.  Path may be absolute or project-relative.
+/// Caller must qs_project_save() to persist.
+bool qs_project_set_startup_scene(Qs_Project *project, const char *path);
+
+/// Number of scenes registered in the project.
+uint32_t qs_project_scene_count(const Qs_Project *project);
+
+/// Project-relative path of the i-th scene, or NULL if out of range.
+const char *qs_project_scene_path(const Qs_Project *project, uint32_t index);
+
+/// Register a scene path in the project.  Duplicates are ignored.
+/// Caller must qs_project_save() to persist.
+bool qs_project_register_scene(Qs_Project *project, const char *path);
+
+/// Remove a scene from the project.  Caller must qs_project_save().
+/// Also clears startup_scene if it matches.
+bool qs_project_unregister_scene(Qs_Project *project, const char *path);
 
 /* ================================================================
    ASSET DATABASE — registry of imported prototypes (.qproto files)

@@ -7,6 +7,7 @@
 
 #include "qs_asset.h"   /* Qs_ImportResult */
 #include "qs_job.h"     /* Qs_JobSystem */
+#include "qs_mesh.h"    /* Qs_Vertex */
 
 typedef struct Qs_Engine   Qs_Engine;
 typedef struct Qs_Mesh     Qs_Mesh;
@@ -224,5 +225,31 @@ void qs_asset_cache_pump(Qs_Engine *engine);
 
 void       qs_pack_set_active_engine(Qs_Engine *engine);
 Qs_Engine *qs_pack_active_engine(void);
+
+/* ================================================================
+   RAW ASSET FILE READERS
+   Low-level helpers that read packed binary asset files directly from
+   disk without going through the runtime cache.  Useful for editor
+   tools (e.g. thumbnail generation) that need raw pixel / geometry
+   data without creating GPU resources.
+
+   Callers are responsible for freeing the returned heap allocations:
+     - qs_asset_pack_read_texture: free(*out_pixels)
+     - qs_asset_pack_read_mesh:    free(*out_verts), free(*out_indices)
+   ================================================================ */
+
+/// Reads a .qstex file and returns its header plus heap-allocated pixel data.
+/// Returns false on failure (bad magic, I/O error, out of memory).
+bool qs_asset_pack_read_texture(const char       *path,
+                                 Qs_TexFileHeader  *out_header,
+                                 void             **out_pixels,
+                                 uint32_t          *out_size);
+
+/// Reads a .qsmesh file and returns its header plus heap-allocated vertex and
+/// index arrays.  Returns false on failure.
+bool qs_asset_pack_read_mesh(const char        *path,
+                              Qs_MeshFileHeader  *out_header,
+                              Qs_Vertex         **out_verts,
+                              uint32_t          **out_indices);
 
 #endif

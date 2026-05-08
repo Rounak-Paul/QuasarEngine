@@ -215,10 +215,10 @@ static bool write_qstex(const char *path, const Qs_ImportTexture *tex,
     return true;
 }
 
-static bool read_qstex(const char *path,
-                       Qs_TexFileHeader *out_header,
-                       void **out_pixels,
-                       uint32_t *out_size)
+bool qs_asset_pack_read_texture(const char *path,
+                                Qs_TexFileHeader *out_header,
+                                void **out_pixels,
+                                uint32_t *out_size)
 {
     FILE *f = fopen(path, "rb");
     if (!f) return false;
@@ -351,10 +351,10 @@ static bool write_qsmesh(const char *path, const Qs_ImportMesh *m, bool optimize
     return true;
 }
 
-static bool read_qsmesh(const char *path,
-                        Qs_MeshFileHeader *out_header,
-                        Qs_Vertex **out_verts,
-                        uint32_t  **out_idx)
+bool qs_asset_pack_read_mesh(const char *path,
+                              Qs_MeshFileHeader *out_header,
+                              Qs_Vertex **out_verts,
+                              uint32_t  **out_idx)
 {
     FILE *f = fopen(path, "rb");
     if (!f) return false;
@@ -815,7 +815,7 @@ static void job_load_mesh(void *data)
 {
     PendingLoad *req = (PendingLoad *)data;
     if (!req->abandoned) {
-        req->stage.mesh.ok = read_qsmesh(req->path,
+        req->stage.mesh.ok = qs_asset_pack_read_mesh(req->path,
                                          &req->stage.mesh.h,
                                          &req->stage.mesh.v,
                                          &req->stage.mesh.idx);
@@ -829,7 +829,7 @@ static void job_load_tex(void *data)
     PendingLoad *req = (PendingLoad *)data;
     uint32_t pixel_size = 0;
     if (!req->abandoned) {
-        req->stage.tex.ok = read_qstex(req->path,
+        req->stage.tex.ok = qs_asset_pack_read_texture(req->path,
                                         &req->stage.tex.h,
                                         &req->stage.tex.pixels,
                                         &pixel_size);
@@ -988,7 +988,7 @@ static Qs_Texture *qs_asset_cache_texture(Qs_Engine *engine, const char *abs_pat
 
     Qs_TexFileHeader h;
     void *pixels = NULL; uint32_t size = 0;
-    if (!read_qstex(abs_path, &h, &pixels, &size)) return NULL;
+    if (!qs_asset_pack_read_texture(abs_path, &h, &pixels, &size)) return NULL;
 
     Qs_TextureDesc td = {
         .name          = abs_path,

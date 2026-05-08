@@ -3,6 +3,7 @@
 #include "ed_gizmo.h"
 #include "ed_pick.h"
 #include "ed_commands.h"
+#include "ed_thumbnail.h"
 #include "qs_math.h"
 #include "ui/ed_menu_bar.h"
 #include "ui/ed_toolbar.h"
@@ -387,10 +388,14 @@ Editor *editor_create(const EditorDesc *desc)
 
     /* ---- Load scene from project ---- */
     if (ed->project) {
-        char scene_path[512];
-        snprintf(scene_path, sizeof(scene_path), "%s/scenes/default.qscene",
-                 qs_project_path(ed->project));
-        editor_load_scene(ed, scene_path);
+        const char *rel = qs_project_startup_scene(ed->project);
+        if (rel) {
+            char scene_path[1024];
+            qs_project_resolve(ed->project, rel, scene_path, sizeof(scene_path));
+            editor_load_scene(ed, scene_path);
+        } else {
+            QS_LOG_WARN("No startup scene set in project file.");
+        }
     }
 
     ed_plugin_manager_init(ed);
@@ -809,6 +814,7 @@ void editor_destroy(Editor *ed)
     ed_gizmo_shutdown(ed->engine);
     ed_undo_shutdown();
     ed_keybinds_shutdown();
+    ed_thumbnail_shutdown();
     qs_engine_destroy(ed->engine);
     qs_project_destroy(ed->project);
     free(ed);
