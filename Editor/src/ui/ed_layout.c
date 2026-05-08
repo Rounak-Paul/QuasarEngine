@@ -15,6 +15,7 @@
 #ifndef _WIN32
     #include <strings.h>
     #include <unistd.h>
+    #include <sys/wait.h>
 #endif
 
 #define ICON_FOLDER    "\xEF\x81\xBB"   /* fa-folder       U+F07B */
@@ -90,6 +91,7 @@ static int        s_assets_visible_count;
 static AssetsFilter s_assets_filter;
 static char       s_assets_search[128];
 static int        s_assets_last_click_index;
+static uint64_t   s_assets_last_click_time_ms;
 
 /* Pointers to toolbar buttons so we can update active-state colours every frame */
 static Ca_Button *s_assets_up_btn;
@@ -393,47 +395,7 @@ static void assets_set_path_label(void)
     }
 }
 
-static bool dir_has_subdirs(const char *abs_dir)
-{
-#ifdef _WIN32
-    char pattern[ASSETS_MAX_PATH];
-    snprintf(pattern, sizeof(pattern), "%s\\*", abs_dir);
-    WIN32_FIND_DATAA fd;
-    HANDLE h = FindFirstFileA(pattern, &fd);
-    if (h == INVALID_HANDLE_VALUE) return false;
-    bool has = false;
-    do {
-        if (strcmp(fd.cFileName, ".") == 0 || strcmp(fd.cFileName, "..") == 0)
-            continue;
-        if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) { has = true; break; }
-    } while (FindNextFileA(h, &fd));
-    FindClose(h);
-    return has;
-#else
-    DIR *d = opendir(abs_dir);
-    if (!d) return false;
-    bool has = false;
-    struct dirent *ent = NULL;
-    while ((ent = readdir(d)) != NULL) {
-        if (strcmp(ent->d_name, ".") == 0 || strcmp(ent->d_name, "..") == 0)
-            continue;
-        char full[ASSETS_MAX_PATH];
-        path_join(full, sizeof(full), abs_dir, ent->d_name);
-        struct stat st;
-        if (stat(full, &st) == 0 && S_ISDIR(st.st_mode)) {
-            has = true;
-            break;
-        }
-    }
-    closedir(d);
-    return has;
-#endif
-}
-
-/* FNV-1a hash of a path → short stable ID that always fits in CA_NODE_ID_MAX.
-   Using the full path as an ID causes truncation at 63 chars, which breaks
-   Causality's reconcile matching and forces every tree node to be recreated
-   as a fresh node (expanded=true) on every dirty rebuild. */
+/* FNV-1a hash of a path → short stable ID that always fits in CA_NODE_ID_MAX. */
 static void path_stable_id(const char *path, char *out, size_t out_size)
 {
     uint32_t h = 2166136261u;
@@ -444,21 +406,99 @@ static void path_stable_id(const char *path, char *out, size_t out_size)
     snprintf(out, out_size, "atr-%08x", h);
 }
 
+static int child_path_cmp(const void *a, const void *b)
+{
+#ifdef _WIN32
+    return _stricmp(*(const char *const *)a, *(const char *const *)b);
+#else
+    return strcasecmp(*(const char *const *)a, *(const char *const *)b);
+#endif
+}
+
+/* Builds one tree node for abs_dir and recurses into subdirectories.
+   Uses a single directory scan (one opendir/FindFirstFile call) to both
+   detect has_children and collect child paths, avoiding the previous
+   two-pass approach that opened each directory twice. */
 static void assets_build_tree_node(const char *abs_dir)
 {
     if (!abs_dir || !abs_dir[0]) return;
 
+    /* Collect child subdirectory absolute paths in one scan. */
+    char  **child_paths = NULL;
+    int     child_count = 0;
+    int     child_cap   = 0;
+
+#ifdef _WIN32
+    {
+        char pattern[ASSETS_MAX_PATH];
+        snprintf(pattern, sizeof(pattern), "%s\\*", abs_dir);
+        WIN32_FIND_DATAA fd;
+        HANDLE h = FindFirstFileA(pattern, &fd);
+        if (h != INVALID_HANDLE_VALUE) {
+            do {
+                if (strcmp(fd.cFileName, ".") == 0 || strcmp(fd.cFileName, "..") == 0)
+                    continue;
+                if (!(fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY))
+                    continue;
+                if (child_count == child_cap) {
+                    child_cap = child_cap ? child_cap * 2 : 8;
+                    char **tmp = (char **)realloc(child_paths,
+                                                  (size_t)child_cap * sizeof(char *));
+                    if (!tmp) break;
+                    child_paths = tmp;
+                }
+                child_paths[child_count] = (char *)malloc(ASSETS_MAX_PATH);
+                if (child_paths[child_count])
+                    path_join(child_paths[child_count++], ASSETS_MAX_PATH,
+                              abs_dir, fd.cFileName);
+            } while (FindNextFileA(h, &fd));
+            FindClose(h);
+        }
+    }
+#else
+    {
+        DIR *d = opendir(abs_dir);
+        if (d) {
+            struct dirent *ent;
+            while ((ent = readdir(d)) != NULL) {
+                if (strcmp(ent->d_name, ".") == 0 || strcmp(ent->d_name, "..") == 0)
+                    continue;
+                char full[ASSETS_MAX_PATH];
+                path_join(full, sizeof(full), abs_dir, ent->d_name);
+                struct stat st;
+                if (stat(full, &st) != 0 || !S_ISDIR(st.st_mode))
+                    continue;
+                if (child_count == child_cap) {
+                    child_cap = child_cap ? child_cap * 2 : 8;
+                    char **tmp = (char **)realloc(child_paths,
+                                                  (size_t)child_cap * sizeof(char *));
+                    if (!tmp) break;
+                    child_paths = tmp;
+                }
+                child_paths[child_count] = (char *)malloc(ASSETS_MAX_PATH);
+                if (child_paths[child_count])
+                    snprintf(child_paths[child_count++], ASSETS_MAX_PATH, "%s", full);
+            }
+            closedir(d);
+        }
+    }
+#endif
+
+    /* Sort children for deterministic display order. */
+    if (child_count > 1)
+        qsort(child_paths, (size_t)child_count, sizeof(char *), child_path_cmp);
+
+    const bool has_children = (child_count > 0);
+    const bool is_root      = (strcmp(abs_dir, s_assets_root) == 0);
+    const bool selected     = (strcmp(abs_dir, s_assets_folder) == 0);
+
     const char *label = abs_dir;
-    const bool is_root = strcmp(abs_dir, s_assets_root) == 0;
     if (is_root) {
         label = "assets";
     } else {
         const char *p = strrchr(abs_dir, ED_PATH_SEP);
         if (p && p[1]) label = p + 1;
     }
-
-    const bool has_children = dir_has_subdirs(abs_dir);
-    const bool selected = strcmp(abs_dir, s_assets_folder) == 0;
 
     char node_id[16];
     path_stable_id(abs_dir, node_id, sizeof(node_id));
@@ -470,52 +510,23 @@ static void assets_build_tree_node(const char *abs_dir)
     }
 
     Ca_TreeNode *tn = ca_tree_node_begin(&(Ca_TreeNodeDesc){
-        .text = label,
-        .id = node_id,
-        .style = selected ? "assets-tree-node assets-tree-node-selected" : "assets-tree-node",
-        .icon = ICON_FOLDER,
-        .icon_color = selected ? CA_THEME_TEXT_BRIGHT : CA_THEME_ACCENT,
-        .is_leaf = !has_children,
-        .expanded = is_root,
-        .on_toggle = on_assets_tree_toggle,
+        .text        = label,
+        .id          = node_id,
+        .style       = selected ? "assets-tree-node assets-tree-node-selected"
+                                : "assets-tree-node",
+        .icon        = ICON_FOLDER,
+        .icon_color  = selected ? CA_THEME_TEXT_BRIGHT : CA_THEME_ACCENT,
+        .is_leaf     = !has_children,
+        .expanded    = is_root,
+        .on_toggle   = on_assets_tree_toggle,
         .toggle_data = ctx,
     });
 
-    if (has_children) {
-#ifdef _WIN32
-        char pattern[ASSETS_MAX_PATH];
-        snprintf(pattern, sizeof(pattern), "%s\\*", abs_dir);
-        WIN32_FIND_DATAA fd;
-        HANDLE h = FindFirstFileA(pattern, &fd);
-        if (h != INVALID_HANDLE_VALUE) {
-            do {
-                if (strcmp(fd.cFileName, ".") == 0 || strcmp(fd.cFileName, "..") == 0)
-                    continue;
-                if (!(fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY))
-                    continue;
-                char child[ASSETS_MAX_PATH];
-                path_join(child, sizeof(child), abs_dir, fd.cFileName);
-                assets_build_tree_node(child);
-            } while (FindNextFileA(h, &fd));
-            FindClose(h);
-        }
-#else
-        DIR *d = opendir(abs_dir);
-        if (d) {
-            struct dirent *ent = NULL;
-            while ((ent = readdir(d)) != NULL) {
-                if (strcmp(ent->d_name, ".") == 0 || strcmp(ent->d_name, "..") == 0)
-                    continue;
-                char child[ASSETS_MAX_PATH];
-                path_join(child, sizeof(child), abs_dir, ent->d_name);
-                struct stat st;
-                if (stat(child, &st) == 0 && S_ISDIR(st.st_mode))
-                    assets_build_tree_node(child);
-            }
-            closedir(d);
-        }
-#endif
+    for (int i = 0; i < child_count; i++) {
+        assets_build_tree_node(child_paths[i]);
+        free(child_paths[i]);
     }
+    free(child_paths);
 
     (void)tn;
     ca_tree_node_end();
@@ -706,9 +717,21 @@ static void on_assets_row_click(Ca_Button *btn, void *user_data)
     int idx = *(int *)user_data;
     if (idx < 0 || idx >= s_assets_entry_count) return;
 
-    bool second_click_same = (s_assets_selected == idx && s_assets_last_click_index == idx);
+    /* Two clicks on the same item within 400 ms = double-click. */
+#ifdef _WIN32
+    uint64_t now_ms = (uint64_t)GetTickCount64();
+#else
+    struct timespec _ts;
+    clock_gettime(CLOCK_MONOTONIC, &_ts);
+    uint64_t now_ms = (uint64_t)_ts.tv_sec * 1000u
+                    + (uint64_t)_ts.tv_nsec / 1000000u;
+#endif
+    bool second_click_same = (s_assets_selected == idx
+                              && s_assets_last_click_index == idx
+                              && (now_ms - s_assets_last_click_time_ms) < 400u);
     s_assets_selected = idx;
     s_assets_last_click_index = idx;
+    s_assets_last_click_time_ms = now_ms;
 
     if (second_click_same) {
         if (s_assets_entries[idx].is_dir) {
@@ -795,25 +818,39 @@ static void on_assets_ctx_menu(int item_index, void *user_data)
         break;
     }
     case 2: /* Delete */
-        if (s_assets_entries[idx].is_dir)
+        if (s_assets_entries[idx].is_dir) {
 #ifdef _WIN32
-            RemoveDirectoryA(abs_path);
+            if (!RemoveDirectoryA(abs_path))
+                QS_LOG_WARN("Delete: cannot remove directory (may not be empty): %s", abs_path);
 #else
-            rmdir(abs_path);
+            if (rmdir(abs_path) != 0)
+                QS_LOG_WARN("Delete: cannot remove directory (may not be empty): %s", abs_path);
 #endif
-        else
-            remove(abs_path);
+        } else {
+            if (remove(abs_path) != 0)
+                QS_LOG_WARN("Delete: cannot remove file: %s", abs_path);
+        }
         assets_scan_folder();
         break;
-    case 3: { /* Reveal */
+    case 3: { /* Reveal — use OS API directly; no shell string interpolation */
 #ifdef _WIN32
-        char cmd[ASSETS_MAX_PATH + 32];
-        snprintf(cmd, sizeof(cmd), "explorer /select,\"%s\"", abs_path);
+        {
+            char parent_dir[ASSETS_MAX_PATH];
+            path_parent(parent_dir, sizeof(parent_dir), abs_path);
+            ShellExecuteA(NULL, "explore", parent_dir, NULL, NULL, SW_SHOWDEFAULT);
+        }
 #else
-        char cmd[ASSETS_MAX_PATH + 32];
-        snprintf(cmd, sizeof(cmd), "open -R \"%s\"", abs_path);
+        {
+            pid_t _pid = fork();
+            if (_pid == 0) {
+                const char *_args[] = { "open", "-R", abs_path, NULL };
+                execvp("open", (char *const *)_args);
+                _exit(1);
+            } else if (_pid > 0) {
+                (void)waitpid(_pid, NULL, 0);
+            }
+        }
 #endif
-        (void)system(cmd);
         break;
     }
     default:

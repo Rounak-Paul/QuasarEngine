@@ -42,6 +42,9 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <stdatomic.h>
+#ifndef _WIN32
+    #include <sched.h>
+#endif
 
 /* ================================================================
    Constants
@@ -668,7 +671,13 @@ void ed_thumbnail_shutdown(void)
         ThumbEntry *e = &s_cache[i];
         if (e->used && e->state == THUMB_STATE_LOADING) {
             /* Spin until the job signals cpu_done, then we can free safely. */
-            while (!atomic_load(&e->cpu_done)) { /* yield */ }
+            while (!atomic_load(&e->cpu_done)) {
+#ifdef _WIN32
+                Sleep(0);
+#else
+                sched_yield();
+#endif
+            }
         }
         if (e->used) evict_slot(e);
     }
