@@ -120,7 +120,7 @@ static char *read_file_text(const char *path)
     long len = ftell(f);
     fseek(f, 0, SEEK_SET);
     if (len <= 0) { fclose(f); return NULL; }
-    char *buf = malloc((size_t)len + 1);
+    char *buf = qs_malloc((size_t)len + 1, QS_MEM_PROJECT);
     if (!buf) { fclose(f); return NULL; }
     size_t read = fread(buf, 1, (size_t)len, f);
     buf[read] = '\0';
@@ -162,10 +162,10 @@ static bool write_project_file(const Qs_Project *p)
     if (!json) return false;
 
     FILE *f = fopen(p->file, "wb");
-    if (!f) { free(json); return false; }
+    if (!f) { qs_free(json); return false; }
     fputs(json, f);
     fclose(f);
-    free(json);
+    qs_free(json);
     return true;
 }
 
@@ -280,13 +280,13 @@ Qs_Project *qs_project_create(const Qs_ProjectDesc *desc)
     normalize_slashes(staged.file);
 
     /* Register the default scene */
-    staged.scenes[0] = strdup("assets/scenes/default.qscene");
+    staged.scenes[0] = qs_strdup("assets/scenes/default.qscene", QS_MEM_PROJECT);
     staged.scene_count = 1;
     snprintf(staged.startup_scene, sizeof(staged.startup_scene),
              "assets/scenes/default.qscene");
 
     if (!write_project_file(&staged)) {
-        free(staged.scenes[0]);
+        qs_free(staged.scenes[0]);
         QS_LOG_ERROR("Failed to write project file: %s", staged.file);
         return NULL;
     }
@@ -312,7 +312,7 @@ Qs_Project *qs_project_open(const char *project_dir)
     }
 
     cJSON *root = cJSON_Parse(json_text);
-    free(json_text);
+    qs_free(json_text);
     if (!root) {
         QS_LOG_ERROR("Failed to parse project file: %s", quasar_path);
         return NULL;
@@ -321,7 +321,7 @@ Qs_Project *qs_project_open(const char *project_dir)
     const cJSON *name_val = cJSON_GetObjectItemCaseSensitive(root, "name");
     const char *name = cJSON_IsString(name_val) ? name_val->valuestring : "Untitled";
 
-    Qs_Project *proj = calloc(1, sizeof(Qs_Project));
+    Qs_Project *proj = qs_calloc(1, sizeof(Qs_Project), QS_MEM_PROJECT);
     if (!proj) { cJSON_Delete(root); return NULL; }
 
     snprintf(proj->name, sizeof(proj->name), "%s", name);
@@ -342,7 +342,7 @@ Qs_Project *qs_project_open(const char *project_dir)
         const cJSON *s;
         cJSON_ArrayForEach(s, scenes_arr) {
             if (cJSON_IsString(s) && proj->scene_count < QS_MAX_SCENES)
-                proj->scenes[proj->scene_count++] = strdup(s->valuestring);
+                proj->scenes[proj->scene_count++] = qs_strdup(s->valuestring, QS_MEM_PROJECT);
         }
     }
 
@@ -357,7 +357,7 @@ Qs_Project *qs_project_open(const char *project_dir)
                     proj->prototype_count < QS_MAX_PROTOTYPES)
                 {
                     proj->prototypes[proj->prototype_count++] =
-                        strdup(p->valuestring);
+                        qs_strdup(p->valuestring, QS_MEM_PROJECT);
                 }
             }
         }
@@ -393,19 +393,19 @@ void qs_project_destroy(Qs_Project *project)
 {
     if (!project) return;
     for (uint32_t i = 0; i < project->scene_count; i++)
-        free(project->scenes[i]);
+        qs_free(project->scenes[i]);
     for (uint32_t i = 0; i < project->prototype_count; i++)
-        free(project->prototypes[i]);
+        qs_free(project->prototypes[i]);
 
     /* Free scan arrays */
-    for (uint32_t i = 0; i < project->scan_tex_count;  i++) free(project->scan_textures[i]);
-    for (uint32_t i = 0; i < project->scan_mat_count;  i++) free(project->scan_materials[i]);
-    for (uint32_t i = 0; i < project->scan_mesh_count; i++) free(project->scan_meshes[i]);
-    free(project->scan_textures);
-    free(project->scan_materials);
-    free(project->scan_meshes);
+    for (uint32_t i = 0; i < project->scan_tex_count;  i++) qs_free(project->scan_textures[i]);
+    for (uint32_t i = 0; i < project->scan_mat_count;  i++) qs_free(project->scan_materials[i]);
+    for (uint32_t i = 0; i < project->scan_mesh_count; i++) qs_free(project->scan_meshes[i]);
+    qs_free(project->scan_textures);
+    qs_free(project->scan_materials);
+    qs_free(project->scan_meshes);
 
-    free(project);
+    qs_free(project);
 }
 
 /* ================================================================
@@ -472,7 +472,7 @@ bool qs_project_register_prototype(Qs_Project *project, const char *path)
         QS_LOG_ERROR("Project asset_db full (%d)", QS_MAX_PROTOTYPES);
         return false;
     }
-    project->prototypes[project->prototype_count++] = strdup(rel);
+    project->prototypes[project->prototype_count++] = qs_strdup(rel, QS_MEM_PROJECT);
     QS_LOG_INFO("Registered prototype: %s", rel);
     return true;
 }
@@ -485,7 +485,7 @@ bool qs_project_unregister_prototype(Qs_Project *project, const char *path)
 
     for (uint32_t i = 0; i < project->prototype_count; i++) {
         if (strcmp(project->prototypes[i], rel) == 0) {
-            free(project->prototypes[i]);
+            qs_free(project->prototypes[i]);
             project->prototypes[i] =
                 project->prototypes[--project->prototype_count];
             return true;
@@ -531,7 +531,7 @@ bool qs_project_register_scene(Qs_Project *project, const char *path)
     for (uint32_t i = 0; i < project->scene_count; i++)
         if (strcmp(project->scenes[i], rel) == 0) return true;
     if (project->scene_count >= QS_MAX_SCENES) return false;
-    project->scenes[project->scene_count++] = strdup(rel);
+    project->scenes[project->scene_count++] = qs_strdup(rel, QS_MEM_PROJECT);
     return true;
 }
 
@@ -542,7 +542,7 @@ bool qs_project_unregister_scene(Qs_Project *project, const char *path)
     qs_project_make_relative(project, path, rel, sizeof(rel));
     for (uint32_t i = 0; i < project->scene_count; i++) {
         if (strcmp(project->scenes[i], rel) == 0) {
-            free(project->scenes[i]);
+            qs_free(project->scenes[i]);
             project->scenes[i] = project->scenes[--project->scene_count];
             /* Clear startup_scene if it was the removed one */
             if (strcmp(project->startup_scene, rel) == 0)
@@ -571,12 +571,12 @@ static void scan_push(char ***arr, uint32_t *count, uint32_t *cap, const char *p
     if (*count >= *cap) {
         uint32_t new_cap = *cap ? *cap * 2 : 64;
         if (new_cap > QS_MAX_SCAN) new_cap = QS_MAX_SCAN;
-        char **tmp = (char **)realloc(*arr, new_cap * sizeof(char *));
+        char **tmp = (char **)qs_realloc(*arr, new_cap * sizeof(char *), QS_MEM_PROJECT);
         if (!tmp) return;
         *arr = tmp;
         *cap = new_cap;
     }
-    (*arr)[(*count)++] = strdup(path);
+    (*arr)[(*count)++] = qs_strdup(path, QS_MEM_PROJECT);
 }
 
 static void scan_dir_recursive(Qs_Project *proj, const char *abs_dir)
@@ -638,9 +638,9 @@ void qs_project_scan_assets(Qs_Project *project)
     if (!project) return;
 
     /* Clear previous results */
-    for (uint32_t i = 0; i < project->scan_tex_count;  i++) free(project->scan_textures[i]);
-    for (uint32_t i = 0; i < project->scan_mat_count;  i++) free(project->scan_materials[i]);
-    for (uint32_t i = 0; i < project->scan_mesh_count; i++) free(project->scan_meshes[i]);
+    for (uint32_t i = 0; i < project->scan_tex_count;  i++) qs_free(project->scan_textures[i]);
+    for (uint32_t i = 0; i < project->scan_mat_count;  i++) qs_free(project->scan_materials[i]);
+    for (uint32_t i = 0; i < project->scan_mesh_count; i++) qs_free(project->scan_meshes[i]);
     project->scan_tex_count  = 0;
     project->scan_mat_count  = 0;
     project->scan_mesh_count = 0;

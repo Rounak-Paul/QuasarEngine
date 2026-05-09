@@ -444,12 +444,12 @@ static void assets_build_tree_node(const char *abs_dir)
                     continue;
                 if (child_count == child_cap) {
                     child_cap = child_cap ? child_cap * 2 : 8;
-                    char **tmp = (char **)realloc(child_paths,
-                                                  (size_t)child_cap * sizeof(char *));
+                    char **tmp = (char **)qs_realloc(child_paths,
+                                                  (size_t)child_cap * sizeof(char *), QS_MEM_EDITOR);
                     if (!tmp) break;
                     child_paths = tmp;
                 }
-                child_paths[child_count] = (char *)malloc(ASSETS_MAX_PATH);
+                child_paths[child_count] = (char *)qs_malloc(ASSETS_MAX_PATH, QS_MEM_EDITOR);
                 if (child_paths[child_count])
                     path_join(child_paths[child_count++], ASSETS_MAX_PATH,
                               abs_dir, fd.cFileName);
@@ -472,12 +472,12 @@ static void assets_build_tree_node(const char *abs_dir)
                     continue;
                 if (child_count == child_cap) {
                     child_cap = child_cap ? child_cap * 2 : 8;
-                    char **tmp = (char **)realloc(child_paths,
-                                                  (size_t)child_cap * sizeof(char *));
+                    char **tmp = (char **)qs_realloc(child_paths,
+                                                  (size_t)child_cap * sizeof(char *), QS_MEM_EDITOR);
                     if (!tmp) break;
                     child_paths = tmp;
                 }
-                child_paths[child_count] = (char *)malloc(ASSETS_MAX_PATH);
+                child_paths[child_count] = (char *)qs_malloc(ASSETS_MAX_PATH, QS_MEM_EDITOR);
                 if (child_paths[child_count])
                     snprintf(child_paths[child_count++], ASSETS_MAX_PATH, "%s", full);
             }
@@ -526,9 +526,9 @@ static void assets_build_tree_node(const char *abs_dir)
 
     for (int i = 0; i < child_count; i++) {
         assets_build_tree_node(child_paths[i]);
-        free(child_paths[i]);
+        qs_free(child_paths[i]);
     }
-    free(child_paths);
+    qs_free(child_paths);
 
     (void)tn;
     ca_tree_node_end();

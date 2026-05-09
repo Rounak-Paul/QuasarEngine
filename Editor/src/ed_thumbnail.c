@@ -373,14 +373,14 @@ static void job_decode_texture(void *data)
 
     {
         uint32_t bpp  = tex_bpp(hdr.format);
-        uint8_t *rgba = (uint8_t *)malloc(
-            (size_t)THUMB_RENDER_SIZE * (size_t)THUMB_RENDER_SIZE * 4u);
-        if (!rgba) { free(raw); goto done; }
+        uint8_t *rgba = (uint8_t *)qs_malloc(
+            (size_t)THUMB_RENDER_SIZE * (size_t)THUMB_RENDER_SIZE * 4u, QS_MEM_EDITOR);
+        if (!rgba) { qs_free(raw); goto done; }
 
         downsample_bilinear((const uint8_t *)raw,
                             (int)hdr.width, (int)hdr.height, bpp,
                             rgba, THUMB_RENDER_SIZE, THUMB_RENDER_SIZE);
-        free(raw);
+        qs_free(raw);
         slot->cpu_pixels = rgba;
     }
 
@@ -402,7 +402,7 @@ static void job_decode_mesh(void *data)
     if (!qs_asset_pack_read_mesh(slot->abs_path, &hdr, &verts, &idx))
         goto done;
     if (hdr.vertex_count == 0 || hdr.index_count < 3) {
-        free(verts); free(idx); goto done;
+        qs_free(verts); qs_free(idx); goto done;
     }
 
     {
@@ -479,8 +479,8 @@ static Ca_Image *gpu_render_mesh(ThumbEntry *slot)
     ibuf = qs_gpu_create_buffer_from_data(s_gpu, QS_GPU_BUFFER_INDEX,
                                            slot->mesh_idx,
                                            sizeof(uint32_t) * slot->mesh_idx_count);
-    free(slot->mesh_verts); slot->mesh_verts = NULL;
-    free(slot->mesh_idx);   slot->mesh_idx   = NULL;
+    qs_free(slot->mesh_verts); slot->mesh_verts = NULL;
+    qs_free(slot->mesh_idx);   slot->mesh_idx   = NULL;
     if (!vbuf || !ibuf) goto done;
 
     color_img = qs_gpu_create_image(s_gpu, &(Qs_GpuImageDesc){
@@ -575,8 +575,8 @@ static Ca_Image *gpu_render_mesh(ThumbEntry *slot)
 
 done:
     /* Free geometry on any exit path (uploaded path freed above already). */
-    free(slot->mesh_verts); slot->mesh_verts = NULL;
-    free(slot->mesh_idx);   slot->mesh_idx   = NULL;
+    qs_free(slot->mesh_verts); slot->mesh_verts = NULL;
+    qs_free(slot->mesh_idx);   slot->mesh_idx   = NULL;
 
     if (readback)    qs_gpu_destroy_buffer    (s_gpu, readback);
     if (color_view)  qs_gpu_destroy_image_view(s_gpu, color_view);
@@ -596,9 +596,9 @@ done:
 static void evict_slot(ThumbEntry *e)
 {
     if (e->image)      { ca_image_destroy(s_ca_instance, e->image); }
-    free(e->cpu_pixels);
-    free(e->mesh_verts);
-    free(e->mesh_idx);
+    qs_free(e->cpu_pixels);
+    qs_free(e->mesh_verts);
+    qs_free(e->mesh_idx);
     memset(e, 0, sizeof(*e));
 }
 
@@ -732,7 +732,7 @@ Ca_Image *ed_thumbnail_get(const char *abs_path, int64_t mtime_sec)
     /* Invalidate on file change (only when no job is running). */
     if (slot->mtime_sec != mtime_sec && slot->state != THUMB_STATE_LOADING) {
         if (slot->image) { ca_image_destroy(s_ca_instance, slot->image); slot->image = NULL; }
-        free(slot->cpu_pixels); slot->cpu_pixels = NULL;
+        qs_free(slot->cpu_pixels); slot->cpu_pixels = NULL;
         slot->state     = THUMB_STATE_IDLE;
         slot->mtime_sec = mtime_sec;
     }
@@ -761,7 +761,7 @@ Ca_Image *ed_thumbnail_get(const char *abs_path, int64_t mtime_sec)
             if (slot->cpu_pixels) {
                 slot->image = ca_image_create(s_ca_instance, slot->cpu_pixels,
                                               THUMB_RENDER_SIZE, THUMB_RENDER_SIZE);
-                free(slot->cpu_pixels);
+                qs_free(slot->cpu_pixels);
                 slot->cpu_pixels = NULL;
             }
             slot->state = slot->image ? THUMB_STATE_DONE : THUMB_STATE_FAILED;

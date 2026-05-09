@@ -111,15 +111,15 @@ static void load_state(Qs_PluginManager *pm)
     fseek(f, 0, SEEK_SET);
     if (sz <= 0) { fclose(f); return; }
 
-    char *buf = malloc((size_t)sz + 1);
+    char *buf = qs_malloc((size_t)sz + 1, QS_MEM_PLUGIN);
     if (!buf) { fclose(f); return; }
     size_t nread = fread(buf, 1, (size_t)sz, f);
     buf[nread] = '\0';
     fclose(f);
-    if (nread == 0) { free(buf); return; }
+    if (nread == 0) { qs_free(buf); return; }
 
     cJSON *root = cJSON_Parse(buf);
-    free(buf);
+    qs_free(buf);
     if (!root) return;
 
     cJSON *plugins = cJSON_GetObjectItem(root, "plugins");
@@ -186,7 +186,7 @@ static void save_state(Qs_PluginManager *pm)
         fwrite(json, 1, strlen(json), f);
         fclose(f);
     }
-    free(json);
+    qs_free(json);
 }
 
 /* ================================================================
@@ -288,8 +288,8 @@ static void discover_plugins(Qs_PluginManager *pm)
 
         if (pm->count == pm->capacity) {
             uint32_t nc  = pm->capacity * 2;
-            Qs_PluginState *na = realloc(pm->entries,
-                                         nc * sizeof(Qs_PluginState));
+            Qs_PluginState *na = qs_realloc(pm->entries,
+                                         nc * sizeof(Qs_PluginState), QS_MEM_PLUGIN);
             if (!na) break;
             pm->entries  = na;
             pm->capacity = nc;
@@ -325,8 +325,8 @@ static void discover_plugins(Qs_PluginManager *pm)
 
         if (pm->count == pm->capacity) {
             uint32_t nc  = pm->capacity * 2;
-            Qs_PluginState *na = realloc(pm->entries,
-                                         nc * sizeof(Qs_PluginState));
+            Qs_PluginState *na = qs_realloc(pm->entries,
+                                         nc * sizeof(Qs_PluginState), QS_MEM_PLUGIN);
             if (!na) break;
             pm->entries  = na;
             pm->capacity = nc;
@@ -348,13 +348,13 @@ static void discover_plugins(Qs_PluginManager *pm)
 Qs_PluginManager *qs_plugin_manager_create(Qs_Engine *engine,
                                             const char *plugin_dir)
 {
-    Qs_PluginManager *pm = calloc(1, sizeof(Qs_PluginManager));
+    Qs_PluginManager *pm = qs_calloc(1, sizeof(Qs_PluginManager), QS_MEM_PLUGIN);
     if (!pm) return NULL;
 
     pm->engine   = engine;
     pm->capacity = 16;
-    pm->entries  = calloc(pm->capacity, sizeof(Qs_PluginState));
-    if (!pm->entries) { free(pm); return NULL; }
+    pm->entries  = qs_calloc(pm->capacity, sizeof(Qs_PluginState), QS_MEM_PLUGIN);
+    if (!pm->entries) { qs_free(pm); return NULL; }
 
     /* Resolve plugin directory */
     if (plugin_dir) {
@@ -418,8 +418,8 @@ void qs_plugin_manager_destroy(Qs_PluginManager *pm)
 
     save_state(pm);
 
-    free(pm->entries);
-    free(pm);
+    qs_free(pm->entries);
+    qs_free(pm);
 }
 
 bool qs_plugin_enable(Qs_PluginManager *pm, const char *id)
@@ -583,7 +583,7 @@ Qs_Dylib *qs_dylib_open(const char *path)
 {
     if (!path) return NULL;
 
-    Qs_Dylib *lib = calloc(1, sizeof(Qs_Dylib));
+    Qs_Dylib *lib = qs_calloc(1, sizeof(Qs_Dylib), QS_MEM_PLUGIN);
     if (!lib) return NULL;
 
 #ifdef _WIN32
@@ -592,7 +592,7 @@ Qs_Dylib *qs_dylib_open(const char *path)
         DWORD err = GetLastError();
         snprintf(s_error_buf, sizeof(s_error_buf),
                  "LoadLibrary failed (error %lu): %s", err, path);
-        free(lib);
+        qs_free(lib);
         return NULL;
     }
 #else
@@ -600,7 +600,7 @@ Qs_Dylib *qs_dylib_open(const char *path)
     if (!lib->handle) {
         const char *err = dlerror();
         snprintf(s_error_buf, sizeof(s_error_buf), "%s", err ? err : "unknown error");
-        free(lib);
+        qs_free(lib);
         return NULL;
     }
 #endif
@@ -617,7 +617,7 @@ void qs_dylib_close(Qs_Dylib *lib)
 #else
     dlclose(lib->handle);
 #endif
-    free(lib);
+    qs_free(lib);
 }
 
 void *qs_dylib_sym(Qs_Dylib *lib, const char *name)

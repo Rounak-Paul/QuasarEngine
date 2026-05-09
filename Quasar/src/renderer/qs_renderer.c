@@ -485,7 +485,7 @@ Qs_Renderer *qs_renderer_create(Qs_Engine *engine, const Qs_RendererDesc *desc)
         return NULL;
     }
 
-    Qs_Renderer *r = calloc(1, sizeof(Qs_Renderer));
+    Qs_Renderer *r = qs_calloc(1, sizeof(Qs_Renderer), QS_MEM_RENDER);
     if (!r) return NULL;
 
     r->backend       = entry->backend;
@@ -512,7 +512,7 @@ Qs_Renderer *qs_renderer_create(Qs_Engine *engine, const Qs_RendererDesc *desc)
         QS_LOG_ERROR("qs_renderer_create: UBO allocation failed");
         if (r->frame_ubo)  qs_gpu_destroy_buffer(r->gpu, r->frame_ubo);
         if (r->lights_ubo) qs_gpu_destroy_buffer(r->gpu, r->lights_ubo);
-        free(r);
+        qs_free(r);
         return NULL;
     }
 
@@ -525,7 +525,7 @@ Qs_Renderer *qs_renderer_create(Qs_Engine *engine, const Qs_RendererDesc *desc)
             destroy_attachment_resource(r, &r->attachments[i]);
         qs_gpu_destroy_buffer(r->gpu, r->frame_ubo);
         qs_gpu_destroy_buffer(r->gpu, r->lights_ubo);
-        free(r);
+        qs_free(r);
         return NULL;
     }
 
@@ -569,7 +569,7 @@ void qs_renderer_destroy(Qs_Renderer *renderer)
         destroy_attachment_resource(renderer, &renderer->attachments[i]);
     if (renderer->frame_ubo)  qs_gpu_destroy_buffer(renderer->gpu, renderer->frame_ubo);
     if (renderer->lights_ubo) qs_gpu_destroy_buffer(renderer->gpu, renderer->lights_ubo);
-    free(renderer);
+    qs_free(renderer);
 }
 
 void qs_renderer_bind(Qs_Renderer *renderer, Qs_Viewport *viewport)

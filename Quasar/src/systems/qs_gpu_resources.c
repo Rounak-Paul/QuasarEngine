@@ -370,9 +370,9 @@ static Qs_Mesh *build_primitive_sphere(Qs_Engine *engine)
     const uint32_t vc = (RINGS + 1) * (SEGS + 1);
     const uint32_t ic = RINGS * SEGS * 6;
 
-    Qs_Vertex  *verts = (Qs_Vertex  *)malloc(vc * sizeof(Qs_Vertex));
-    uint32_t   *idx   = (uint32_t   *)malloc(ic * sizeof(uint32_t));
-    if (!verts || !idx) { free(verts); free(idx); return NULL; }
+    Qs_Vertex  *verts = (Qs_Vertex  *)qs_malloc(vc * sizeof(Qs_Vertex), QS_MEM_MESH);
+    uint32_t   *idx   = (uint32_t   *)qs_malloc(ic * sizeof(uint32_t), QS_MEM_MESH);
+    if (!verts || !idx) { qs_free(verts); qs_free(idx); return NULL; }
 
     uint32_t vi = 0;
     for (int r = 0; r <= RINGS; r++) {
@@ -419,7 +419,7 @@ static Qs_Mesh *build_primitive_sphere(Qs_Engine *engine)
         .index_count  = ic,
         .index_type   = QS_INDEX_TYPE_UINT32,
     });
-    free(verts); free(idx);
+    qs_free(verts); qs_free(idx);
     return m;
 }
 
@@ -431,9 +431,9 @@ static Qs_Mesh *build_primitive_cylinder(Qs_Engine *engine)
     /* Side: SEGS*6; top: SEGS*3; bottom: SEGS*3 */
     const uint32_t ic = SEGS * 6 + SEGS * 3 + SEGS * 3;
 
-    Qs_Vertex *verts = (Qs_Vertex *)malloc(vc * sizeof(Qs_Vertex));
-    uint32_t  *idx   = (uint32_t  *)malloc(ic * sizeof(uint32_t));
-    if (!verts || !idx) { free(verts); free(idx); return NULL; }
+    Qs_Vertex *verts = (Qs_Vertex *)qs_malloc(vc * sizeof(Qs_Vertex), QS_MEM_MESH);
+    uint32_t  *idx   = (uint32_t  *)qs_malloc(ic * sizeof(uint32_t), QS_MEM_MESH);
+    if (!verts || !idx) { qs_free(verts); qs_free(idx); return NULL; }
 
     const float R = 0.5f, H = 0.5f; /* half-height */
     uint32_t vi = 0, ii = 0;
@@ -539,7 +539,7 @@ static Qs_Mesh *build_primitive_cylinder(Qs_Engine *engine)
         .index_count  = ic,
         .index_type   = QS_INDEX_TYPE_UINT32,
     });
-    free(verts); free(idx);
+    qs_free(verts); qs_free(idx);
     return m;
 }
 

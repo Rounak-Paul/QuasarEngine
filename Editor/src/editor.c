@@ -314,7 +314,7 @@ static bool editor_load_scene(Editor *ed, const char *path)
 
 Editor *editor_create(const EditorDesc *desc)
 {
-    Editor *ed = calloc(1, sizeof(Editor));
+    Editor *ed = qs_calloc(1, sizeof(Editor), QS_MEM_EDITOR);
     if (!ed) return NULL;
     ed->selected_entity     = QS_ENTITY_INVALID;
     ed->proto_owner         = QS_ENTITY_INVALID;
@@ -325,7 +325,7 @@ Editor *editor_create(const EditorDesc *desc)
     if (desc->project_path) {
         ed->project = qs_project_open(desc->project_path);
         if (!ed->project) {
-            free(ed);
+            qs_free(ed);
             return NULL;
         }
     }
@@ -350,7 +350,7 @@ Editor *editor_create(const EditorDesc *desc)
         .font_size_px  = ED_FONT_SIZE_PX,
     });
     if (!ed->engine) {
-        free(ed);
+        qs_free(ed);
         return NULL;
     }
 
@@ -817,5 +817,5 @@ void editor_destroy(Editor *ed)
     ed_thumbnail_shutdown();
     qs_engine_destroy(ed->engine);
     qs_project_destroy(ed->project);
-    free(ed);
+    qs_free(ed);
 }

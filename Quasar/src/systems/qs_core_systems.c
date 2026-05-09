@@ -96,12 +96,12 @@ static bool log_system_init(Qs_System *system, Qs_Engine *engine)
     Qs_LogState *state = (Qs_LogState *)qs_system_data(system);
 
     state->capacity   = QS_LOG_INITIAL_CAP;
-    state->entries     = calloc(state->capacity, sizeof(Qs_LogEntry));
-    state->storage     = calloc(state->capacity, sizeof(Qs_LogStorage));
+    state->entries     = qs_calloc(state->capacity, sizeof(Qs_LogEntry), QS_MEM_LOG);
+    state->storage     = qs_calloc(state->capacity, sizeof(Qs_LogStorage), QS_MEM_LOG);
     if (!state->entries || !state->storage) return false;
 
     state->mutex = ca_mutex_create();
-    if (!state->mutex) { free(state->entries); free(state->storage); return false; }
+    if (!state->mutex) { qs_free(state->entries); qs_free(state->storage); return false; }
 
     state->min_level  = QS_LOG_DEBUG;
     state->start_time = get_time_sec();
@@ -135,10 +135,10 @@ static void log_system_shutdown(Qs_System *system, Qs_Engine *engine)
     }
 
     for (uint32_t i = 0; i < state->count; i++)
-        free(state->storage[i].text);
+        qs_free(state->storage[i].text);
 
-    free(state->entries);
-    free(state->storage);
+    qs_free(state->entries);
+    qs_free(state->storage);
     state->entries = NULL;
     state->storage = NULL;
     state->count   = 0;
@@ -196,10 +196,10 @@ void qs_log(Qs_LogLevel level, const char *fmt, ...)
        second realloc fails (classic double-realloc use-after-free). */
     if (g_log->count == g_log->capacity) {
         uint32_t new_cap = g_log->capacity * 2;
-        Qs_LogEntry *ne = realloc(g_log->entries, new_cap * sizeof(Qs_LogEntry));
+        Qs_LogEntry *ne = qs_realloc(g_log->entries, new_cap * sizeof(Qs_LogEntry), QS_MEM_LOG);
         if (!ne) { if (g_log->mutex) ca_mutex_unlock(g_log->mutex); return; }
         g_log->entries = ne;   /* update immediately — pointer is now valid */
-        Qs_LogStorage *ns = realloc(g_log->storage, new_cap * sizeof(Qs_LogStorage));
+        Qs_LogStorage *ns = qs_realloc(g_log->storage, new_cap * sizeof(Qs_LogStorage), QS_MEM_LOG);
         if (!ns) { if (g_log->mutex) ca_mutex_unlock(g_log->mutex); return; }
         g_log->storage  = ns;
         g_log->capacity = new_cap;
@@ -207,7 +207,7 @@ void qs_log(Qs_LogLevel level, const char *fmt, ...)
 
     /* Store message */
     size_t msg_len = strlen(buf);
-    char *text = malloc(msg_len + 1);
+    char *text = qs_malloc(msg_len + 1, QS_MEM_LOG);
     if (!text) {
         if (g_log->mutex) ca_mutex_unlock(g_log->mutex);
         return;
@@ -313,7 +313,7 @@ static bool event_system_init(Qs_System *system, Qs_Engine *engine)
     Qs_EventBus *bus = qs_system_data(system);
 
     bus->capacity    = QS_EVENT_INITIAL_CAP;
-    bus->listeners   = calloc(bus->capacity, sizeof(Qs_Listener));
+    bus->listeners   = qs_calloc(bus->capacity, sizeof(Qs_Listener), QS_MEM_EVENT);
     if (!bus->listeners) return false;
     bus->next_handle = 1;
     return true;
@@ -323,7 +323,7 @@ static void event_system_shutdown(Qs_System *system, Qs_Engine *engine)
 {
     (void)engine;
     Qs_EventBus *bus = qs_system_data(system);
-    free(bus->listeners);
+    qs_free(bus->listeners);
     bus->listeners = NULL;
     bus->count     = 0;
     bus->capacity  = 0;
@@ -346,7 +346,7 @@ uint32_t qs_event_subscribe(Qs_EventBus *bus, Qs_EventId id,
 
     if (bus->count == bus->capacity) {
         uint32_t new_cap = bus->capacity * 2;
-        Qs_Listener *grown = realloc(bus->listeners, new_cap * sizeof(Qs_Listener));
+        Qs_Listener *grown = qs_realloc(bus->listeners, new_cap * sizeof(Qs_Listener), QS_MEM_EVENT);
         if (!grown) return 0;
         bus->listeners = grown;
         bus->capacity  = new_cap;
@@ -563,7 +563,7 @@ static bool job_system_init(Qs_System *system, Qs_Engine *engine)
     (void)engine;
     Qs_JobSystem **slot = (Qs_JobSystem **)qs_system_data(system);
 
-    Qs_JobSystem *sys = calloc(1, sizeof(Qs_JobSystem));
+    Qs_JobSystem *sys = qs_calloc(1, sizeof(Qs_JobSystem), QS_MEM_JOB);
     if (!sys) return false;
 
     sys->queue.mutex = ca_mutex_create();
@@ -571,7 +571,7 @@ static bool job_system_init(Qs_System *system, Qs_Engine *engine)
     if (!sys->queue.mutex || !sys->queue.cond) {
         ca_condvar_destroy(sys->queue.cond);
         ca_mutex_destroy(sys->queue.mutex);
-        free(sys);
+        qs_free(sys);
         return false;
     }
 
@@ -579,11 +579,11 @@ static bool job_system_init(Qs_System *system, Qs_Engine *engine)
     if (n < 1) n = 1;
     sys->num_threads = n;
 
-    sys->threads = calloc(n, sizeof(Ca_Thread *));
+    sys->threads = qs_calloc(n, sizeof(Ca_Thread *), QS_MEM_JOB);
     if (!sys->threads) {
         ca_condvar_destroy(sys->queue.cond);
         ca_mutex_destroy(sys->queue.mutex);
-        free(sys);
+        qs_free(sys);
         return false;
     }
 
@@ -612,10 +612,10 @@ static void job_system_shutdown(Qs_System *system, Qs_Engine *engine)
     for (uint32_t i = 0; i < sys->num_threads; ++i)
         ca_thread_join(sys->threads[i]);
 
-    free(sys->threads);
+    qs_free(sys->threads);
     ca_condvar_destroy(sys->queue.cond);
     ca_mutex_destroy(sys->queue.mutex);
-    free(sys);
+    qs_free(sys);
     *slot = NULL;
 }
 
@@ -633,14 +633,14 @@ Qs_SystemDesc qs_job_system_desc(void)
 
 Qs_JobCounter* qs_job_counter_create(Qs_JobSystem* system) {
     (void)system;
-    Qs_JobCounter* c = calloc(1, sizeof(Qs_JobCounter));
+    Qs_JobCounter* c = qs_calloc(1, sizeof(Qs_JobCounter), QS_MEM_JOB);
     if (!c) return NULL;
     c->mutex = ca_mutex_create();
     c->cond  = ca_condvar_create();
     if (!c->mutex || !c->cond) {
         ca_condvar_destroy(c->cond);
         ca_mutex_destroy(c->mutex);
-        free(c);
+        qs_free(c);
         return NULL;
     }
     return c;
@@ -651,7 +651,7 @@ void qs_job_counter_destroy(Qs_JobSystem* system, Qs_JobCounter* counter) {
     if (!counter) return;
     ca_condvar_destroy(counter->cond);
     ca_mutex_destroy(counter->mutex);
-    free(counter);
+    qs_free(counter);
 }
 
 void qs_job_dispatch(Qs_JobSystem* sys, const Qs_JobDesc* job,

@@ -84,10 +84,20 @@ static void engine_frame(void *userdata)
     qs_input_end_frame();
 }
 
+/* Static wrapper functions so Causality allocations are tracked as QS_MEM_UI. */
+static void *engine_ui_malloc (size_t sz)            { return qs_malloc(sz, QS_MEM_UI); }
+static void *engine_ui_calloc (size_t n, size_t sz)  { return qs_calloc(n, sz, QS_MEM_UI); }
+static void *engine_ui_realloc(void *p, size_t sz)   { return qs_realloc(p, sz, QS_MEM_UI); }
+
 Qs_Engine* qs_engine_create(const Qs_EngineDesc* desc) {
     if (!desc) return NULL;
 
-    Qs_Engine* engine = calloc(1, sizeof(Qs_Engine));
+    qs_mem_init();
+
+    /* Route all Causality internal allocations through the memory system. */
+    ca_set_allocator(engine_ui_malloc, engine_ui_calloc, engine_ui_realloc, qs_free);
+
+    Qs_Engine* engine = qs_calloc(1, sizeof(Qs_Engine), QS_MEM_ENGINE);
     if (!engine) return NULL;
 
     engine->last_time = engine_clock();
@@ -95,7 +105,7 @@ Qs_Engine* qs_engine_create(const Qs_EngineDesc* desc) {
 
     if (desc->app_name) {
         size_t len = strlen(desc->app_name);
-        engine->app_name = malloc(len + 1);
+        engine->app_name = qs_malloc(len + 1, QS_MEM_ENGINE);
         if (engine->app_name)
             memcpy(engine->app_name, desc->app_name, len + 1);
     }
@@ -110,8 +120,8 @@ Qs_Engine* qs_engine_create(const Qs_EngineDesc* desc) {
         .font_size_px = desc->font_size_px > 0 ? desc->font_size_px : 14.0f,
     });
     if (!engine->ca_instance) {
-        free(engine->app_name);
-        free(engine);
+        qs_free(engine->app_name);
+        qs_free(engine);
         return NULL;
     }
 
@@ -127,8 +137,8 @@ Qs_Engine* qs_engine_create(const Qs_EngineDesc* desc) {
     });
     if (!engine->window) {
         ca_instance_destroy(engine->ca_instance);
-        free(engine->app_name);
-        free(engine);
+        qs_free(engine->app_name);
+        qs_free(engine);
         return NULL;
     }
 
@@ -199,8 +209,8 @@ fail:
     if (engine->extensions) qs_ext_registry_destroy(engine->extensions);
     if (engine->systems) qs_system_manager_destroy(engine->systems);
     ca_instance_destroy(engine->ca_instance);
-    free(engine->app_name);
-    free(engine);
+    qs_free(engine->app_name);
+    qs_free(engine);
     return NULL;
 }
 
@@ -213,8 +223,9 @@ void qs_engine_destroy(Qs_Engine* engine) {
     qs_system_manager_destroy(engine->systems);
     if (engine->stylesheet) ca_css_destroy(engine->stylesheet);
     ca_instance_destroy(engine->ca_instance);
-    free(engine->app_name);
-    free(engine);
+    qs_free(engine->app_name);
+    qs_free(engine);
+    qs_mem_shutdown();
 }
 
 int qs_engine_run(Qs_Engine* engine) {
@@ -310,7 +321,6 @@ const char* qs_version_string(void) {
    ================================================================ */
 
 #include "qs_log.h"
-#include <stdlib.h>
 #include <string.h>
 
 struct Qs_System {
@@ -330,12 +340,12 @@ struct Qs_SystemManager {
 
 Qs_SystemManager *qs_system_manager_create(Qs_Engine *engine)
 {
-    Qs_SystemManager *mgr = calloc(1, sizeof(Qs_SystemManager));
+    Qs_SystemManager *mgr = qs_calloc(1, sizeof(Qs_SystemManager), QS_MEM_ENGINE);
     if (!mgr) return NULL;
     mgr->engine   = engine;
     mgr->capacity = 16;
-    mgr->systems  = calloc(mgr->capacity, sizeof(Qs_System *));
-    if (!mgr->systems) { free(mgr); return NULL; }
+    mgr->systems  = qs_calloc(mgr->capacity, sizeof(Qs_System *), QS_MEM_ENGINE);
+    if (!mgr->systems) { qs_free(mgr); return NULL; }
     return mgr;
 }
 
@@ -347,25 +357,25 @@ void qs_system_manager_destroy(Qs_SystemManager *manager)
         Qs_System *s = manager->systems[i - 1];
         if (s->shutdown) s->shutdown(s, manager->engine);
         qs_log(QS_LOG_DEBUG, "System '%s' shut down", s->name);
-        free(s->name);
-        free(s->data);
-        free(s);
+        qs_free(s->name);
+        qs_free(s->data);
+        qs_free(s);
     }
 
-    free(manager->systems);
-    free(manager);
+    qs_free(manager->systems);
+    qs_free(manager);
 }
 
 Qs_System *qs_system_register(Qs_SystemManager *manager, const Qs_SystemDesc *desc)
 {
     if (!manager || !desc || !desc->name) return NULL;
 
-    Qs_System *s = calloc(1, sizeof(Qs_System));
+    Qs_System *s = qs_calloc(1, sizeof(Qs_System), QS_MEM_ENGINE);
     if (!s) return NULL;
 
     size_t name_len = strlen(desc->name);
-    s->name = malloc(name_len + 1);
-    if (!s->name) { free(s); return NULL; }
+    s->name = qs_malloc(name_len + 1, QS_MEM_ENGINE);
+    if (!s->name) { qs_free(s); return NULL; }
     memcpy(s->name, desc->name, name_len + 1);
 
     s->init     = desc->init;
@@ -373,25 +383,25 @@ Qs_System *qs_system_register(Qs_SystemManager *manager, const Qs_SystemDesc *de
     s->update   = desc->update;
 
     if (desc->data_size > 0) {
-        s->data = calloc(1, desc->data_size);
-        if (!s->data) { free(s->name); free(s); return NULL; }
+        s->data = qs_calloc(1, desc->data_size, QS_MEM_ENGINE);
+        if (!s->data) { qs_free(s->name); qs_free(s); return NULL; }
     }
 
     if (s->init && !s->init(s, manager->engine)) {
-        free(s->data);
-        free(s->name);
-        free(s);
+        qs_free(s->data);
+        qs_free(s->name);
+        qs_free(s);
         return NULL;
     }
 
     if (manager->count == manager->capacity) {
         uint32_t new_cap = manager->capacity * 2;
-        Qs_System **new_arr = realloc(manager->systems, new_cap * sizeof(Qs_System *));
+        Qs_System **new_arr = qs_realloc(manager->systems, new_cap * sizeof(Qs_System *), QS_MEM_ENGINE);
         if (!new_arr) {
             if (s->shutdown) s->shutdown(s, manager->engine);
-            free(s->data);
-            free(s->name);
-            free(s);
+            qs_free(s->data);
+            qs_free(s->name);
+            qs_free(s);
             return NULL;
         }
         manager->systems  = new_arr;
@@ -415,9 +425,9 @@ void qs_system_unregister(Qs_SystemManager *manager, Qs_System *system)
                     (manager->count - i - 1) * sizeof(Qs_System *));
             manager->count--;
             qs_log(QS_LOG_DEBUG, "System '%s' unregistered", system->name);
-            free(system->name);
-            free(system->data);
-            free(system);
+            qs_free(system->name);
+            qs_free(system->data);
+            qs_free(system);
             return;
         }
     }
@@ -462,7 +472,6 @@ uint32_t qs_system_count(const Qs_SystemManager *manager)
    ================================================================ */
 
 
-#include <stdlib.h>
 #include <string.h>
 
 /* ================================================================
@@ -536,7 +545,7 @@ static ExtPoint *find_or_create_point(Qs_ExtRegistry *reg, const char *name)
 
 Qs_ExtRegistry *qs_ext_registry_create(void)
 {
-    Qs_ExtRegistry *reg = calloc(1, sizeof(Qs_ExtRegistry));
+    Qs_ExtRegistry *reg = qs_calloc(1, sizeof(Qs_ExtRegistry), QS_MEM_ENGINE);
     return reg;
 }
 
@@ -548,7 +557,7 @@ void qs_ext_registry_destroy(Qs_ExtRegistry *reg)
         if (s_handles[i].registry == reg)
             s_handles[i].registry = NULL;
     }
-    free(reg);
+    qs_free(reg);
 }
 
 /* ================================================================

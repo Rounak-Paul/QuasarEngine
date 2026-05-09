@@ -342,7 +342,7 @@ static void prototype_comp_destroy(void *comp, Qs_Scene *scene, Qs_Entity entity
         qs_scene_destroy(pc->inner);
         pc->inner = NULL;
     }
-    free(pc->overrides);
+    qs_free(pc->overrides);
     pc->overrides      = NULL;
     pc->override_count = 0;
     pc->override_cap   = 0;
@@ -395,8 +395,8 @@ static Qs_PrototypeOverride *override_alloc_or_replace(
 
     if (pc->override_count == pc->override_cap) {
         uint32_t cap = pc->override_cap ? pc->override_cap * 2 : 8;
-        Qs_PrototypeOverride *tmp = (Qs_PrototypeOverride *)realloc(
-            pc->overrides, cap * sizeof(*tmp));
+        Qs_PrototypeOverride *tmp = (Qs_PrototypeOverride *)qs_realloc(
+            pc->overrides, cap * sizeof(*tmp), QS_MEM_SCENE);
         if (!tmp) return NULL;
         pc->overrides    = tmp;
         pc->override_cap = cap;
@@ -726,7 +726,7 @@ Qs_Scene *qs_scene_create(Qs_Engine *engine, const Qs_SceneDesc *desc)
         return NULL;
     }
 
-    Qs_Scene *scene = (Qs_Scene *)calloc(1, sizeof(Qs_Scene));
+    Qs_Scene *scene = (Qs_Scene *)qs_calloc(1, sizeof(Qs_Scene), QS_MEM_SCENE);
     if (!scene) return NULL;
 
     scene->in_use       = true;
@@ -764,11 +764,11 @@ void qs_scene_destroy(Qs_Scene *scene)
 
     /* Free component store buffers — null each pointer after freeing so that
        a stale second call to qs_scene_destroy on the same pointer (use-after-
-       free) degrades to free(NULL) no-ops rather than a double-free crash. */
+       free) degrades to qs_free(NULL) no-ops rather than a double-free crash. */
     for (uint32_t t = 0; t < QS_MAX_COMPONENT_TYPES; t++) {
-        free(scene->stores[t].data);    scene->stores[t].data   = NULL;
-        free(scene->stores[t].sparse);  scene->stores[t].sparse = NULL;
-        free(scene->stores[t].dense);   scene->stores[t].dense  = NULL;
+        qs_free(scene->stores[t].data);    scene->stores[t].data   = NULL;
+        qs_free(scene->stores[t].sparse);  scene->stores[t].sparse = NULL;
+        qs_free(scene->stores[t].dense);   scene->stores[t].dense  = NULL;
     }
 
     /* Remove from system array */
@@ -784,7 +784,7 @@ void qs_scene_destroy(Qs_Scene *scene)
        guard (if the OS hasn't yet reclaimed the page). */
     scene->in_use = false;
     QS_LOG_INFO("Scene '%s' destroyed", scene->name);
-    free(scene);
+    qs_free(scene);
 }
 
 const char *qs_scene_name(const Qs_Scene *scene)
@@ -968,11 +968,11 @@ void *qs_entity_add(Qs_Scene *scene, Qs_Entity entity,
 
     /* Lazy-allocate dense arrays for this component type in this scene */
     if (!store->data) {
-        store->data   = (uint8_t *)calloc(QS_MAX_ENTITIES, type->data_size);
-        store->sparse = (uint32_t *)malloc(QS_MAX_ENTITIES * sizeof(uint32_t));
-        store->dense  = (uint32_t *)malloc(QS_MAX_ENTITIES * sizeof(uint32_t));
+        store->data   = (uint8_t *)qs_calloc(QS_MAX_ENTITIES, type->data_size, QS_MEM_SCENE);
+        store->sparse = (uint32_t *)qs_malloc(QS_MAX_ENTITIES * sizeof(uint32_t), QS_MEM_SCENE);
+        store->dense  = (uint32_t *)qs_malloc(QS_MAX_ENTITIES * sizeof(uint32_t), QS_MEM_SCENE);
         if (!store->data || !store->sparse || !store->dense) {
-            free(store->data); free(store->sparse); free(store->dense);
+            qs_free(store->data); qs_free(store->sparse); qs_free(store->dense);
             store->data = NULL; store->sparse = NULL; store->dense = NULL;
             return NULL;
         }
@@ -1092,7 +1092,7 @@ cJSON *qs_scene_to_json(const Qs_Scene *scene)
 
     /* Build entity → array-index map for parent indices.
        Use heap to avoid a ~16 KB stack allocation. */
-    int *entity_to_index = calloc(QS_MAX_ENTITIES, sizeof(int));
+    int *entity_to_index = qs_calloc(QS_MAX_ENTITIES, sizeof(int), QS_MEM_SCENE);
     if (!entity_to_index) { cJSON_Delete(root); return NULL; }
     for (int i = 0; i < QS_MAX_ENTITIES; i++) entity_to_index[i] = -1;
     int idx = 0;
@@ -1181,7 +1181,7 @@ cJSON *qs_scene_to_json(const Qs_Scene *scene)
         cJSON_AddItemToArray(entities, ent);
     }
 
-    free(entity_to_index);
+    qs_free(entity_to_index);
     return root;
 }
 
@@ -1204,7 +1204,7 @@ bool qs_scene_from_json(Qs_Scene *scene, Qs_Engine *engine,
     int total = cJSON_GetArraySize(entities);
     Qs_Entity *idx_to_entity = NULL;
     if (total > 0) {
-        idx_to_entity = (Qs_Entity *)malloc(sizeof(Qs_Entity) * (size_t)total);
+        idx_to_entity = (Qs_Entity *)qs_malloc(sizeof(Qs_Entity) * (size_t)total, QS_MEM_SCENE);
         for (int i = 0; i < total; i++) idx_to_entity[i] = QS_ENTITY_INVALID;
     }
 
@@ -1334,7 +1334,7 @@ bool qs_scene_from_json(Qs_Scene *scene, Qs_Engine *engine,
                 }
             }
         }
-        free(idx_to_entity);
+        qs_free(idx_to_entity);
     }
 
     /* Sync next_entity_id past the highest loaded ID */
@@ -1453,12 +1453,12 @@ bool qs_scene_save(const Qs_Scene *scene, const char *path)
     FILE *f = fopen(path, "w");
     if (!f) {
         QS_LOG_ERROR("Failed to write scene file: %s", path);
-        free(str);
+        qs_free(str);
         return false;
     }
     fputs(str, f);
     fclose(f);
-    free(str);
+    qs_free(str);
 
     /* Record source path so subsequent saves & path resolution work. */
     snprintf(((Qs_Scene *)scene)->source_path,
@@ -1483,14 +1483,14 @@ bool qs_scene_load(Qs_Scene *scene, Qs_Engine *engine, const char *path)
     fseek(f, 0, SEEK_SET);
     if (len <= 0) { fclose(f); return false; }
 
-    char *buf = malloc((size_t)len + 1);
+    char *buf = qs_malloc((size_t)len + 1, QS_MEM_SCENE);
     if (!buf) { fclose(f); return false; }
     size_t nread = fread(buf, 1, (size_t)len, f);
     buf[nread] = '\0';
     fclose(f);
 
     cJSON *json = cJSON_Parse(buf);
-    free(buf);
+    qs_free(buf);
     if (!json) {
         QS_LOG_ERROR("Failed to parse scene file: %s", path);
         return false;
@@ -1869,13 +1869,13 @@ static cJSON *proto_read_json_file(const char *abs_path)
     long len = ftell(f);
     fseek(f, 0, SEEK_SET);
     if (len <= 0) { fclose(f); return NULL; }
-    char *buf = (char *)malloc((size_t)len + 1);
+    char *buf = (char *)qs_malloc((size_t)len + 1, QS_MEM_SCENE);
     if (!buf) { fclose(f); return NULL; }
     size_t n = fread(buf, 1, (size_t)len, f);
     buf[n] = '\0';
     fclose(f);
     cJSON *json = cJSON_Parse(buf);
-    free(buf);
+    qs_free(buf);
     return json;
 }
 

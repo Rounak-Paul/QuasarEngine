@@ -14,13 +14,13 @@
  *   - Re-writing descriptor sets after resize via pbr_forward_on_resize
  */
 
+#include "quasar.h"
 #include "qs_renderer.h"
 #include "qs_log.h"
 #include "pbr_internal.h"
 
 #include <stdio.h>
 #include <string.h>
-#include <stdlib.h>
 
 /* ================================================================
    RENDER SYSTEM DATA
@@ -49,7 +49,7 @@ Qs_Renderer *pbr_active_renderer(void)
 static bool pbr_render_init(Qs_Engine *engine, Qs_GpuContext *gpu, void **out_ctx)
 {
     (void)engine;
-    VkRenderSystemData *data = calloc(1, sizeof(VkRenderSystemData));
+    VkRenderSystemData *data = qs_calloc(1, sizeof(VkRenderSystemData), QS_MEM_RENDER);
     if (!data) return false;
     data->gpu      = gpu;
     g_render_system = data;
@@ -64,7 +64,7 @@ static void pbr_render_shutdown(void *ctx)
     /* All renderer instances are destroyed before shutdown is called */
     pbr_pass_resources_shutdown(data->gpu, &data->passes);
     g_render_system = NULL;
-    free(data);
+    qs_free(data);
     QS_LOG_INFO("PBR Renderer: render system shut down");
 }
 
@@ -78,7 +78,7 @@ static void *pbr_renderer_create(void *ctx, Qs_Engine *engine,
     VkRenderSystemData *sys = ctx;
     if (!sys || !desc || !handle) return NULL;
 
-    PbrRenderer *r = calloc(1, sizeof(PbrRenderer));
+    PbrRenderer *r = qs_calloc(1, sizeof(PbrRenderer), QS_MEM_RENDER);
     if (!r) return NULL;
 
     r->engine          = engine;
@@ -110,7 +110,7 @@ static void pbr_renderer_destroy(void *ctx, void *impl)
         s_active_handle = NULL;
 
     QS_LOG_INFO("PBR Renderer: '%s' destroyed", r->name);
-    free(r);
+    qs_free(r);
 }
 
 static void pbr_renderer_on_resize(void *ctx, void *impl, uint32_t w, uint32_t h)

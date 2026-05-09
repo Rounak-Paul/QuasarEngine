@@ -12,6 +12,9 @@
 #include <math.h>
 #include <float.h>
 
+/* Memory system — must be early so all TUs can use qs_malloc/qs_free */
+#include "qs_memory.h"
+
 /* POSIX compat for MSVC */
 #ifdef _MSC_VER
   #define strcasecmp _stricmp

@@ -148,7 +148,7 @@ static InputBinding *alloc_binding(void)
 {
     if (s_binding_count == s_binding_cap) {
         uint32_t new_cap = s_binding_cap ? s_binding_cap * 2 : 32;
-        InputBinding *tmp = realloc(s_bindings, new_cap * sizeof(InputBinding));
+        InputBinding *tmp = qs_realloc(s_bindings, new_cap * sizeof(InputBinding), QS_MEM_EDITOR);
         if (!tmp) return NULL;
         s_bindings    = tmp;
         s_binding_cap = new_cap;
@@ -160,7 +160,7 @@ static InputBinding *alloc_binding(void)
 
 static void free_bindings(void)
 {
-    free(s_bindings);
+    qs_free(s_bindings);
     s_bindings     = NULL;
     s_binding_count = 0;
     s_binding_cap   = 0;
@@ -332,7 +332,7 @@ static const char *push_basename(const char *path)
     if (s_proto_display_pool_used + len + 1 > s_proto_display_pool_cap) {
         uint32_t cap = s_proto_display_pool_cap ? s_proto_display_pool_cap * 2 : 256;
         while (cap < s_proto_display_pool_used + len + 1) cap *= 2;
-        char *tmp = (char *)realloc(s_proto_display_pool, cap);
+        char *tmp = (char *)qs_realloc(s_proto_display_pool, cap, QS_MEM_EDITOR);
         if (!tmp) return path; /* fallback: use raw path */
         s_proto_display_pool      = tmp;
         s_proto_display_pool_cap  = cap;
@@ -355,10 +355,10 @@ static void refresh_proto_options(void)
         uint32_t cap = (n + 1 < 16) ? 16 : (n + 1);
         /* Sequential realloc: update each pointer immediately so s_proto_options
            is never left dangling if the second realloc fails. */
-        const char **a = (const char **)realloc(s_proto_options, cap * sizeof(*a));
+        const char **a = (const char **)qs_realloc(s_proto_options, cap * sizeof(*a), QS_MEM_EDITOR);
         if (!a) return;
         s_proto_options = a;
-        const char **b = (const char **)realloc(s_proto_paths, cap * sizeof(*b));
+        const char **b = (const char **)qs_realloc(s_proto_paths, cap * sizeof(*b), QS_MEM_EDITOR);
         if (!b) return;   /* s_proto_options updated, s_proto_paths unchanged — both valid */
         s_proto_paths      = b;
         s_proto_option_cap = cap;
@@ -822,8 +822,8 @@ static void refresh_mat_options(void)
     uint32_t need = n + 1; /* @default + project materials */
     if (need > s_mat_option_cap) {
         uint32_t cap = need < 16 ? 16 : need;
-        const char **a = realloc(s_mat_options, cap * sizeof(*a));
-        char       **c = realloc(s_mat_paths,   cap * sizeof(*c));
+        const char **a = qs_realloc(s_mat_options, cap * sizeof(*a), QS_MEM_EDITOR);
+        char       **c = qs_realloc(s_mat_paths,   cap * sizeof(*c), QS_MEM_EDITOR);
         if (a) { s_mat_options = a; s_mat_option_cap = cap; }
         if (c)   s_mat_paths   = c;
     }
@@ -844,7 +844,7 @@ static void refresh_mat_options(void)
         if (s_mat_pool_used + len > s_mat_pool_cap) {
             uint32_t cap = s_mat_pool_cap ? s_mat_pool_cap * 2 : 512;
             while (cap < s_mat_pool_used + len) cap *= 2;
-            char *tmp = realloc(s_mat_name_pool, cap);
+            char *tmp = qs_realloc(s_mat_name_pool, cap, QS_MEM_EDITOR);
             if (tmp) { s_mat_name_pool = tmp; s_mat_pool_cap = cap; }
         }
         char *dst = s_mat_name_pool + s_mat_pool_used;
@@ -870,8 +870,8 @@ static void refresh_tex_options(void)
     uint32_t need = n + 1; /* (none) + project textures */
     if (need > s_tex_option_cap) {
         uint32_t cap = need < 16 ? 16 : need;
-        const char **a = realloc(s_tex_options, cap * sizeof(*a));
-        char       **b = realloc(s_tex_list,    cap * sizeof(*b));
+        const char **a = qs_realloc(s_tex_options, cap * sizeof(*a), QS_MEM_EDITOR);
+        char       **b = qs_realloc(s_tex_list,    cap * sizeof(*b), QS_MEM_EDITOR);
         if (a) { s_tex_options = a; s_tex_option_cap = cap; }
         if (b)   s_tex_list    = b;
     }
@@ -899,8 +899,8 @@ static void refresh_mesh_options(void)
     uint32_t need = n + QS_PRIMITIVE_COUNT + 1;
     if (need > s_mesh_option_cap) {
         uint32_t cap = need < 16 ? 16 : need;
-        const char **a = realloc(s_mesh_options, cap * sizeof(*a));
-        char       **b = realloc(s_mesh_paths,   cap * sizeof(*b));
+        const char **a = qs_realloc(s_mesh_options, cap * sizeof(*a), QS_MEM_EDITOR);
+        char       **b = qs_realloc(s_mesh_paths,   cap * sizeof(*b), QS_MEM_EDITOR);
         if (a) { s_mesh_options = a; s_mesh_option_cap = cap; }
         if (b)   s_mesh_paths   = b;
     }

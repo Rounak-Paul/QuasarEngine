@@ -175,10 +175,10 @@ static void on_progress_frame(void *user_data)
         QS_LOG_ERROR("Import failed for %s", s_source_path);
 
     qs_import_result_free(&s_cook_job->result);
-    free(s_cook_job->tex_opts);
-    free(s_cook_job->mat_opts);
-    free(s_cook_job->mesh_opts);
-    free(s_cook_job);
+    qs_free(s_cook_job->tex_opts);
+    qs_free(s_cook_job->mat_opts);
+    qs_free(s_cook_job->mesh_opts);
+    qs_free(s_cook_job);
     s_cook_job = NULL;
 
     /* Detach poll callback before close to avoid re-entry. */
@@ -200,7 +200,7 @@ static void start_cook_job(void)
         return;
     }
 
-    CookJob *cj = (CookJob *)calloc(1, sizeof(CookJob));
+    CookJob *cj = (CookJob *)qs_calloc(1, sizeof(CookJob), QS_MEM_EDITOR);
     if (!cj) return;
 
     /* Move the import result into the job (transfer ownership). */
@@ -209,8 +209,8 @@ static void start_cook_job(void)
     s_has_result = false;
 
     if (cj->result.texture_count) {
-        cj->tex_opts = (Qs_TexImportOpts *)calloc(cj->result.texture_count,
-                                                  sizeof(*cj->tex_opts));
+        cj->tex_opts = (Qs_TexImportOpts *)qs_calloc(cj->result.texture_count,
+                                                  sizeof(*cj->tex_opts), QS_MEM_EDITOR);
         for (uint32_t i = 0; i < cj->result.texture_count; i++) {
             cj->tex_opts[i].include       = true;
             /* Default to importer-suggested sRGB; if the user disabled
@@ -221,14 +221,14 @@ static void start_cook_job(void)
         }
     }
     if (cj->result.material_count) {
-        cj->mat_opts = (Qs_MatImportOpts *)calloc(cj->result.material_count,
-                                                  sizeof(*cj->mat_opts));
+        cj->mat_opts = (Qs_MatImportOpts *)qs_calloc(cj->result.material_count,
+                                                  sizeof(*cj->mat_opts), QS_MEM_EDITOR);
         for (uint32_t i = 0; i < cj->result.material_count; i++)
             cj->mat_opts[i].include = true;
     }
     if (cj->result.mesh_count) {
-        cj->mesh_opts = (Qs_MeshImportOpts *)calloc(cj->result.mesh_count,
-                                                    sizeof(*cj->mesh_opts));
+        cj->mesh_opts = (Qs_MeshImportOpts *)qs_calloc(cj->result.mesh_count,
+                                                    sizeof(*cj->mesh_opts), QS_MEM_EDITOR);
         for (uint32_t i = 0; i < cj->result.mesh_count; i++) {
             cj->mesh_opts[i].include  = true;
             cj->mesh_opts[i].optimize = s_g_optim_meshes;

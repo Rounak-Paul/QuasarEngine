@@ -116,7 +116,7 @@ static void cmd_destroy(EdUndoCmd *c)
 {
     if (!c) return;
     if (c->free_fn) c->free_fn(c->data);
-    else            free(c->data);
+    else            qs_free(c->data);
     memset(c, 0, sizeof(*c));
 }
 
@@ -156,7 +156,7 @@ void ed_undo_push(EdUndoApplyFn redo_fn,
     if (!redo_fn || !undo_fn || !data) {
         if (data) {
             if (free_fn) free_fn(data);
-            else         free(data);
+            else         qs_free(data);
         }
         return;
     }
@@ -255,7 +255,7 @@ void ed_undo_push_transform(Qs_Scene *scene, Qs_Entity entity,
 {
     if (!scene || !before || !after) return;
     if (memcmp(before, after, sizeof(Qs_Transform)) == 0) return;
-    TransformCmd *c = (TransformCmd *)calloc(1, sizeof(*c));
+    TransformCmd *c = (TransformCmd *)qs_calloc(1, sizeof(*c), QS_MEM_EDITOR);
     if (!c) return;
     c->scene  = scene;
     c->entity = entity;
@@ -293,7 +293,7 @@ void ed_undo_push_field(Qs_Scene *scene, Qs_Entity entity,
 {
     if (!scene || !comp_type || !before || !after || field_size == 0) return;
     if (memcmp(before, after, field_size) == 0) return;
-    FieldCmd *c = (FieldCmd *)calloc(1, sizeof(*c) + field_size * 2);
+    FieldCmd *c = (FieldCmd *)qs_calloc(1, sizeof(*c) + field_size * 2, QS_MEM_EDITOR);
     if (!c) return;
     c->scene     = scene;
     c->entity    = entity;
@@ -332,7 +332,7 @@ void ed_undo_push_name(Qs_Scene *scene, Qs_Entity entity,
     if (!scene || !before || !after) return;
     if (strcmp(before, after) == 0) return;
     size_t lb = strlen(before) + 1, la = strlen(after) + 1;
-    NameCmd *c = (NameCmd *)calloc(1, sizeof(*c) + lb + la);
+    NameCmd *c = (NameCmd *)qs_calloc(1, sizeof(*c) + lb + la, QS_MEM_EDITOR);
     if (!c) return;
     c->scene  = scene;
     c->entity = entity;
@@ -371,7 +371,7 @@ void ed_undo_push_tag(Qs_Scene *scene, Qs_Entity entity,
     if (!scene || !before || !after) return;
     if (strcmp(before, after) == 0) return;
     size_t lb = strlen(before) + 1, la = strlen(after) + 1;
-    TagCmd *c = (TagCmd *)calloc(1, sizeof(*c) + lb + la);
+    TagCmd *c = (TagCmd *)qs_calloc(1, sizeof(*c) + lb + la, QS_MEM_EDITOR);
     if (!c) return;
     c->scene  = scene;
     c->entity = entity;
@@ -437,7 +437,7 @@ void ed_undo_push_override(Qs_PrototypeComp *pc,
                            bool clear_after, const void *after_value)
 {
     if (!pc || !comp_name || !field_name) return;
-    OverrideCmd *c = (OverrideCmd *)calloc(1, sizeof(*c));
+    OverrideCmd *c = (OverrideCmd *)qs_calloc(1, sizeof(*c), QS_MEM_EDITOR);
     if (!c) return;
     c->pc          = pc;
     c->inner_id    = inner_entity_id;

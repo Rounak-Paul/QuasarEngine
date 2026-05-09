@@ -232,10 +232,10 @@ bool qs_asset_pack_read_texture(const char *path,
     if (fread(&size, sizeof(size), 1, f) != 1 || size == 0) {
         fclose(f); return false;
     }
-    void *pixels = malloc(size);
+    void *pixels = qs_malloc(size, QS_MEM_ASSET);
     if (!pixels) { fclose(f); return false; }
     if (fread(pixels, 1, size, f) != size) {
-        free(pixels); fclose(f); return false;
+        qs_free(pixels); fclose(f); return false;
     }
     fclose(f);
     *out_header = h;
@@ -277,20 +277,20 @@ static void optimize_mesh(Qs_Vertex **verts_io, uint32_t *vc_io,
     uint32_t  *idx   = *idx_io;
 
     /* 1) Vertex remap (de-dup) */
-    unsigned int *remap = malloc(sizeof(unsigned int) * vc);
+    unsigned int *remap = qs_malloc(sizeof(unsigned int) * vc, QS_MEM_ASSET);
     if (!remap) return;
     size_t new_vc = meshopt_generateVertexRemap(remap,
                         idx, ic, verts, vc, sizeof(Qs_Vertex));
 
-    Qs_Vertex *new_verts = malloc(sizeof(Qs_Vertex) * new_vc);
-    uint32_t  *new_idx   = malloc(sizeof(uint32_t)  * ic);
+    Qs_Vertex *new_verts = qs_malloc(sizeof(Qs_Vertex) * new_vc, QS_MEM_ASSET);
+    uint32_t  *new_idx   = qs_malloc(sizeof(uint32_t)  * ic, QS_MEM_ASSET);
     if (!new_verts || !new_idx) {
-        free(remap); free(new_verts); free(new_idx);
+        qs_free(remap); qs_free(new_verts); qs_free(new_idx);
         return;
     }
     meshopt_remapVertexBuffer(new_verts, verts, vc, sizeof(Qs_Vertex), remap);
     meshopt_remapIndexBuffer(new_idx, idx, ic, remap);
-    free(remap);
+    qs_free(remap);
 
     /* 2) Vertex cache optimisation */
     meshopt_optimizeVertexCache(new_idx, new_idx, ic, new_vc);
@@ -304,8 +304,8 @@ static void optimize_mesh(Qs_Vertex **verts_io, uint32_t *vc_io,
     meshopt_optimizeVertexFetch(new_verts, new_idx, ic,
                                 new_verts, new_vc, sizeof(Qs_Vertex));
 
-    free(verts);
-    free(idx);
+    qs_free(verts);
+    qs_free(idx);
     *verts_io = new_verts;
     *vc_io    = (uint32_t)new_vc;
     *idx_io   = new_idx;
@@ -315,9 +315,9 @@ static bool write_qsmesh(const char *path, const Qs_ImportMesh *m, bool optimize
 {
     if (!m || !m->vertices || !m->indices) return false;
 
-    Qs_Vertex *verts = malloc(sizeof(Qs_Vertex) * m->vertex_count);
-    uint32_t  *idx   = malloc(sizeof(uint32_t)  * m->index_count);
-    if (!verts || !idx) { free(verts); free(idx); return false; }
+    Qs_Vertex *verts = qs_malloc(sizeof(Qs_Vertex) * m->vertex_count, QS_MEM_ASSET);
+    uint32_t  *idx   = qs_malloc(sizeof(uint32_t)  * m->index_count, QS_MEM_ASSET);
+    if (!verts || !idx) { qs_free(verts); qs_free(idx); return false; }
     memcpy(verts, m->vertices, sizeof(Qs_Vertex) * m->vertex_count);
     memcpy(idx,   m->indices,  sizeof(uint32_t)  * m->index_count);
 
@@ -338,7 +338,7 @@ static bool write_qsmesh(const char *path, const Qs_ImportMesh *m, bool optimize
 
     FILE *f = fopen(path, "wb");
     if (!f) {
-        free(verts); free(idx);
+        qs_free(verts); qs_free(idx);
         QS_LOG_ERROR("Failed to open .qsmesh for write: %s", path);
         return false;
     }
@@ -347,7 +347,7 @@ static bool write_qsmesh(const char *path, const Qs_ImportMesh *m, bool optimize
     fwrite(idx,   sizeof(uint32_t),  ic, f);
     fclose(f);
 
-    free(verts); free(idx);
+    qs_free(verts); qs_free(idx);
     return true;
 }
 
@@ -364,13 +364,13 @@ bool qs_asset_pack_read_mesh(const char *path,
         QS_LOG_ERROR("Not a .qsmesh file: %s", path);
         fclose(f); return false;
     }
-    Qs_Vertex *v = malloc(sizeof(Qs_Vertex) * h.vertex_count);
-    uint32_t  *i = malloc(sizeof(uint32_t)  * h.index_count);
-    if (!v || !i) { free(v); free(i); fclose(f); return false; }
+    Qs_Vertex *v = qs_malloc(sizeof(Qs_Vertex) * h.vertex_count, QS_MEM_ASSET);
+    uint32_t  *i = qs_malloc(sizeof(uint32_t)  * h.index_count, QS_MEM_ASSET);
+    if (!v || !i) { qs_free(v); qs_free(i); fclose(f); return false; }
     if (fread(v, sizeof(Qs_Vertex), h.vertex_count, f) != h.vertex_count ||
         fread(i, sizeof(uint32_t),  h.index_count,  f) != h.index_count)
     {
-        free(v); free(i); fclose(f); return false;
+        qs_free(v); qs_free(i); fclose(f); return false;
     }
     fclose(f);
     *out_header = h;
@@ -429,10 +429,10 @@ static bool write_qsmat(const char *path,
     if (!str) return false;
 
     FILE *f = fopen(path, "wb");
-    if (!f) { free(str); return false; }
+    if (!f) { qs_free(str); return false; }
     fputs(str, f);
     fclose(f);
-    free(str);
+    qs_free(str);
     return true;
 }
 
@@ -482,7 +482,7 @@ bool qs_asset_cook(const Qs_ImportResult *result,
     /* ---------- TEXTURES ---------- */
     char (*tex_paths)[QS_PACK_MAX_PATH] = NULL;
     if (result->texture_count > 0) {
-        tex_paths = calloc(result->texture_count, sizeof(*tex_paths));
+        tex_paths = qs_calloc(result->texture_count, sizeof(*tex_paths), QS_MEM_ASSET);
         if (!tex_paths) return false;
     }
     for (uint32_t i = 0; i < result->texture_count; i++) {
@@ -506,8 +506,8 @@ bool qs_asset_cook(const Qs_ImportResult *result,
     /* ---------- MATERIALS ---------- */
     char (*mat_paths)[QS_PACK_MAX_PATH] = NULL;
     if (result->material_count > 0) {
-        mat_paths = calloc(result->material_count, sizeof(*mat_paths));
-        if (!mat_paths) { free(tex_paths); return false; }
+        mat_paths = qs_calloc(result->material_count, sizeof(*mat_paths), QS_MEM_ASSET);
+        if (!mat_paths) { qs_free(tex_paths); return false; }
     }
     for (uint32_t i = 0; i < result->material_count; i++) {
         Qs_MatImportOpts opt = options->mat_opts ? options->mat_opts[i] : DEFAULT_MAT_OPTS;
@@ -545,8 +545,8 @@ bool qs_asset_cook(const Qs_ImportResult *result,
     /* ---------- MESHES ---------- */
     char (*mesh_paths)[QS_PACK_MAX_PATH] = NULL;
     if (result->mesh_count > 0) {
-        mesh_paths = calloc(result->mesh_count, sizeof(*mesh_paths));
-        if (!mesh_paths) { free(tex_paths); free(mat_paths); return false; }
+        mesh_paths = qs_calloc(result->mesh_count, sizeof(*mesh_paths), QS_MEM_ASSET);
+        if (!mesh_paths) { qs_free(tex_paths); qs_free(mat_paths); return false; }
     }
     for (uint32_t i = 0; i < result->mesh_count; i++) {
         Qs_MeshImportOpts opt = options->mesh_opts
@@ -675,12 +675,12 @@ bool qs_asset_cook(const Qs_ImportResult *result,
                 fclose(f);
                 ok = true;
             }
-            free(str);
+            qs_free(str);
         }
     }
     cJSON_Delete(root_json);
 
-    free(tex_paths); free(mat_paths); free(mesh_paths);
+    qs_free(tex_paths); qs_free(mat_paths); qs_free(mesh_paths);
 
     if (!ok) {
         QS_LOG_ERROR("Cook: failed to write .qproto: %s", proto_path);
@@ -802,7 +802,7 @@ static PendingLoad *pending_add(const char *path, CacheKind kind)
         QS_LOG_WARN("Async load queue full (%d)", QS_PACK_PENDING_MAX);
         return NULL;
     }
-    PendingLoad *req = calloc(1, sizeof(PendingLoad));
+    PendingLoad *req = qs_calloc(1, sizeof(PendingLoad), QS_MEM_ASSET);
     if (!req) return NULL;
     snprintf(req->path, sizeof(req->path), "%s", path);
     req->kind = kind;
@@ -853,7 +853,7 @@ static CacheEntry *cache_add(const char *path, CacheKind kind)
         QS_LOG_ERROR("Asset cache full (%d)", QS_PACK_CACHE_MAX);
         return NULL;
     }
-    CacheEntry *e = calloc(1, sizeof(CacheEntry));
+    CacheEntry *e = qs_calloc(1, sizeof(CacheEntry), QS_MEM_ASSET);
     if (!e) return NULL;
     snprintf(e->path, sizeof(e->path), "%s", path);
     e->kind = kind;
@@ -893,7 +893,7 @@ void qs_asset_cache_clear(void)
         case CACHE_MAT:  if (e->data.material) qs_material_destroy(e->data.material); break;
         case CACHE_TEX:  if (e->data.texture)  qs_texture_destroy(e->data.texture);   break;
         }
-        free(e);
+        qs_free(e);
     }
     g_cache_count = 0;
 }
@@ -910,7 +910,7 @@ static void cache_release(const char *abs_path, CacheKind kind)
             /* Remove from the live array BEFORE recursive texture releases.
                Each recursive cache_release does its own swap-compaction; if
                this entry is the last element, that compaction moves this
-               pointer into a live slot, and the subsequent free(e) leaves a
+               pointer into a live slot, and the subsequent qs_free(e) leaves a
                dangling pointer inside g_cache[0..g_cache_count-1]. */
             g_cache[i] = g_cache[--g_cache_count];
             if (kind == CACHE_MAT) {
@@ -925,7 +925,7 @@ static void cache_release(const char *abs_path, CacheKind kind)
             case CACHE_MAT:  qs_material_destroy(e->data.material); break;
             case CACHE_TEX:  qs_texture_destroy(e->data.texture);   break;
             }
-            free(e);
+            qs_free(e);
         }
         return;
     }
@@ -1003,7 +1003,7 @@ static Qs_Texture *qs_asset_cache_texture(Qs_Engine *engine, const char *abs_pat
         .wrap_v        = (Qs_TextureWrap)h.wrap_v,
     };
     Qs_Texture *tex = qs_texture_create(engine, &td);
-    free(pixels);
+    qs_free(pixels);
     if (!tex) return NULL;
 
     CacheEntry *e = cache_add(abs_path, CACHE_TEX);
@@ -1053,19 +1053,19 @@ void qs_asset_cache_pump(Qs_Engine *engine)
         if (req->abandoned) {
             /* Discard staging data. */
             if (req->kind == CACHE_MESH) {
-                free(req->stage.mesh.v);
-                free(req->stage.mesh.idx);
+                qs_free(req->stage.mesh.v);
+                qs_free(req->stage.mesh.idx);
             } else if (req->kind == CACHE_TEX) {
-                free(req->stage.tex.pixels);
+                qs_free(req->stage.tex.pixels);
             }
-            free(req);
+            qs_free(req);
             continue;
         }
 
         if (req->kind == CACHE_MESH) {
             if (!req->stage.mesh.ok) {
                 QS_LOG_WARN("Async mesh load failed: %s", req->path);
-                free(req);
+                qs_free(req);
                 continue;
             }
             Qs_MeshFileHeader *h = &req->stage.mesh.h;
@@ -1078,8 +1078,8 @@ void qs_asset_cache_pump(Qs_Engine *engine)
                 .index_type   = QS_INDEX_TYPE_UINT32,
             };
             Qs_Mesh *mesh = qs_mesh_create(engine, &md);
-            free(req->stage.mesh.v);
-            free(req->stage.mesh.idx);
+            qs_free(req->stage.mesh.v);
+            qs_free(req->stage.mesh.idx);
             if (mesh) {
                 /* ref_count = 0: first _async caller next frame increments to 1. */
                 CacheEntry *e = cache_add(req->path, CACHE_MESH);
@@ -1090,7 +1090,7 @@ void qs_asset_cache_pump(Qs_Engine *engine)
         } else if (req->kind == CACHE_TEX) {
             if (!req->stage.tex.ok) {
                 QS_LOG_WARN("Async texture load failed: %s", req->path);
-                free(req);
+                qs_free(req);
                 continue;
             }
             Qs_TexFileHeader *h = &req->stage.tex.h;
@@ -1107,7 +1107,7 @@ void qs_asset_cache_pump(Qs_Engine *engine)
                 .wrap_v        = (Qs_TextureWrap)h->wrap_v,
             };
             Qs_Texture *tex = qs_texture_create(engine, &td);
-            free(req->stage.tex.pixels);
+            qs_free(req->stage.tex.pixels);
             if (tex) {
                 /* Add to cache before swap_texture so that swap_texture
                    finds it via cache_find (ref_count will be bumped to 1). */
@@ -1127,7 +1127,7 @@ void qs_asset_cache_pump(Qs_Engine *engine)
                 }
             }
         }
-        free(req);
+        qs_free(req);
     }
 }
 
@@ -1166,12 +1166,12 @@ Qs_Material *qs_asset_cache_material_async(Qs_Engine    *engine,
     if (!f) { QS_LOG_ERROR("Failed to open .qsmat: %s", abs_path); return NULL; }
     fseek(f, 0, SEEK_END); long len = ftell(f); fseek(f, 0, SEEK_SET);
     if (len <= 0) { fclose(f); return NULL; }
-    char *buf = malloc((size_t)len + 1);
+    char *buf = qs_malloc((size_t)len + 1, QS_MEM_ASSET);
     if (!buf) { fclose(f); return NULL; }
     size_t nread = fread(buf, 1, (size_t)len, f); buf[nread] = '\0'; fclose(f);
 
     cJSON *root = cJSON_Parse(buf);
-    free(buf);
+    qs_free(buf);
     if (!root) { QS_LOG_ERROR("Failed to parse .qsmat: %s", abs_path); return NULL; }
 
     Qs_MaterialDesc md = qs_material_desc_defaults();
@@ -1250,15 +1250,15 @@ void qs_import_result_free(Qs_ImportResult *result)
 {
     if (!result) return;
     for (uint32_t i = 0; i < result->texture_count; i++)
-        free(result->textures[i].pixels);
-    free(result->textures);
+        qs_free(result->textures[i].pixels);
+    qs_free(result->textures);
     for (uint32_t i = 0; i < result->mesh_count; i++) {
-        free(result->meshes[i].vertices);
-        free(result->meshes[i].indices);
+        qs_free(result->meshes[i].vertices);
+        qs_free(result->meshes[i].indices);
     }
-    free(result->meshes);
-    free(result->materials);
-    free(result->nodes);
+    qs_free(result->meshes);
+    qs_free(result->materials);
+    qs_free(result->nodes);
     memset(result, 0, sizeof(*result));
 }
 
@@ -1290,13 +1290,13 @@ static void asset_system_shutdown(Qs_System *system, Qs_Engine *engine)
            after setting cpu_done, and we're on the main thread. */
         if (atomic_load(&req->cpu_done)) {
             if (req->kind == CACHE_MESH) {
-                free(req->stage.mesh.v);
-                free(req->stage.mesh.idx);
+                qs_free(req->stage.mesh.v);
+                qs_free(req->stage.mesh.idx);
             } else if (req->kind == CACHE_TEX) {
-                free(req->stage.tex.pixels);
+                qs_free(req->stage.tex.pixels);
             }
         }
-        free(req);
+        qs_free(req);
     }
     g_pending_count = 0;
 

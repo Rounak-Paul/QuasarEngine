@@ -86,14 +86,14 @@ static int load_recent_projects(RecentProject *out, int max)
     fseek(f, 0, SEEK_SET);
     if (len <= 0) { fclose(f); return 0; }
 
-    char *buf = malloc((size_t)len + 1);
+    char *buf = qs_malloc((size_t)len + 1, QS_MEM_EDITOR);
     if (!buf) { fclose(f); return 0; }
     size_t read = fread(buf, 1, (size_t)len, f);
     buf[read] = '\0';
     fclose(f);
 
     cJSON *root = cJSON_Parse(buf);
-    free(buf);
+    qs_free(buf);
     if (!root) return 0;
 
     int count = 0;
@@ -146,7 +146,7 @@ static void save_recent_projects(const RecentProject *list, int count)
         fputs(json, f);
         fclose(f);
     }
-    free(json);
+    qs_free(json);
 }
 
 /// Adds a project to the front of the recent list (deduplicating).

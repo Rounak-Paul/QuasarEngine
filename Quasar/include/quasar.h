@@ -2,6 +2,7 @@
 #define QUASAR_H
 
 #include <stdint.h>
+#include "qs_memory.h"
 #include "causality.h"
 #include "qs_gpu.h"
 #include "qs_log.h"

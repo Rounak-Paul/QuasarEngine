@@ -261,7 +261,7 @@ static Qs_GpuBuffer *create_buffer_raw(VkDevice device, VkPhysicalDevice pd,
     }
     vkBindBufferMemory(device, vk_buf, vk_mem, 0);
 
-    Qs_GpuBuffer *buf = calloc(1, sizeof(Qs_GpuBuffer));
+    Qs_GpuBuffer *buf = qs_calloc(1, sizeof(Qs_GpuBuffer), QS_MEM_GPU);
     if (!buf) { vkDestroyBuffer(device, vk_buf, NULL); vkFreeMemory(device, vk_mem, NULL); return NULL; }
     buf->buffer = vk_buf;
     buf->memory = vk_mem;
@@ -488,7 +488,7 @@ Qs_GpuBuffer *qs_gpu_create_buffer_from_data(Qs_GpuContext *gpu, Qs_GpuBufferUsa
     if (!dst) {
         vkDestroyBuffer(device, staging->buffer, NULL);
         vkFreeMemory(device, staging->memory, NULL);
-        free(staging);
+        qs_free(staging);
         return NULL;
     }
 
@@ -501,7 +501,7 @@ Qs_GpuBuffer *qs_gpu_create_buffer_from_data(Qs_GpuContext *gpu, Qs_GpuBufferUsa
 
     vkDestroyBuffer(device, staging->buffer, NULL);
     vkFreeMemory(device, staging->memory, NULL);
-    free(staging);
+    qs_free(staging);
     return dst;
 }
 
@@ -512,7 +512,7 @@ void qs_gpu_destroy_buffer(Qs_GpuContext *gpu, Qs_GpuBuffer *buffer)
     vkDeviceWaitIdle(device);
     if (buffer->buffer) vkDestroyBuffer(device, buffer->buffer, NULL);
     if (buffer->memory) vkFreeMemory(device, buffer->memory, NULL);
-    free(buffer);
+    qs_free(buffer);
 }
 
 void *qs_gpu_map_buffer(Qs_GpuContext *gpu, Qs_GpuBuffer *buffer)
@@ -585,7 +585,7 @@ Qs_GpuImage *qs_gpu_create_image(Qs_GpuContext *gpu, const Qs_GpuImageDesc *desc
     }
     vkBindImageMemory(device, vk_image, vk_mem, 0);
 
-    Qs_GpuImage *img = calloc(1, sizeof(Qs_GpuImage));
+    Qs_GpuImage *img = qs_calloc(1, sizeof(Qs_GpuImage), QS_MEM_GPU);
     if (!img) {
         vkDestroyImage(device, vk_image, NULL);
         vkFreeMemory(device, vk_mem, NULL);
@@ -607,7 +607,7 @@ void qs_gpu_destroy_image(Qs_GpuContext *gpu, Qs_GpuImage *image)
     vkDeviceWaitIdle(device);
     if (image->image)  vkDestroyImage(device, image->image, NULL);
     if (image->memory) vkFreeMemory(device, image->memory, NULL);
-    free(image);
+    qs_free(image);
 }
 
 bool qs_gpu_upload_image(Qs_GpuContext *gpu, Qs_GpuImage *image,
@@ -672,7 +672,7 @@ bool qs_gpu_upload_image(Qs_GpuContext *gpu, Qs_GpuImage *image,
 
     vkDestroyBuffer(device, staging->buffer, NULL);
     vkFreeMemory(device, staging->memory, NULL);
-    free(staging);
+    qs_free(staging);
     return true;
 }
 
@@ -702,7 +702,7 @@ Qs_GpuImageView *qs_gpu_create_image_view(Qs_GpuContext *gpu,
     VkImageView vk_view;
     if (vkCreateImageView(device, &ci, NULL, &vk_view) != VK_SUCCESS) return NULL;
 
-    Qs_GpuImageView *view = calloc(1, sizeof(Qs_GpuImageView));
+    Qs_GpuImageView *view = qs_calloc(1, sizeof(Qs_GpuImageView), QS_MEM_GPU);
     if (!view) { vkDestroyImageView(device, vk_view, NULL); return NULL; }
     view->view = vk_view;
     return view;
@@ -712,7 +712,7 @@ void qs_gpu_destroy_image_view(Qs_GpuContext *gpu, Qs_GpuImageView *view)
 {
     if (!view) return;
     vkDestroyImageView(ca_gpu_device(to_ca(gpu)), view->view, NULL);
-    free(view);
+    qs_free(view);
 }
 
 Qs_GpuImageView *qs_gpu_create_image_view_for(Qs_GpuContext *gpu, Qs_GpuImage *image,
@@ -734,7 +734,7 @@ Qs_GpuImageView *qs_gpu_create_image_view_for(Qs_GpuContext *gpu, Qs_GpuImage *i
     };
     VkImageView vk_view;
     if (vkCreateImageView(device, &ci, NULL, &vk_view) != VK_SUCCESS) return NULL;
-    Qs_GpuImageView *view = calloc(1, sizeof(Qs_GpuImageView));
+    Qs_GpuImageView *view = qs_calloc(1, sizeof(Qs_GpuImageView), QS_MEM_GPU);
     if (!view) { vkDestroyImageView(device, vk_view, NULL); return NULL; }
     view->view = vk_view;
     return view;
@@ -780,7 +780,7 @@ Qs_GpuSampler *qs_gpu_create_sampler(Qs_GpuContext *gpu, const Qs_GpuSamplerDesc
     VkSampler vk_sampler;
     if (vkCreateSampler(device, &ci, NULL, &vk_sampler) != VK_SUCCESS) return NULL;
 
-    Qs_GpuSampler *sampler = calloc(1, sizeof(Qs_GpuSampler));
+    Qs_GpuSampler *sampler = qs_calloc(1, sizeof(Qs_GpuSampler), QS_MEM_GPU);
     if (!sampler) { vkDestroySampler(device, vk_sampler, NULL); return NULL; }
     sampler->sampler = vk_sampler;
     return sampler;
@@ -790,7 +790,7 @@ void qs_gpu_destroy_sampler(Qs_GpuContext *gpu, Qs_GpuSampler *sampler)
 {
     if (!sampler) return;
     vkDestroySampler(ca_gpu_device(to_ca(gpu)), sampler->sampler, NULL);
-    free(sampler);
+    qs_free(sampler);
 }
 
 /* ================================================================
@@ -806,7 +806,7 @@ Qs_GpuShader *qs_gpu_compile_shader(Qs_GpuContext *gpu, const char *glsl_source,
                                             gpu_stage_to_vk_single(stage));
     if (!mod) return NULL;
 
-    Qs_GpuShader *shader = calloc(1, sizeof(Qs_GpuShader));
+    Qs_GpuShader *shader = qs_calloc(1, sizeof(Qs_GpuShader), QS_MEM_GPU);
     if (!shader) { vkDestroyShaderModule(device, mod, NULL); return NULL; }
     shader->module = mod;
     return shader;
@@ -816,7 +816,7 @@ void qs_gpu_destroy_shader(Qs_GpuContext *gpu, Qs_GpuShader *shader)
 {
     if (!shader) return;
     vkDestroyShaderModule(ca_gpu_device(to_ca(gpu)), shader->module, NULL);
-    free(shader);
+    qs_free(shader);
 }
 
 /* ================================================================
@@ -829,7 +829,7 @@ Qs_GpuDescriptorSetLayout *qs_gpu_create_descriptor_set_layout(
     VkDevice device = ca_gpu_device(to_ca(gpu));
 
     VkDescriptorSetLayoutBinding *vk_bindings =
-        calloc(count, sizeof(VkDescriptorSetLayoutBinding));
+        qs_calloc(count, sizeof(VkDescriptorSetLayoutBinding), QS_MEM_GPU);
     if (!vk_bindings) return NULL;
 
     for (uint32_t i = 0; i < count; i++) {
@@ -848,10 +848,10 @@ Qs_GpuDescriptorSetLayout *qs_gpu_create_descriptor_set_layout(
     };
     VkDescriptorSetLayout vk_layout;
     VkResult result = vkCreateDescriptorSetLayout(device, &ci, NULL, &vk_layout);
-    free(vk_bindings);
+    qs_free(vk_bindings);
     if (result != VK_SUCCESS) return NULL;
 
-    Qs_GpuDescriptorSetLayout *layout = calloc(1, sizeof(Qs_GpuDescriptorSetLayout));
+    Qs_GpuDescriptorSetLayout *layout = qs_calloc(1, sizeof(Qs_GpuDescriptorSetLayout), QS_MEM_GPU);
     if (!layout) { vkDestroyDescriptorSetLayout(device, vk_layout, NULL); return NULL; }
     layout->layout = vk_layout;
     return layout;
@@ -862,7 +862,7 @@ void qs_gpu_destroy_descriptor_set_layout(Qs_GpuContext *gpu,
 {
     if (!layout) return;
     vkDestroyDescriptorSetLayout(ca_gpu_device(to_ca(gpu)), layout->layout, NULL);
-    free(layout);
+    qs_free(layout);
 }
 
 Qs_GpuDescriptorPool *qs_gpu_create_descriptor_pool(Qs_GpuContext *gpu,
@@ -871,7 +871,7 @@ Qs_GpuDescriptorPool *qs_gpu_create_descriptor_pool(Qs_GpuContext *gpu,
     VkDevice device = ca_gpu_device(to_ca(gpu));
 
     VkDescriptorPoolSize *vk_sizes =
-        calloc(desc->size_count, sizeof(VkDescriptorPoolSize));
+        qs_calloc(desc->size_count, sizeof(VkDescriptorPoolSize), QS_MEM_GPU);
     if (!vk_sizes) return NULL;
 
     for (uint32_t i = 0; i < desc->size_count; i++) {
@@ -890,10 +890,10 @@ Qs_GpuDescriptorPool *qs_gpu_create_descriptor_pool(Qs_GpuContext *gpu,
     };
     VkDescriptorPool vk_pool;
     VkResult result = vkCreateDescriptorPool(device, &ci, NULL, &vk_pool);
-    free(vk_sizes);
+    qs_free(vk_sizes);
     if (result != VK_SUCCESS) return NULL;
 
-    Qs_GpuDescriptorPool *pool = calloc(1, sizeof(Qs_GpuDescriptorPool));
+    Qs_GpuDescriptorPool *pool = qs_calloc(1, sizeof(Qs_GpuDescriptorPool), QS_MEM_GPU);
     if (!pool) { vkDestroyDescriptorPool(device, vk_pool, NULL); return NULL; }
     pool->pool = vk_pool;
     return pool;
@@ -903,7 +903,7 @@ void qs_gpu_destroy_descriptor_pool(Qs_GpuContext *gpu, Qs_GpuDescriptorPool *po
 {
     if (!pool) return;
     vkDestroyDescriptorPool(ca_gpu_device(to_ca(gpu)), pool->pool, NULL);
-    free(pool);
+    qs_free(pool);
 }
 
 Qs_GpuDescriptorSet *qs_gpu_alloc_descriptor_set(Qs_GpuContext *gpu,
@@ -920,7 +920,7 @@ Qs_GpuDescriptorSet *qs_gpu_alloc_descriptor_set(Qs_GpuContext *gpu,
     VkDescriptorSet vk_set;
     if (vkAllocateDescriptorSets(device, &ai, &vk_set) != VK_SUCCESS) return NULL;
 
-    Qs_GpuDescriptorSet *set = calloc(1, sizeof(Qs_GpuDescriptorSet));
+    Qs_GpuDescriptorSet *set = qs_calloc(1, sizeof(Qs_GpuDescriptorSet), QS_MEM_GPU);
     if (!set) return NULL;
     set->set = vk_set;
     return set;
@@ -931,7 +931,7 @@ void qs_gpu_free_descriptor_set(Qs_GpuContext *gpu, Qs_GpuDescriptorPool *pool,
 {
     if (!set) return;
     vkFreeDescriptorSets(ca_gpu_device(to_ca(gpu)), pool->pool, 1, &set->set);
-    free(set);
+    qs_free(set);
 }
 
 void qs_gpu_write_image_descriptor(Qs_GpuContext *gpu, Qs_GpuDescriptorSet *set,
@@ -985,7 +985,7 @@ Qs_GpuPipelineLayout *qs_gpu_create_pipeline_layout(Qs_GpuContext *gpu,
 
     VkDescriptorSetLayout *vk_layouts = NULL;
     if (desc->set_layout_count > 0) {
-        vk_layouts = calloc(desc->set_layout_count, sizeof(VkDescriptorSetLayout));
+        vk_layouts = qs_calloc(desc->set_layout_count, sizeof(VkDescriptorSetLayout), QS_MEM_GPU);
         if (!vk_layouts) return NULL;
         for (uint32_t i = 0; i < desc->set_layout_count; i++)
             vk_layouts[i] = desc->set_layouts[i]->layout;
@@ -993,8 +993,8 @@ Qs_GpuPipelineLayout *qs_gpu_create_pipeline_layout(Qs_GpuContext *gpu,
 
     VkPushConstantRange *vk_pc = NULL;
     if (desc->push_constant_count > 0) {
-        vk_pc = calloc(desc->push_constant_count, sizeof(VkPushConstantRange));
-        if (!vk_pc) { free(vk_layouts); return NULL; }
+        vk_pc = qs_calloc(desc->push_constant_count, sizeof(VkPushConstantRange), QS_MEM_GPU);
+        if (!vk_pc) { qs_free(vk_layouts); return NULL; }
         for (uint32_t i = 0; i < desc->push_constant_count; i++) {
             vk_pc[i] = (VkPushConstantRange){
                 .stageFlags = gpu_stages_to_vk(desc->push_constants[i].stages),
@@ -1013,11 +1013,11 @@ Qs_GpuPipelineLayout *qs_gpu_create_pipeline_layout(Qs_GpuContext *gpu,
     };
     VkPipelineLayout vk_layout;
     VkResult result = vkCreatePipelineLayout(device, &ci, NULL, &vk_layout);
-    free(vk_layouts);
-    free(vk_pc);
+    qs_free(vk_layouts);
+    qs_free(vk_pc);
     if (result != VK_SUCCESS) return NULL;
 
-    Qs_GpuPipelineLayout *layout = calloc(1, sizeof(Qs_GpuPipelineLayout));
+    Qs_GpuPipelineLayout *layout = qs_calloc(1, sizeof(Qs_GpuPipelineLayout), QS_MEM_GPU);
     if (!layout) { vkDestroyPipelineLayout(device, vk_layout, NULL); return NULL; }
     layout->layout = vk_layout;
     return layout;
@@ -1027,7 +1027,7 @@ void qs_gpu_destroy_pipeline_layout(Qs_GpuContext *gpu, Qs_GpuPipelineLayout *la
 {
     if (!layout) return;
     vkDestroyPipelineLayout(ca_gpu_device(to_ca(gpu)), layout->layout, NULL);
-    free(layout);
+    qs_free(layout);
 }
 
 Qs_GpuPipeline *qs_gpu_create_graphics_pipeline(Qs_GpuContext *gpu,
@@ -1057,12 +1057,15 @@ Qs_GpuPipeline *qs_gpu_create_graphics_pipeline(Qs_GpuContext *gpu,
     for (uint32_t b = 0; b < desc->vertex_binding_count; b++)
         total_attrs += desc->vertex_bindings[b].attribute_count;
 
-    VkVertexInputBindingDescription *vk_bindings =
-        calloc(desc->vertex_binding_count, sizeof(VkVertexInputBindingDescription));
-    VkVertexInputAttributeDescription *vk_attrs =
-        calloc(total_attrs, sizeof(VkVertexInputAttributeDescription));
-    if (!vk_bindings || !vk_attrs) {
-        free(vk_bindings); free(vk_attrs); return NULL;
+    VkVertexInputBindingDescription *vk_bindings = NULL;
+    VkVertexInputAttributeDescription *vk_attrs  = NULL;
+    if (desc->vertex_binding_count > 0) {
+        vk_bindings = qs_calloc(desc->vertex_binding_count, sizeof(VkVertexInputBindingDescription), QS_MEM_GPU);
+        if (!vk_bindings) return NULL;
+    }
+    if (total_attrs > 0) {
+        vk_attrs = qs_calloc(total_attrs, sizeof(VkVertexInputAttributeDescription), QS_MEM_GPU);
+        if (!vk_attrs) { qs_free(vk_bindings); return NULL; }
     }
 
     uint32_t attr_idx = 0;
@@ -1185,11 +1188,11 @@ Qs_GpuPipeline *qs_gpu_create_graphics_pipeline(Qs_GpuContext *gpu,
     VkResult result = vkCreateGraphicsPipelines(device, VK_NULL_HANDLE,
                                                 1, &pipeline_ci, NULL,
                                                 &vk_pipeline);
-    free(vk_bindings);
-    free(vk_attrs);
+    qs_free(vk_bindings);
+    qs_free(vk_attrs);
     if (result != VK_SUCCESS) return NULL;
 
-    Qs_GpuPipeline *pipeline = calloc(1, sizeof(Qs_GpuPipeline));
+    Qs_GpuPipeline *pipeline = qs_calloc(1, sizeof(Qs_GpuPipeline), QS_MEM_GPU);
     if (!pipeline) { vkDestroyPipeline(device, vk_pipeline, NULL); return NULL; }
     pipeline->pipeline = vk_pipeline;
     return pipeline;
@@ -1199,7 +1202,7 @@ void qs_gpu_destroy_pipeline(Qs_GpuContext *gpu, Qs_GpuPipeline *pipeline)
 {
     if (!pipeline) return;
     vkDestroyPipeline(ca_gpu_device(to_ca(gpu)), pipeline->pipeline, NULL);
-    free(pipeline);
+    qs_free(pipeline);
 }
 
 /* ================================================================
@@ -1208,7 +1211,7 @@ void qs_gpu_destroy_pipeline(Qs_GpuContext *gpu, Qs_GpuPipeline *pipeline)
 
 Qs_GpuCmd *qs_gpu_begin_transfer(Qs_GpuContext *gpu)
 {
-    Qs_GpuCmd *cmd = calloc(1, sizeof(Qs_GpuCmd));
+    Qs_GpuCmd *cmd = qs_calloc(1, sizeof(Qs_GpuCmd), QS_MEM_GPU);
     if (!cmd) return NULL;
     cmd->cmd = ca_gpu_begin_transfer(to_ca(gpu));
     return cmd;
@@ -1218,7 +1221,7 @@ void qs_gpu_end_transfer(Qs_GpuContext *gpu, Qs_GpuCmd *cmd)
 {
     if (!cmd) return;
     ca_gpu_end_transfer(to_ca(gpu), cmd->cmd);
-    free(cmd);
+    qs_free(cmd);
 }
 
 void qs_cmd_begin_rendering(Qs_GpuCmd *cmd, const Qs_GpuRenderTarget *target)

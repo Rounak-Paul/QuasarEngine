@@ -14,12 +14,12 @@
  */
 
 #include "gltf_loader.h"
+#include "quasar.h"
 
 #include "cgltf.h"
 #include "stb_image.h"
 
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
 #include <math.h>
 
@@ -37,12 +37,12 @@ static void *gltf_tracked_alloc(void *user, cgltf_size size)
     GltfAllocTracker *t = (GltfAllocTracker *)user;
     if (!t || size == 0) return NULL;
 
-    void *ptr = malloc((size_t)size);
+    void *ptr = qs_malloc((size_t)size, QS_MEM_ASSET);
     if (!ptr) return NULL;
 
-    GltfAllocNode *node = (GltfAllocNode *)malloc(sizeof(GltfAllocNode));
+    GltfAllocNode *node = (GltfAllocNode *)qs_malloc(sizeof(GltfAllocNode), QS_MEM_ASSET);
     if (!node) {
-        free(ptr);
+        qs_free(ptr);
         return NULL;
     }
 
@@ -62,8 +62,8 @@ static void gltf_tracked_free(void *user, void *ptr)
         if ((*cur)->ptr == ptr) {
             GltfAllocNode *dead = *cur;
             *cur = dead->next;
-            free(dead->ptr);
-            free(dead);
+            qs_free(dead->ptr);
+            qs_free(dead);
             return;
         }
         cur = &(*cur)->next;
@@ -78,8 +78,8 @@ static void gltf_tracked_free_all(GltfAllocTracker *t)
     GltfAllocNode *n = t->head;
     while (n) {
         GltfAllocNode *next = n->next;
-        free(n->ptr);
-        free(n);
+        qs_free(n->ptr);
+        qs_free(n);
         n = next;
     }
     t->head = NULL;
@@ -210,7 +210,7 @@ static Qs_Vertex *build_vertices(const cgltf_primitive *prim, uint32_t *out_coun
     if (!pos_acc || pos_acc->count == 0) return NULL;
 
     uint32_t count = (uint32_t)pos_acc->count;
-    Qs_Vertex *verts = (Qs_Vertex *)calloc(count, sizeof(Qs_Vertex));
+    Qs_Vertex *verts = (Qs_Vertex *)qs_calloc(count, sizeof(Qs_Vertex), QS_MEM_ASSET);
     if (!verts) return NULL;
 
     for (uint32_t i = 0; i < count; i++) {
@@ -235,7 +235,7 @@ static uint32_t *build_indices(const cgltf_primitive *prim, uint32_t *out_count)
     }
 
     uint32_t count = (uint32_t)prim->indices->count;
-    uint32_t *idx = (uint32_t *)malloc(count * sizeof(uint32_t));
+    uint32_t *idx = (uint32_t *)qs_malloc(count * sizeof(uint32_t), QS_MEM_ASSET);
     if (!idx) return NULL;
 
     for (uint32_t i = 0; i < count; i++)
@@ -514,8 +514,8 @@ static bool gltf_import(void *data_ptr, const char *path,
     Qs_ImportTexture *textures = NULL;
     bool *decoded = NULL;
     if (image_count > 0) {
-        textures = (Qs_ImportTexture *)calloc(image_count, sizeof(Qs_ImportTexture));
-        decoded  = (bool *)calloc(image_count, sizeof(bool));
+        textures = (Qs_ImportTexture *)qs_calloc(image_count, sizeof(Qs_ImportTexture), QS_MEM_ASSET);
+        decoded  = (bool *)qs_calloc(image_count, sizeof(bool), QS_MEM_ASSET);
     }
 
     /* ------------------------------------------------------------------
@@ -524,7 +524,7 @@ static bool gltf_import(void *data_ptr, const char *path,
     uint32_t mat_count = (uint32_t)gd->materials_count;
     Qs_ImportMaterial *materials = NULL;
     if (mat_count > 0) {
-        materials = (Qs_ImportMaterial *)calloc(mat_count, sizeof(Qs_ImportMaterial));
+        materials = (Qs_ImportMaterial *)qs_calloc(mat_count, sizeof(Qs_ImportMaterial), QS_MEM_ASSET);
         for (uint32_t i = 0; i < mat_count; i++) {
             fill_import_material(gd, &gd->materials[i], dir_path,
                                  textures, decoded, image_count,
@@ -541,7 +541,7 @@ static bool gltf_import(void *data_ptr, const char *path,
 
     Qs_ImportMesh *meshes = NULL;
     if (total_prims > 0) {
-        meshes = (Qs_ImportMesh *)calloc(total_prims, sizeof(Qs_ImportMesh));
+        meshes = (Qs_ImportMesh *)qs_calloc(total_prims, sizeof(Qs_ImportMesh), QS_MEM_ASSET);
         uint32_t prim_idx = 0;
         for (cgltf_size mi = 0; mi < gd->meshes_count; mi++) {
             const cgltf_mesh *gm = &gd->meshes[mi];
@@ -569,10 +569,10 @@ static bool gltf_import(void *data_ptr, const char *path,
     Qs_ImportNode *nodes = NULL;
 
     if (total_nodes > 0) {
-        nodes = (Qs_ImportNode *)calloc(total_nodes, sizeof(Qs_ImportNode));
+        nodes = (Qs_ImportNode *)qs_calloc(total_nodes, sizeof(Qs_ImportNode), QS_MEM_ASSET);
 
         /* Map glTF node index → ImportNode index (first node for that glTF node). */
-        int32_t *node_map = (int32_t *)calloc(gd->nodes_count, sizeof(int32_t));
+        int32_t *node_map = (int32_t *)qs_calloc(gd->nodes_count, sizeof(int32_t), QS_MEM_ASSET);
 
         uint32_t ni = 0; /* next free ImportNode slot */
 
@@ -642,7 +642,7 @@ static bool gltf_import(void *data_ptr, const char *path,
             }
         }
 
-        free(node_map);
+        qs_free(node_map);
         total_nodes = ni;
     }
 
@@ -658,7 +658,7 @@ static bool gltf_import(void *data_ptr, const char *path,
     out->nodes          = nodes;
     out->node_count     = total_nodes;
 
-    free(decoded);
+    qs_free(decoded);
     cgltf_free(gd);
     gltf_tracked_free_all(&tracker);
     return true;
