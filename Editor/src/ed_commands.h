@@ -32,11 +32,12 @@ void ed_keybinds_init(void);
 void ed_keybinds_shutdown(void);
 
 /// Registers a callback for `key` + `mods` (bitwise OR of Qs_KeyMod).
-/// `label` is a short shortcut string ("Ctrl+S") for menu display;
-/// the pointer must remain valid for the lifetime of the binding.
+/// `name` is a human-readable action name ("Save Scene"); `label` is the
+/// shortcut chord ("Ctrl+S") for menu display.  Both pointers must remain
+/// valid for the lifetime of the binding.
 void ed_keybinds_register(int key, int mods,
                           EdKeybindFn fn, void *user_data,
-                          const char *label);
+                          const char *label, const char *name);
 
 /// Dispatches a key event.  Returns true if a binding consumed it.
 /// Only QS_KEY_PRESS / QS_KEY_REPEAT events are dispatched.
@@ -44,6 +45,16 @@ bool ed_keybinds_dispatch(int key, int action, int mods);
 
 /// Returns the registered shortcut label for a binding, or NULL.
 const char *ed_keybinds_label_for(int key, int mods);
+
+/* --- Iteration --- */
+typedef struct EdKeybindInfo {
+    const char *name;   /* human-readable action name, e.g. "Save Scene" */
+    const char *chord;  /* shortcut string, e.g. "Ctrl+S" */
+} EdKeybindInfo;
+
+/// Calls fn(info, user_data) once per registered keybind.
+void ed_keybinds_iter(void (*fn)(const EdKeybindInfo *info, void *user_data),
+                      void *user_data);
 
 /* ---------------- Undo / Redo ---------------- */
 

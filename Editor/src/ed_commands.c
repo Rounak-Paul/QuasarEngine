@@ -15,7 +15,8 @@ typedef struct EdKeybind {
     int          mods;       ///< Normalised modifier mask (caps/num lock stripped).
     EdKeybindFn  fn;
     void        *user_data;
-    const char  *label;
+    const char  *label;      ///< Shortcut chord string, e.g. "Ctrl+S".
+    const char  *name;       ///< Human-readable action name, e.g. "Save Scene".
 } EdKeybind;
 
 static EdKeybind s_binds[ED_KEYBINDS_MAX];
@@ -38,7 +39,7 @@ void ed_keybinds_shutdown(void)
 
 void ed_keybinds_register(int key, int mods,
                           EdKeybindFn fn, void *user_data,
-                          const char *label)
+                          const char *label, const char *name)
 {
     if (!fn || s_count >= ED_KEYBINDS_MAX) return;
     /* Replace existing binding for the same chord (avoids duplicate
@@ -49,6 +50,7 @@ void ed_keybinds_register(int key, int mods,
             s_binds[i].fn        = fn;
             s_binds[i].user_data = user_data;
             s_binds[i].label     = label;
+            s_binds[i].name      = name;
             return;
         }
     }
@@ -58,6 +60,7 @@ void ed_keybinds_register(int key, int mods,
         .fn        = fn,
         .user_data = user_data,
         .label     = label,
+        .name      = name,
     };
 }
 
@@ -82,6 +85,19 @@ const char *ed_keybinds_label_for(int key, int mods)
             return s_binds[i].label;
     }
     return NULL;
+}
+
+void ed_keybinds_iter(void (*fn)(const EdKeybindInfo *info, void *user_data),
+                      void *user_data)
+{
+    if (!fn) return;
+    for (uint32_t i = 0; i < s_count; i++) {
+        EdKeybindInfo info = {
+            .name  = s_binds[i].name  ? s_binds[i].name  : "(unnamed)",
+            .chord = s_binds[i].label ? s_binds[i].label : "",
+        };
+        fn(&info, user_data);
+    }
 }
 
 /* ================================================================

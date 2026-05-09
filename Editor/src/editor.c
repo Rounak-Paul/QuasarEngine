@@ -13,6 +13,7 @@
 #include "ui/ed_hierarchy.h"
 #include "ui/ed_system_panel.h"
 #include "ui/ed_plugin_manager.h"
+#include "ui/ed_settings.h"
 
 #include "ui/ed_file_browser.h"
 #include "ui/ed_import_dialog.h"
@@ -401,6 +402,7 @@ Editor *editor_create(const EditorDesc *desc)
     }
 
     ed_plugin_manager_init(ed);
+    ed_settings_init(ed);
     ed_toolbar_init(ed);
 
     editor_build_ui(ed);
@@ -427,18 +429,18 @@ Editor *editor_create(const EditorDesc *desc)
 #else
     int primary_mod = QS_MOD_CONTROL;
 #endif
-    ed_keybinds_register(QS_KEY_S, primary_mod,                      kb_save_scene, ed, "Ctrl+S");
-    ed_keybinds_register(QS_KEY_S, primary_mod | QS_MOD_SHIFT,       kb_save_proj,  ed, "Ctrl+Shift+S");
-    ed_keybinds_register(QS_KEY_Z, primary_mod,                      kb_undo,       ed, "Ctrl+Z");
-    ed_keybinds_register(QS_KEY_Y, primary_mod,                      kb_redo,       ed, "Ctrl+Y");
-    ed_keybinds_register(QS_KEY_Z, primary_mod | QS_MOD_SHIFT,       kb_redo,       ed, "Ctrl+Shift+Z");
+    ed_keybinds_register(QS_KEY_S, primary_mod,                      kb_save_scene, ed, "Ctrl+S",           "Save Scene");
+    ed_keybinds_register(QS_KEY_S, primary_mod | QS_MOD_SHIFT,       kb_save_proj,  ed, "Ctrl+Shift+S",     "Save Project");
+    ed_keybinds_register(QS_KEY_Z, primary_mod,                      kb_undo,       ed, "Ctrl+Z",           "Undo");
+    ed_keybinds_register(QS_KEY_Y, primary_mod,                      kb_redo,       ed, "Ctrl+Y",           "Redo");
+    ed_keybinds_register(QS_KEY_Z, primary_mod | QS_MOD_SHIFT,       kb_redo,       ed, "Ctrl+Shift+Z",     "Redo (alt)");
     /* Cross-platform fallbacks: also accept literal Ctrl on macOS. */
 #ifdef __APPLE__
-    ed_keybinds_register(QS_KEY_S, QS_MOD_CONTROL,                   kb_save_scene, ed, "Ctrl+S");
-    ed_keybinds_register(QS_KEY_S, QS_MOD_CONTROL | QS_MOD_SHIFT,    kb_save_proj,  ed, "Ctrl+Shift+S");
-    ed_keybinds_register(QS_KEY_Z, QS_MOD_CONTROL,                   kb_undo,       ed, "Ctrl+Z");
-    ed_keybinds_register(QS_KEY_Y, QS_MOD_CONTROL,                   kb_redo,       ed, "Ctrl+Y");
-    ed_keybinds_register(QS_KEY_Z, QS_MOD_CONTROL | QS_MOD_SHIFT,    kb_redo,       ed, "Ctrl+Shift+Z");
+    ed_keybinds_register(QS_KEY_S, QS_MOD_CONTROL,                   kb_save_scene, ed, "Ctrl+S",           "Save Scene");
+    ed_keybinds_register(QS_KEY_S, QS_MOD_CONTROL | QS_MOD_SHIFT,    kb_save_proj,  ed, "Ctrl+Shift+S",     "Save Project");
+    ed_keybinds_register(QS_KEY_Z, QS_MOD_CONTROL,                   kb_undo,       ed, "Ctrl+Z",           "Undo");
+    ed_keybinds_register(QS_KEY_Y, QS_MOD_CONTROL,                   kb_redo,       ed, "Ctrl+Y",           "Redo");
+    ed_keybinds_register(QS_KEY_Z, QS_MOD_CONTROL | QS_MOD_SHIFT,    kb_redo,       ed, "Ctrl+Shift+Z",     "Redo (alt)");
 #endif
 
     /* Subscribe to plugin reload events to refresh the scene renderer */
