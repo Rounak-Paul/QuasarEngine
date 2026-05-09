@@ -187,6 +187,8 @@ const char *g_editor_css =
     "  padding-left: 4px;"
     "  padding-right: 4px;"
     "  gap: 2px;"
+    "  border-bottom-width: 1px;"
+    "  border-bottom-color: " ED_COL_SEPARATOR ";"
     "}"
 
     ".toolbar-icon-btn {"
@@ -242,10 +244,12 @@ const char *g_editor_css =
     "  flex-shrink: 0;"
     "  padding-left: 0px;"
     "  padding-right: 0px;"
+    "  border-bottom-width: 1px;"
+    "  border-bottom-color: " ED_COL_SEPARATOR ";"
     "}"
 
     ".panel-tab {"
-    "  color: " ED_COL_TEXT_DIM ";"
+    "  color: " ED_COL_TEXT_SEC ";"
     "  font-size: " ED_FS "px;"
     "  height: " ED_H_CHROME "px;"
     "  padding-left: 8px;"
@@ -255,7 +259,7 @@ const char *g_editor_css =
     "}"
 
     ".panel-tab.active {"
-    "  color: " ED_COL_TEXT_BRIGHT ";"
+    "  color: " ED_COL_TEXT_VIVID ";"
     "  background: " ED_COL_OVERLAY ";"
     "  corner-radius: " ED_R_SM ";"
     "}"
@@ -526,6 +530,8 @@ const char *g_editor_css =
     "  padding-left: 4px;"
     "  padding-right: 4px;"
     "  gap: 2px;"
+    "  border-bottom-width: 1px;"
+    "  border-bottom-color: " ED_COL_SEPARATOR ";"
     "}"
 
     ".hierarchy-toolbar-spacer { flex-grow: 1; }"
@@ -650,12 +656,14 @@ const char *g_editor_css =
     "  margin-top: 4px;"
     "  align-items: center;"
     "  gap: 4px;"
+    "  border-left-width: 2px;"
+    "  border-left-color: " ED_COL_PRIMARY ";"
     "}"
 
     ".inspector-section-label {"
     "  font-size: " ED_FS "px;"
     "  font-weight: bold;"
-    "  color: " ED_COL_TEXT_MUTED ";"
+    "  color: " ED_COL_TEXT_MEDIUM ";"
     "  flex-grow: 1;"
     "  text-align: left;"
     "}"
@@ -766,7 +774,7 @@ const char *g_editor_css =
     ".sys-section-title {"
     "  font-size: " ED_FS "px;"
     "  font-weight: bold;"
-    "  color: " ED_COL_TEXT_DIM ";"
+    "  color: " ED_COL_TEXT_MUTED ";"
     "  letter-spacing: 1px;"
     "}"
 
@@ -1492,8 +1500,8 @@ const char *g_launcher_css =
     "}"
 
     ".launcher-btn-danger {"
-    "  background: #3B1B1E;"
-    "  color: #F2B8BE;"
+    "  background: #2d1420;"
+    "  color: " ED_COL_DANGER ";"
     "}"
 
     ".launcher-confirm-modal {"

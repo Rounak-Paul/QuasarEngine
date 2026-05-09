@@ -75,45 +75,51 @@
 #define ED_H_CARD        "48"   /* launcher project entry card             */
 
 /* Corner radii */
-#define ED_R_SM    "3"
-#define ED_R_BASE  "4"
-#define ED_R_LG    "8"
+#define ED_R_SM    "4"
+#define ED_R_BASE  "6"
+#define ED_R_LG    "10"
 
 /* ------------------------------------------------------------------
-   Color palette  (CSS hex string tokens)
+   Color palette — Catppuccin Mocha
+   https://catppuccin.com/palette
+
+   Backgrounds follow the official Mocha surface hierarchy:
+     Crust → Mantle → Base → Surface 0 → Surface 1 → Surface 2
+   Text uses the Mocha text/subtext/overlay scale.
+   Accents are the named Mocha accent colors verbatim.
    ------------------------------------------------------------------ */
 
-/* Background hierarchy — darkest → lightest */
-#define ED_COL_VOID          "#0d0d0f"   /* deepest inset, inputs, viewport  */
-#define ED_COL_BASE          "#111114"   /* primary panel background         */
-#define ED_COL_BASE_ALT      "#13131a"   /* alternate-row tint               */
-#define ED_COL_ELEVATED      "#16161a"   /* panel chrome, toolbars           */
-#define ED_COL_ELEVATED_ALT  "#16161c"   /* heavy panel headers (warm tint)  */
-#define ED_COL_SURFACE       "#1c1c22"   /* tab bars, headers, dividers      */
-#define ED_COL_SEPARATOR     "#1e2030"   /* deep rule lines                  */
-#define ED_COL_OVERLAY       "#242430"   /* hover states, selected items     */
-#define ED_COL_BORDER        "#2e2e3e"   /* input borders, thin dividers     */
+/* Backgrounds — Crust (deepest) up through Surface 2 */
+#define ED_COL_VOID          "#11111b"   /* Crust  — inputs, viewport wells  */
+#define ED_COL_BASE          "#181825"   /* Mantle — primary panel surface   */
+#define ED_COL_BASE_ALT      "#1b1b29"   /* between Mantle/Base — alt rows   */
+#define ED_COL_ELEVATED      "#1e1e2e"   /* Base   — toolbars, panel chrome  */
+#define ED_COL_ELEVATED_ALT  "#252535"   /* Base+  — heavy panel headers     */
+#define ED_COL_SURFACE       "#313244"   /* Surface 0 — tab bars, headers    */
+#define ED_COL_SEPARATOR     "#45475a"   /* Surface 1 — rule lines           */
+#define ED_COL_OVERLAY       "#585b70"   /* Surface 2 — hover, selected      */
+#define ED_COL_BORDER        "#6c7086"   /* Overlay 0 — input borders        */
 
-/* Text */
-#define ED_COL_TEXT_VIVID    "#e0e4ff"   /* very bright labels               */
-#define ED_COL_TEXT_BRIGHT   "#c8d0ff"   /* standard interactive text        */
-#define ED_COL_TEXT_MEDIUM   "#a0a8c8"   /* mid-weight labels                */
-#define ED_COL_TEXT_MUTED    "#8890b0"   /* secondary labels, hints          */
-#define ED_COL_TEXT_SEC      "#5a5e7a"   /* column headers, remove buttons   */
-#define ED_COL_TEXT_DIM      "#4a4e6a"   /* disabled, placeholder            */
+/* Text — Text → Subtext 1 → Subtext 0 → Overlay 2 → Overlay 1 → Overlay 0 */
+#define ED_COL_TEXT_VIVID    "#cdd6f4"   /* Text      — peak brightness      */
+#define ED_COL_TEXT_BRIGHT   "#bac2de"   /* Subtext 1 — standard text        */
+#define ED_COL_TEXT_MEDIUM   "#a6adc8"   /* Subtext 0 — mid-weight labels    */
+#define ED_COL_TEXT_MUTED    "#9399b2"   /* Overlay 2 — secondary hints      */
+#define ED_COL_TEXT_SEC      "#7f849c"   /* Overlay 1 — column headers       */
+#define ED_COL_TEXT_DIM      "#6c7086"   /* Overlay 0 — disabled/placeholder */
 
-/* Accent */
-#define ED_COL_PRIMARY       "#6e8aff"   /* active tabs, primary buttons     */
-#define ED_COL_DANGER        "#ff6b6b"   /* errors, destructive actions      */
-#define ED_COL_SUCCESS       "#6bffb8"   /* play, confirm                    */
-#define ED_COL_WARNING       "#ffd166"   /* warnings, overridden fields      */
-#define ED_COL_ORANGE        "#ff8c42"   /* scene objects, mesh icons        */
+/* Accents — Mocha named colors */
+#define ED_COL_PRIMARY       "#cba6f7"   /* Mauve  — active tabs, actions    */
+#define ED_COL_DANGER        "#f38ba8"   /* Red    — errors, destructive     */
+#define ED_COL_SUCCESS       "#a6e3a1"   /* Green  — play, confirm           */
+#define ED_COL_WARNING       "#f9e2af"   /* Yellow — warnings                */
+#define ED_COL_ORANGE        "#fab387"   /* Peach  — scene/mesh icons        */
 
-/* XYZ axis */
-#define ED_COL_AXIS_X        "#ff5370"
-#define ED_COL_AXIS_Y        "#80ff80"
-#define ED_COL_AXIS_Z        "#5b9cff"
-#define ED_COL_AXIS_W        "#bf80ff"
+/* XYZ axis — Red / Green / Blue / Mauve */
+#define ED_COL_AXIS_X        "#f38ba8"   /* Red   */
+#define ED_COL_AXIS_Y        "#a6e3a1"   /* Green */
+#define ED_COL_AXIS_Z        "#89b4fa"   /* Blue  */
+#define ED_COL_AXIS_W        "#cba6f7"   /* Mauve */
 
 /* ------------------------------------------------------------------
    CSS bundles  (defined in ed_style.c)
