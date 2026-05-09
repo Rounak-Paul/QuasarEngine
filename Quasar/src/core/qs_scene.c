@@ -1620,7 +1620,12 @@ void qs_scene_submit_renderables(Qs_Scene *scene,
        but a corrupted file on disk could still bring the runtime down
        without this safety net. */
     enum { QS_PROTO_RUNTIME_DEPTH_MAX = 16 };
-    static int s_proto_recursion_depth;
+    static int       s_proto_recursion_depth;
+    /* Pick-owner override: when non-INVALID, all mesh submissions inside a
+       prototype recursion report this entity ID instead of the inner entity.
+       This ensures clicking any mesh belonging to a prototype selects the
+       outer-scene prototype entity rather than an invisible inner entity. */
+    static Qs_Entity s_pick_owner = QS_ENTITY_INVALID;
     if (s_proto_recursion_depth >= QS_PROTO_RUNTIME_DEPTH_MAX) {
         static bool warned;
         if (!warned) {
@@ -1702,7 +1707,7 @@ void qs_scene_submit_renderables(Qs_Scene *scene,
             Qs_RenderableDesc r;
             r.mesh            = mc->mesh;
             r.material        = mc->material;
-            r.entity          = e;
+            r.entity          = (s_pick_owner != QS_ENTITY_INVALID) ? s_pick_owner : e;
             r.cast_shadows    = true;
             r.receive_shadows = true;
             r.bounds.min[0] = r.bounds.min[1] = r.bounds.min[2] = -100.0f;
@@ -1775,9 +1780,13 @@ void qs_scene_submit_renderables(Qs_Scene *scene,
             float world[16];
             qs_m4_mul(parent_world, local_world, world);
 
+            Qs_Entity prev_pick_owner = s_pick_owner;
+            if (s_pick_owner == QS_ENTITY_INVALID)
+                s_pick_owner = e;  /* outermost proto entity wins; nested protos inherit it */
             s_proto_recursion_depth++;
             qs_scene_submit_renderables(pc->inner, engine, renderer, world);
             s_proto_recursion_depth--;
+            s_pick_owner = prev_pick_owner;
         }
     }
 }

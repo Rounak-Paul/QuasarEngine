@@ -82,6 +82,19 @@ static Ca_Label    *s_gpu_device_lbl;    /* "123 MB / 8 GB" */
 static Ca_Label    *s_gpu_host_lbl;      /* "12 MB host"    */
 static Ca_Progress *s_gpu_device_bar;
 static Ca_Progress *s_gpu_host_bar;
+/* Per-purpose GPU tag labels */
+static Ca_Label    *s_gpu_tag_lbl[QS_GPU_MEM_TAG_COUNT];
+
+static const TagMeta k_gpu_meta[QS_GPU_MEM_TAG_COUNT] = {
+    /* QS_GPU_MEM_VERTEX   */ { ICON_MESH,     "Vertex",    0xFFFF9944u },
+    /* QS_GPU_MEM_INDEX    */ { ICON_MESH,     "Index",     0xFFFFCC44u },
+    /* QS_GPU_MEM_UNIFORM  */ { ICON_GPU,      "Uniforms",  0xFFAA88FFu },
+    /* QS_GPU_MEM_STORAGE  */ { ICON_GPU,      "Storage",   0xFF8866FFu },
+    /* QS_GPU_MEM_TEXTURE  */ { ICON_TEXTURE,  "Textures",  0xFF66FF99u },
+    /* QS_GPU_MEM_RT_COLOR */ { ICON_RENDER,   "Color RTs", 0xFF66DDFFu },
+    /* QS_GPU_MEM_RT_DEPTH */ { ICON_RENDER,   "Depth",     0xFF44CCFFu },
+    /* QS_GPU_MEM_OTHER    */ { ICON_GENERAL,  "Other",     0xFF99AABBu },
+};
 
 /* ================================================================
    FORMAT HELPERS
@@ -144,15 +157,40 @@ void ed_system_panel(void)
             .bar_color = 0xFF6E8AFFu, .style = "sys-mini-bar",
         });
 
-        /* Host-visible row */
+        /* Host-visible (mapped GPU buffers: UBOs, etc.) row */
         ca_div_begin(&(Ca_DivDesc){ .direction = CA_HORIZONTAL, .style = "sys-row-top" });
-        ca_text(&(Ca_TextDesc){ .text = "Host-Visible",   .style = "sys-col-cat" });
+        ca_text(&(Ca_TextDesc){ .text = "Mapped Buffers", .style = "sys-col-cat" });
         s_gpu_host_lbl = ca_text(&(Ca_TextDesc){ .text = "0 B", .style = "sys-col-bytes-wide" });
         ca_div_end();
         s_gpu_host_bar = ca_progress(&(Ca_ProgressDesc){
             .value = 0.0f, .height = 3.0f,
             .bar_color = 0xFFAA88FFu, .style = "sys-mini-bar",
         });
+
+        /* Per-purpose breakdown */
+        ca_hr(&(Ca_HrDesc){ .color = 0xFF1E2030u });
+        ca_div_begin(&(Ca_DivDesc){ .direction = CA_HORIZONTAL, .style = "sys-row-header" });
+        ca_text(&(Ca_TextDesc){ .text = "TYPE", .style = "sys-col-cat"        });
+        ca_text(&(Ca_TextDesc){ .text = "VRAM", .style = "sys-col-bytes-wide" });
+        ca_div_end();
+        for (int t = 0; t < QS_GPU_MEM_TAG_COUNT; t++) {
+            ca_div_begin(&(Ca_DivDesc){
+                .direction = CA_VERTICAL,
+                .style     = (t % 2 == 0) ? "sys-row" : "sys-row sys-row-alt",
+            });
+            {
+                ca_div_begin(&(Ca_DivDesc){ .direction = CA_HORIZONTAL, .style = "sys-row-top" });
+                char icon_label[64];
+                snprintf(icon_label, sizeof(icon_label), "%s  %s",
+                         k_gpu_meta[t].icon, k_gpu_meta[t].label);
+                ca_text(&(Ca_TextDesc){ .text = icon_label, .style = "sys-col-cat" });
+                s_gpu_tag_lbl[t] = ca_text(&(Ca_TextDesc){
+                    .text = "0 B", .style = "sys-col-bytes-wide",
+                });
+                ca_div_end();
+            }
+            ca_div_end();
+        }
     }
     ca_div_end();
 
@@ -262,6 +300,12 @@ void ed_system_panel_update(Qs_Engine *engine)
         float host_frac = (float)((double)gs.host_bytes / (double)(1024ULL * 1024 * 1024));
         if (host_frac > 1.0f) host_frac = 1.0f;
         ca_progress_set(s_gpu_host_bar, host_frac);
+
+        /* Per-purpose breakdown */
+        for (int t = 0; t < QS_GPU_MEM_TAG_COUNT; t++) {
+            fmt_bytes(buf, sizeof(buf), gs.tag_bytes[t]);
+            ca_set_text(s_gpu_tag_lbl[t], buf);
+        }
     }
 
     /* ---- CPU heap stats ---- */

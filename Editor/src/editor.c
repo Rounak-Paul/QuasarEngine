@@ -822,7 +822,15 @@ void editor_destroy(Editor *ed)
         qs_renderer_destroy(ed->scene_renderer);
         ed->scene_renderer = NULL;
     }
-    qs_engine_destroy(ed->engine);
+    /* Stash engine pointer before freeing ed — ed->engine would be a UAF read
+       after qs_free(ed).  Destroy project and editor struct BEFORE
+       qs_engine_destroy so qs_mem_shutdown() (called inside it) sees zero live
+       allocations for the Project and Editor tags.
+       Null out engine->project first so resolve_path() cannot follow the
+       dangling pointer when scene teardown runs inside qs_engine_destroy. */
+    Qs_Engine *engine = ed->engine;
+    qs_engine_set_project(engine, NULL);
     qs_project_destroy(ed->project);
     qs_free(ed);
+    qs_engine_destroy(engine);
 }

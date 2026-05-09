@@ -8,8 +8,10 @@
 #include <stdatomic.h>
 
 /* Live VRAM usage counters — updated on every vkAllocateMemory / vkFreeMemory */
-static _Atomic size_t g_vram_device_bytes = 0;  /* DEVICE_LOCAL (textures, VBOs, render targets) */
-static _Atomic size_t g_vram_host_bytes   = 0;  /* HOST_VISIBLE (UBOs, staging) */
+static _Atomic size_t g_vram_device_bytes = 0;  /* DEVICE_LOCAL total */
+static _Atomic size_t g_vram_host_bytes   = 0;  /* HOST_VISIBLE total */
+/* Per-purpose breakdown — indexed by Qs_GpuMemTag */
+static _Atomic size_t g_gpu_tag_bytes[QS_GPU_MEM_TAG_COUNT];
 
 /*
  * Private struct definitions.  Backends only see forward declarations;
@@ -26,6 +28,7 @@ struct Qs_GpuBuffer {
     uint64_t       size;        /* user-requested size */
     uint64_t       vram_size;   /* actual allocated VRAM (aligned) */
     bool           device_local;
+    Qs_GpuMemTag   gpu_tag;     /* per-purpose tracking category */
 };
 
 struct Qs_GpuImage {
@@ -36,6 +39,7 @@ struct Qs_GpuImage {
     uint32_t       mip_levels;
     VkFormat       format;
     uint64_t       vram_size;   /* actual allocated VRAM */
+    Qs_GpuMemTag   gpu_tag;     /* per-purpose tracking category */
 };
 
 struct Qs_GpuImageView {
@@ -242,7 +246,8 @@ static VkSampleCountFlagBits sample_count_to_vk(uint32_t samples)
 
 static Qs_GpuBuffer *create_buffer_raw(VkDevice device, VkPhysicalDevice pd,
                                         VkDeviceSize size, VkBufferUsageFlags usage,
-                                        VkMemoryPropertyFlags mem_flags)
+                                        VkMemoryPropertyFlags mem_flags,
+                                        Qs_GpuMemTag gpu_tag)
 {
     VkBufferCreateInfo ci = {
         .sType       = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
@@ -274,12 +279,14 @@ static Qs_GpuBuffer *create_buffer_raw(VkDevice device, VkPhysicalDevice pd,
         atomic_fetch_add(&g_vram_device_bytes, (size_t)req.size);
     else
         atomic_fetch_add(&g_vram_host_bytes,   (size_t)req.size);
+    atomic_fetch_add(&g_gpu_tag_bytes[gpu_tag], (size_t)req.size);
 
     Qs_GpuBuffer *buf = qs_calloc(1, sizeof(Qs_GpuBuffer), QS_MEM_GPU);
     if (!buf) {
         vkDestroyBuffer(device, vk_buf, NULL); vkFreeMemory(device, vk_mem, NULL);
         if (is_device_local) atomic_fetch_sub(&g_vram_device_bytes, (size_t)req.size);
         else                 atomic_fetch_sub(&g_vram_host_bytes,   (size_t)req.size);
+        atomic_fetch_sub(&g_gpu_tag_bytes[gpu_tag], (size_t)req.size);
         return NULL;
     }
     buf->buffer       = vk_buf;
@@ -287,6 +294,7 @@ static Qs_GpuBuffer *create_buffer_raw(VkDevice device, VkPhysicalDevice pd,
     buf->size         = (uint64_t)size;
     buf->vram_size    = (uint64_t)req.size;
     buf->device_local = is_device_local;
+    buf->gpu_tag      = gpu_tag;
     return buf;
 }
 
@@ -415,6 +423,7 @@ static ViewportCallbackState *get_or_alloc_vp_state(Qs_Viewport *vp)
 static void ca_render_trampoline(Ca_Viewport *ca_vp, void *data)
 {
     ViewportCallbackState *s = data;
+    if (!s->user_render_fn) return;   /* cleared during renderer destroy / reload */
     Qs_GpuCmd       qs_cmd  = { .cmd  = ca_viewport_cmd(ca_vp) };
     Qs_GpuImageView qs_view = { .view = ca_viewport_image_view(ca_vp) };
     Qs_GpuFrame     frame   = {
@@ -429,6 +438,7 @@ static void ca_render_trampoline(Ca_Viewport *ca_vp, void *data)
 static void ca_resize_trampoline(Ca_Viewport *ca_vp, uint32_t w, uint32_t h, void *data)
 {
     ViewportCallbackState *s = data;
+    if (!s->user_resize_fn) return;   /* cleared during renderer destroy / reload */
     s->user_resize_fn((Qs_Viewport *)ca_vp, w, h, s->user_resize_data);
 }
 
@@ -457,6 +467,16 @@ uint32_t qs_gpu_max_sample_count(Qs_GpuContext *gpu)
    BUFFER IMPLEMENTATION
    ================================================================ */
 
+/* Derive the GPU memory tag from a Qs_GpuBufferUsage bitmask (highest-priority wins). */
+static Qs_GpuMemTag buf_usage_to_gpu_tag(Qs_GpuBufferUsage usage)
+{
+    if (usage & QS_GPU_BUFFER_VERTEX)  return QS_GPU_MEM_VERTEX;
+    if (usage & QS_GPU_BUFFER_INDEX)   return QS_GPU_MEM_INDEX;
+    if (usage & QS_GPU_BUFFER_UNIFORM) return QS_GPU_MEM_UNIFORM;
+    if (usage & QS_GPU_BUFFER_STORAGE) return QS_GPU_MEM_STORAGE;
+    return QS_GPU_MEM_OTHER;
+}
+
 static VkBufferUsageFlags buffer_usage_to_vk(Qs_GpuBufferUsage usage)
 {
     VkBufferUsageFlags flags = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
@@ -480,7 +500,8 @@ Qs_GpuBuffer *qs_gpu_create_buffer(Qs_GpuContext *gpu, const Qs_GpuBufferDesc *d
         ? (VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT)
         : VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
 
-    return create_buffer_raw(device, pd, (VkDeviceSize)desc->size, usage, mem_flags);
+    return create_buffer_raw(device, pd, (VkDeviceSize)desc->size, usage, mem_flags,
+                             buf_usage_to_gpu_tag(desc->usage));
 }
 
 Qs_GpuBuffer *qs_gpu_create_buffer_from_data(Qs_GpuContext *gpu, Qs_GpuBufferUsage usage,
@@ -490,10 +511,11 @@ Qs_GpuBuffer *qs_gpu_create_buffer_from_data(Qs_GpuContext *gpu, Qs_GpuBufferUsa
     VkDevice        device = ca_gpu_device(ca);
     VkPhysicalDevice pd    = ca_gpu_physical_device(ca);
 
-    /* Staging buffer */
+    /* Staging buffer — transient, tagged OTHER */
     Qs_GpuBuffer *staging = create_buffer_raw(device, pd, (VkDeviceSize)size,
         VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+        QS_GPU_MEM_OTHER);
     if (!staging) return NULL;
 
     void *mapped;
@@ -501,11 +523,11 @@ Qs_GpuBuffer *qs_gpu_create_buffer_from_data(Qs_GpuContext *gpu, Qs_GpuBufferUsa
     memcpy(mapped, data, (size_t)size);
     vkUnmapMemory(device, staging->memory);
 
-    /* Device-local destination */
+    /* Device-local destination — tagged by actual usage */
     VkBufferUsageFlags vk_usage = buffer_usage_to_vk(usage);
 
     Qs_GpuBuffer *dst = create_buffer_raw(device, pd, (VkDeviceSize)size,
-        vk_usage, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+        vk_usage, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, buf_usage_to_gpu_tag(usage));
     if (!dst) {
         vkDestroyBuffer(device, staging->buffer, NULL);
         vkFreeMemory(device, staging->memory, NULL);
@@ -520,6 +542,8 @@ Qs_GpuBuffer *qs_gpu_create_buffer_from_data(Qs_GpuContext *gpu, Qs_GpuBufferUsa
     vkCmdCopyBuffer(qs_cmd.cmd, staging->buffer, dst->buffer, 1, &region);
     end_transfer_internal(ca, &qs_cmd);
 
+    atomic_fetch_sub(&g_vram_host_bytes, (size_t)staging->vram_size);
+    atomic_fetch_sub(&g_gpu_tag_bytes[staging->gpu_tag], (size_t)staging->vram_size);
     vkDestroyBuffer(device, staging->buffer, NULL);
     vkFreeMemory(device, staging->memory, NULL);
     qs_free(staging);
@@ -533,6 +557,7 @@ void qs_gpu_destroy_buffer(Qs_GpuContext *gpu, Qs_GpuBuffer *buffer)
     vkDeviceWaitIdle(device);
     if (buffer->device_local) atomic_fetch_sub(&g_vram_device_bytes, (size_t)buffer->vram_size);
     else                      atomic_fetch_sub(&g_vram_host_bytes,   (size_t)buffer->vram_size);
+    atomic_fetch_sub(&g_gpu_tag_bytes[buffer->gpu_tag], (size_t)buffer->vram_size);
     if (buffer->buffer) vkDestroyBuffer(device, buffer->buffer, NULL);
     if (buffer->memory) vkFreeMemory(device, buffer->memory, NULL);
     qs_free(buffer);
@@ -606,14 +631,22 @@ Qs_GpuImage *qs_gpu_create_image(Qs_GpuContext *gpu, const Qs_GpuImageDesc *desc
     if (vkAllocateMemory(device, &ai, NULL, &vk_mem) != VK_SUCCESS) {
         vkDestroyImage(device, vk_image, NULL); return NULL;
     }
+    /* Derive image tag from usage flags */
+    Qs_GpuMemTag img_tag;
+    if (desc->usage & QS_GPU_IMAGE_DEPTH_ATTACHMENT)  img_tag = QS_GPU_MEM_RT_DEPTH;
+    else if (desc->usage & QS_GPU_IMAGE_COLOR_ATTACHMENT) img_tag = QS_GPU_MEM_RT_COLOR;
+    else img_tag = QS_GPU_MEM_TEXTURE;
+
     vkBindImageMemory(device, vk_image, vk_mem, 0);
     atomic_fetch_add(&g_vram_device_bytes, (size_t)req.size);
+    atomic_fetch_add(&g_gpu_tag_bytes[img_tag], (size_t)req.size);
 
     Qs_GpuImage *img = qs_calloc(1, sizeof(Qs_GpuImage), QS_MEM_GPU);
     if (!img) {
         vkDestroyImage(device, vk_image, NULL);
         vkFreeMemory(device, vk_mem, NULL);
         atomic_fetch_sub(&g_vram_device_bytes, (size_t)req.size);
+        atomic_fetch_sub(&g_gpu_tag_bytes[img_tag], (size_t)req.size);
         return NULL;
     }
     img->image      = vk_image;
@@ -623,6 +656,7 @@ Qs_GpuImage *qs_gpu_create_image(Qs_GpuContext *gpu, const Qs_GpuImageDesc *desc
     img->mip_levels = mip_levels;
     img->format     = vk_fmt;
     img->vram_size  = (uint64_t)req.size;
+    img->gpu_tag    = img_tag;
     return img;
 }
 
@@ -632,6 +666,7 @@ void qs_gpu_destroy_image(Qs_GpuContext *gpu, Qs_GpuImage *image)
     VkDevice device = ca_gpu_device(to_ca(gpu));
     vkDeviceWaitIdle(device);
     atomic_fetch_sub(&g_vram_device_bytes, (size_t)image->vram_size);
+    atomic_fetch_sub(&g_gpu_tag_bytes[image->gpu_tag], (size_t)image->vram_size);
     if (image->image)  vkDestroyImage(device, image->image, NULL);
     if (image->memory) vkFreeMemory(device, image->memory, NULL);
     qs_free(image);
@@ -645,10 +680,11 @@ bool qs_gpu_upload_image(Qs_GpuContext *gpu, Qs_GpuImage *image,
     VkDevice        device = ca_gpu_device(ca);
     VkPhysicalDevice pd    = ca_gpu_physical_device(ca);
 
-    /* Staging */
+    /* Staging — transient, tagged OTHER */
     Qs_GpuBuffer *staging = create_buffer_raw(device, pd, (VkDeviceSize)size,
         VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+        QS_GPU_MEM_OTHER);
     if (!staging) return false;
 
     void *mapped;
@@ -697,6 +733,8 @@ bool qs_gpu_upload_image(Qs_GpuContext *gpu, Qs_GpuImage *image,
 
     end_transfer_internal(ca, &qs_cmd);
 
+    atomic_fetch_sub(&g_vram_host_bytes, (size_t)staging->vram_size);
+    atomic_fetch_sub(&g_gpu_tag_bytes[staging->gpu_tag], (size_t)staging->vram_size);
     vkDestroyBuffer(device, staging->buffer, NULL);
     vkFreeMemory(device, staging->memory, NULL);
     qs_free(staging);
@@ -1422,9 +1460,20 @@ void qs_viewport_set_callbacks(Qs_Viewport *viewport,
                                 Qs_ViewportResizeFn on_resize, void *resize_data)
 {
     if (!on_render && !on_resize) {
-        /* Clear callbacks — remove trampoline from Causality viewport */
-        ca_viewport_set_callbacks((Ca_Viewport *)viewport,
-                                  NULL, NULL, NULL, NULL);
+        /* Clear our trampoline state without touching the Ca_Viewport.
+         * The viewport widget may already have been freed by Causality's
+         * window-shutdown sequence before qs_renderer_destroy() runs.
+         * Nulling the slot is enough — the null guards in the trampolines
+         * prevent any stale call from reaching user code. */
+        for (uint32_t i = 0; i < s_vp_state_count; i++) {
+            if (s_vp_states[i].viewport == viewport) {
+                s_vp_states[i].user_render_fn   = NULL;
+                s_vp_states[i].user_render_data = NULL;
+                s_vp_states[i].user_resize_fn   = NULL;
+                s_vp_states[i].user_resize_data = NULL;
+                break;
+            }
+        }
         return;
     }
     ViewportCallbackState *s = get_or_alloc_vp_state(viewport);
@@ -1457,6 +1506,8 @@ void qs_gpu_mem_stats(Qs_GpuContext *gpu, Qs_GpuMemStats *out)
     if (!out) return;
     out->device_bytes = (size_t)atomic_load(&g_vram_device_bytes);
     out->host_bytes   = (size_t)atomic_load(&g_vram_host_bytes);
+    for (int i = 0; i < QS_GPU_MEM_TAG_COUNT; i++)
+        out->tag_bytes[i] = (size_t)atomic_load(&g_gpu_tag_bytes[i]);
 
     /* Total DEVICE_LOCAL heap size — sum all DEVICE_LOCAL memory heaps */
     if (gpu) {

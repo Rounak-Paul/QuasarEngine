@@ -477,10 +477,24 @@ uint32_t qs_viewport_height(const Qs_Viewport *viewport);
    GPU MEMORY STATS
    ================================================================ */
 
+/// Per-purpose GPU VRAM categories tracked by the engine.
+typedef enum Qs_GpuMemTag {
+    QS_GPU_MEM_VERTEX    = 0,  ///< Device-local vertex buffers
+    QS_GPU_MEM_INDEX     = 1,  ///< Device-local index buffers
+    QS_GPU_MEM_UNIFORM   = 2,  ///< Host-visible uniform buffers (UBOs)
+    QS_GPU_MEM_STORAGE   = 3,  ///< Storage buffers (SSBO)
+    QS_GPU_MEM_TEXTURE   = 4,  ///< Sampled/transfer images (textures)
+    QS_GPU_MEM_RT_COLOR  = 5,  ///< Color render-target images
+    QS_GPU_MEM_RT_DEPTH  = 6,  ///< Depth/stencil images
+    QS_GPU_MEM_OTHER     = 7,  ///< Miscellaneous (readback, etc.)
+    QS_GPU_MEM_TAG_COUNT = 8,
+} Qs_GpuMemTag;
+
 typedef struct Qs_GpuMemStats {
-    size_t device_bytes;        ///< DEVICE_LOCAL VRAM in use (textures, buffers, render targets)
-    size_t host_bytes;          ///< HOST_VISIBLE VRAM in use (UBOs, staging)
+    size_t device_bytes;        ///< Total DEVICE_LOCAL VRAM in use
+    size_t host_bytes;          ///< Total HOST_VISIBLE VRAM in use (UBOs, mapped buffers)
     size_t device_total_bytes;  ///< Total DEVICE_LOCAL heap size reported by the driver
+    size_t tag_bytes[QS_GPU_MEM_TAG_COUNT]; ///< Per-purpose breakdown
 } Qs_GpuMemStats;
 
 /// Fills *out with current GPU memory usage.
