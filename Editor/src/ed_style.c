@@ -216,6 +216,12 @@ const char *g_editor_css =
     "  overflow: hidden;"
     "}"
 
+    ".panel-content-fill {"
+    "  flex-grow: 1;"
+    "  width: 100%;"
+    "  overflow: hidden;"
+    "}"
+
     ".panel-viewport {"
     "  background: " ED_COL_VOID ";"
     "}"
@@ -729,6 +735,109 @@ const char *g_editor_css =
     "  font-size: " ED_FS "px;"
     "  width: 16px;"
     "  flex-shrink: 0;"
+    "}"
+
+    /* ---- System / Memory panel ---- */
+
+    ".sys-scroll {"
+    "  overflow-y: scroll;"
+    "  flex-grow: 1;"
+    "  width: 100%;"
+    "  padding: 6px 4px;"
+    "  gap: 4px;"
+    "  align-items: flex-start;"
+    "}"
+
+    /* Overview card */
+    ".sys-card {"
+    "  width: 100%;"
+    "  background: " ED_COL_ELEVATED ";"
+    "  corner-radius: " ED_R_BASE ";"
+    "  padding: 6px 8px;"
+    "  gap: 4px;"
+    "}"
+
+    ".sys-card-header {"
+    "  width: 100%;"
+    "  align-items: center;"
+    "  gap: 4px;"
+    "}"
+
+    ".sys-section-title {"
+    "  font-size: " ED_FS "px;"
+    "  font-weight: bold;"
+    "  color: " ED_COL_TEXT_DIM ";"
+    "  letter-spacing: 1px;"
+    "}"
+
+    ".sys-alloc-badge {"
+    "  font-size: " ED_FS "px;"
+    "  color: " ED_COL_TEXT_MUTED ";"
+    "  background: " ED_COL_SURFACE ";"
+    "  corner-radius: " ED_R_SM ";"
+    "  padding: 0px 5px;"
+    "}"
+
+    ".sys-total-bar {"
+    "  width: 100%;"
+    "  corner-radius: " ED_R_SM ";"
+    "}"
+
+    /* Column header row */
+    ".sys-row-header {"
+    "  width: 100%;"
+    "  padding: 3px 4px 1px 4px;"
+    "  align-items: center;"
+    "}"
+
+    ".sys-col-cat {"
+    "  font-size: " ED_FS "px;"
+    "  color: " ED_COL_TEXT_MUTED ";"
+    "  flex-grow: 1;"
+    "  text-align: left;"
+    "}"
+
+    ".sys-col-bytes {"
+    "  font-size: " ED_FS "px;"
+    "  color: " ED_COL_TEXT_BRIGHT ";"
+    "  width: 60px;"
+    "  text-align: right;"
+    "}"
+
+    ".sys-col-bytes-wide {"
+    "  font-size: " ED_FS "px;"
+    "  color: " ED_COL_TEXT_BRIGHT ";"
+    "  flex-grow: 1;"
+    "  text-align: right;"
+    "}"
+
+    ".sys-col-cnt {"
+    "  font-size: " ED_FS "px;"
+    "  color: " ED_COL_TEXT_DIM ";"
+    "  width: 44px;"
+    "  text-align: right;"
+    "}"
+
+    /* Tag data rows */
+    ".sys-row {"
+    "  width: 100%;"
+    "  padding: 2px 4px 1px 4px;"
+    "  gap: 1px;"
+    "}"
+
+    ".sys-row-alt {"
+    "  background: " ED_COL_BASE_ALT ";"
+    "}"
+
+    ".sys-row-top {"
+    "  width: 100%;"
+    "  align-items: center;"
+    "  gap: 4px;"
+    "}"
+
+    ".sys-mini-bar {"
+    "  width: 100%;"
+    "  corner-radius: " ED_R_SM ";"
     "}"
 
     /* ---- Plugin Manager window ---- */

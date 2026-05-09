@@ -11,6 +11,7 @@
 #include "ed_style.h"
 #include "ui/ed_inspector.h"
 #include "ui/ed_hierarchy.h"
+#include "ui/ed_system_panel.h"
 #include "ui/ed_plugin_manager.h"
 
 #include "ui/ed_file_browser.h"
@@ -252,6 +253,7 @@ static void on_frame(Qs_Engine *engine, void *userdata)
     ed_hierarchy_update(ed);
     ed_console_update(ed);
     ed_inspector_update(ed);
+    ed_system_panel_update(ed->engine);
     ed_file_browser_update();
 }
 
@@ -815,6 +817,11 @@ void editor_destroy(Editor *ed)
     ed_undo_shutdown();
     ed_keybinds_shutdown();
     ed_thumbnail_shutdown();
+    ed_inspector_shutdown();
+    if (ed->scene_renderer) {
+        qs_renderer_destroy(ed->scene_renderer);
+        ed->scene_renderer = NULL;
+    }
     qs_engine_destroy(ed->engine);
     qs_project_destroy(ed->project);
     qs_free(ed);

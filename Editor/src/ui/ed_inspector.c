@@ -461,6 +461,41 @@ static void on_tag_input(Ca_TextInput *input, void *user_data)
 }
 
 /* ================================================================
+   SHUTDOWN
+   ================================================================ */
+
+void ed_inspector_shutdown(void)
+{
+    free_bindings();
+
+    qs_free(s_mat_options);      s_mat_options      = NULL;
+    qs_free(s_mat_paths);        s_mat_paths        = NULL;
+    qs_free(s_mat_name_pool);    s_mat_name_pool    = NULL;
+    s_mat_pool_used    = 0;
+    s_mat_pool_cap     = 0;
+    s_mat_option_count = 0;
+    s_mat_option_cap   = 0;
+
+    qs_free(s_tex_options);      s_tex_options      = NULL;
+    qs_free(s_tex_list);         s_tex_list         = NULL;
+    s_tex_option_count = 0;
+    s_tex_option_cap   = 0;
+
+    qs_free(s_mesh_options);     s_mesh_options     = NULL;
+    qs_free(s_mesh_paths);       s_mesh_paths       = NULL;
+    s_mesh_option_count = 0;
+    s_mesh_option_cap  = 0;
+
+    qs_free(s_proto_options);      s_proto_options      = NULL;
+    qs_free(s_proto_paths);        s_proto_paths        = NULL;
+    qs_free(s_proto_display_pool); s_proto_display_pool = NULL;
+    s_proto_display_pool_used = 0;
+    s_proto_display_pool_cap  = 0;
+    s_proto_option_count = 0;
+    s_proto_option_cap   = 0;
+}
+
+/* ================================================================
    BUILD (called once during editor init)
    ================================================================ */
 

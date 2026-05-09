@@ -473,4 +473,20 @@ uint32_t qs_viewport_width(const Qs_Viewport *viewport);
 /// Returns the viewport's current height in pixels.
 uint32_t qs_viewport_height(const Qs_Viewport *viewport);
 
+/* ================================================================
+   GPU MEMORY STATS
+   ================================================================ */
+
+typedef struct Qs_GpuMemStats {
+    size_t device_bytes;        ///< DEVICE_LOCAL VRAM in use (textures, buffers, render targets)
+    size_t host_bytes;          ///< HOST_VISIBLE VRAM in use (UBOs, staging)
+    size_t device_total_bytes;  ///< Total DEVICE_LOCAL heap size reported by the driver
+} Qs_GpuMemStats;
+
+/// Fills *out with current GPU memory usage.
+void qs_gpu_mem_stats(Qs_GpuContext *gpu, Qs_GpuMemStats *out);
+
+/// Writes the physical device name into buf (null-terminated, max len bytes).
+void qs_gpu_device_name(Qs_GpuContext *gpu, char *buf, size_t len);
+
 #endif /* QS_GPU_H */

@@ -1,6 +1,7 @@
 #include "ed_layout.h"
 #include "ed_hierarchy.h"
 #include "ed_inspector.h"
+#include "ed_system_panel.h"
 #include "ed_import_dialog.h"
 #include "editor.h"
 #include "ed_thumbnail.h"
@@ -55,6 +56,9 @@ static Ca_Label  *s_console_lines[CONSOLE_MAX_LINES];
 static uint32_t   s_prev_log_count;
 static bool        s_needs_scroll;
 static int         s_bottom_tab_active;
+static int         s_right_tab_active;
+static Ca_Div     *s_inspector_panel;
+static Ca_Div     *s_system_panel_div;
 
 typedef struct AssetEntry {
     char rel_path[ASSETS_MAX_PATH];
@@ -858,6 +862,16 @@ static void on_assets_ctx_menu(int item_index, void *user_data)
     }
 }
 
+static void on_right_tab_change(Ca_TabBar *tabs, void *user_data)
+{
+    (void)user_data;
+    s_right_tab_active = ca_tabs_active(tabs);
+    if (s_inspector_panel)
+        ca_set_hidden(s_inspector_panel, s_right_tab_active != 0);
+    if (s_system_panel_div)
+        ca_set_hidden(s_system_panel_div, s_right_tab_active != 1);
+}
+
 static void on_bottom_tab_change(Ca_TabBar *tabs, void *user_data)
 {
     (void)user_data;
@@ -1034,7 +1048,7 @@ void ed_layout(Ca_Window *window, void *editor)
                 }
                 ca_div_end();
 
-                /* Right panel — Inspector */
+                /* Right panel — Inspector / System */
                 ca_div_begin(&(Ca_DivDesc){
                     .direction = CA_VERTICAL,
                     .style     = "panel",
@@ -1044,11 +1058,39 @@ void ed_layout(Ca_Window *window, void *editor)
                     .style     = "panel-tab-bar",
                 });
                 {
-                    static const char *tabs[] = { "Inspector" };
-                    panel_tabs(tabs, 1, 0);
+                    static const char *right_tabs[] = { "Inspector", "System" };
+                    ca_tabs(&(Ca_TabBarDesc){
+                        .labels        = right_tabs,
+                        .count         = 2,
+                        .active        = s_right_tab_active,
+                        .on_change     = on_right_tab_change,
+                        .style         = "panel-tab-bar",
+                        .active_text   = CA_THEME_TEXT_BRIGHT,
+                        .inactive_text = CA_THEME_TEXT_DIM,
+                        .active_bg     = CA_THEME_BG_OVERLAY,
+                        .inactive_bg   = CA_THEME_TRANSPARENT,
+                        .tab_padding_x = 0.0f,
+                        .tabs_fill     = false,
+                        .tabs_left_align = true,
+                    });
                 }
                 ca_div_end();
+                /* Inspector panel */
+                s_inspector_panel = ca_div_begin(&(Ca_DivDesc){
+                    .direction = CA_VERTICAL,
+                    .style     = "panel-content-fill",
+                    .hidden    = (s_right_tab_active != 0),
+                });
                 ed_inspector(editor);
+                ca_div_end(); /* s_inspector_panel */
+                /* System panel */
+                s_system_panel_div = ca_div_begin(&(Ca_DivDesc){
+                    .direction = CA_VERTICAL,
+                    .style     = "panel-content-fill",
+                    .hidden    = (s_right_tab_active != 1),
+                });
+                ed_system_panel();
+                ca_div_end(); /* s_system_panel_div */
                 ca_div_end();
             }
             ca_split_end();

@@ -291,6 +291,7 @@ Qs_Project *qs_project_create(const Qs_ProjectDesc *desc)
         return NULL;
     }
 
+    qs_free(staged.scenes[0]);
     QS_LOG_INFO("Project '%s' created at %s", desc->name, desc->path);
     return qs_project_open(desc->path);
 }

@@ -994,12 +994,13 @@ void pbr_forward_detach(PbrRenderer *r)
         }
     }
 
-    /* Destroy plugin-owned UBO and descriptor pool */
+    /* Destroy plugin-owned UBO and descriptor pool (free CPU wrappers first) */
     if (r->shadow_ubo) { qs_gpu_destroy_buffer(gpu, r->shadow_ubo); r->shadow_ubo = NULL; }
-    if (r->desc_pool)  { qs_gpu_destroy_descriptor_pool(gpu, r->desc_pool); r->desc_pool = NULL; }
-
-    r->frame_desc_set = r->composite_desc_set = NULL;
-    r->bloom_desc_sets[0] = r->bloom_desc_sets[1] = NULL;
+    if (r->frame_desc_set)     { qs_gpu_free_descriptor_set(gpu, r->desc_pool, r->frame_desc_set);     r->frame_desc_set     = NULL; }
+    if (r->composite_desc_set) { qs_gpu_free_descriptor_set(gpu, r->desc_pool, r->composite_desc_set); r->composite_desc_set = NULL; }
+    if (r->bloom_desc_sets[0]) { qs_gpu_free_descriptor_set(gpu, r->desc_pool, r->bloom_desc_sets[0]); r->bloom_desc_sets[0] = NULL; }
+    if (r->bloom_desc_sets[1]) { qs_gpu_free_descriptor_set(gpu, r->desc_pool, r->bloom_desc_sets[1]); r->bloom_desc_sets[1] = NULL; }
+    if (r->desc_pool)          { qs_gpu_destroy_descriptor_pool(gpu, r->desc_pool); r->desc_pool = NULL; }
     r->shadow_node = r->forward_node = r->bloom_node = r->composite_node = NULL;
     r->hdr_att = NULL;
     for (int i=0;i<QS_CSM_CASCADES;i++) r->shadow_att[i] = NULL;
