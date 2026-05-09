@@ -1,6 +1,6 @@
 {
 	"name":	"Scene",
-	"next_entity_id":	9,
+	"next_entity_id":	12,
 	"entities":	[{
 			"name":	"Sun",
 			"enabled":	true,
@@ -46,7 +46,7 @@
 					"scale":	[1, 1, 1]
 				},
 				"Prototype":	{
-					"path":	"Assets/ABeautifulGame/ABeautifulGame.qproto"
+					"path":	"assets/ABeautifulGame/ABeautifulGame.qproto"
 				}
 			}
 		}, {

@@ -1,6 +1,6 @@
 {
 	"name":	"Prototype",
-	"next_entity_id":	459,
+	"next_entity_id":	510,
 	"entities":	[{
 			"name":	"ABeautifulGame",
 			"enabled":	true,
