@@ -5,7 +5,8 @@
  * every frame to refresh the live memory stats displayed in the widget tree.
  */
 
-#pragma once
+#ifndef ED_SYSTEM_PANEL_H
+#define ED_SYSTEM_PANEL_H
 
 #include "quasar.h"
 
@@ -17,3 +18,5 @@ void ed_system_panel(void);
 /// Call once per frame while the System tab is visible.
 /// Pass the engine pointer so GPU stats can be queried each frame.
 void ed_system_panel_update(Qs_Engine *engine);
+
+#endif /* ED_SYSTEM_PANEL_H */

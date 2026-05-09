@@ -268,7 +268,7 @@ void ed_system_panel_update(Qs_Engine *engine)
         qs_gpu_mem_stats(gpu, &gs);
 
         /* Device name — only query once (it doesn't change) */
-        static bool s_name_fetched = false;
+        static bool s_name_fetched;
         if (!s_name_fetched && gpu) {
             char name[256];
             qs_gpu_device_name(gpu, name, sizeof(name));

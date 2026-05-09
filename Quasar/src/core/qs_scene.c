@@ -101,6 +101,11 @@ typedef struct Qs_SceneSystemData {
 
 static Qs_SceneSystemData *g_scene_system;
 
+/* Render-submission re-entrancy counter and pick-owner for prototype recursion.
+ * File-scope so scene_system_shutdown() can reset them between scene reloads. */
+static int       g_proto_recursion_depth;
+static Qs_Entity g_proto_pick_owner = QS_ENTITY_INVALID;
+
 /* ================================================================
    BITSET HELPERS
    ================================================================ */
@@ -1392,6 +1397,10 @@ static void scene_system_shutdown(Qs_System *system, Qs_Engine *engine)
     s_tag_comp_type   = NULL;
     s_prototype_comp_type = NULL;
 
+    /* Reset render-submission state so a re-init starts clean */
+    g_proto_recursion_depth = 0;
+    g_proto_pick_owner      = QS_ENTITY_INVALID;
+
     QS_LOG_INFO("Scene system shut down");
 }
 
@@ -1707,7 +1716,7 @@ void qs_scene_submit_renderables(Qs_Scene *scene,
             Qs_RenderableDesc r;
             r.mesh            = mc->mesh;
             r.material        = mc->material;
-            r.entity          = (s_pick_owner != QS_ENTITY_INVALID) ? s_pick_owner : e;
+            r.entity          = (g_proto_pick_owner != QS_ENTITY_INVALID) ? g_proto_pick_owner : e;
             r.cast_shadows    = true;
             r.receive_shadows = true;
             r.bounds.min[0] = r.bounds.min[1] = r.bounds.min[2] = -100.0f;
@@ -1720,7 +1729,7 @@ void qs_scene_submit_renderables(Qs_Scene *scene,
     /* Light components — only submit at the top level (not inside a prototype
        recursion) to avoid duplicating lights from every prototype instance. */
     if (s_light_comp_type) {
-        bool top_level = (s_proto_recursion_depth == 0);
+        bool top_level = (g_proto_recursion_depth == 0);
         if (top_level) {
             for (Qs_Entity e = qs_scene_first(scene, s_light_comp_type);
                  e != QS_ENTITY_INVALID;
@@ -1780,13 +1789,13 @@ void qs_scene_submit_renderables(Qs_Scene *scene,
             float world[16];
             qs_m4_mul(parent_world, local_world, world);
 
-            Qs_Entity prev_pick_owner = s_pick_owner;
-            if (s_pick_owner == QS_ENTITY_INVALID)
-                s_pick_owner = e;  /* outermost proto entity wins; nested protos inherit it */
-            s_proto_recursion_depth++;
+            Qs_Entity prev_pick_owner = g_proto_pick_owner;
+            if (g_proto_pick_owner == QS_ENTITY_INVALID)
+                g_proto_pick_owner = e;  /* outermost proto entity wins; nested protos inherit it */
+            g_proto_recursion_depth++;
             qs_scene_submit_renderables(pc->inner, engine, renderer, world);
-            s_proto_recursion_depth--;
-            s_pick_owner = prev_pick_owner;
+            g_proto_recursion_depth--;
+            g_proto_pick_owner = prev_pick_owner;
         }
     }
 }

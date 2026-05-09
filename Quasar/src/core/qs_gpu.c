@@ -8,8 +8,8 @@
 #include <stdatomic.h>
 
 /* Live VRAM usage counters — updated on every vkAllocateMemory / vkFreeMemory */
-static _Atomic size_t g_vram_device_bytes = 0;  /* DEVICE_LOCAL total */
-static _Atomic size_t g_vram_host_bytes   = 0;  /* HOST_VISIBLE total */
+static _Atomic size_t g_vram_device_bytes;  /* DEVICE_LOCAL total */
+static _Atomic size_t g_vram_host_bytes;    /* HOST_VISIBLE total */
 /* Per-purpose breakdown — indexed by Qs_GpuMemTag */
 static _Atomic size_t g_gpu_tag_bytes[QS_GPU_MEM_TAG_COUNT];
 
