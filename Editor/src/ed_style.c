@@ -277,7 +277,7 @@ const char *g_editor_css =
     ".console-line {"
     "  width: 100%;"
     "  color: " ED_COL_TEXT_DIM ";"
-    "  font-size: 12px;"
+    "  font-size: " ED_FS_CONSOLE "px;"
     "  text-align: left;"
     "}"
 

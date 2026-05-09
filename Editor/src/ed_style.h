@@ -52,6 +52,8 @@
 
 /* Unified font size */
 #define ED_FS            "12"
+/* Console font: 0.8 × ED_FS = 9.6 ≈ 10px */
+#define ED_FS_CONSOLE    "10"
 
 /* Runtime logical sizes for APIs that take float values (not CSS strings). */
 #define ED_H_CHROME_F    20.0f
