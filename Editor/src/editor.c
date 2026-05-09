@@ -350,13 +350,13 @@ Editor *editor_create(const EditorDesc *desc)
         .window_width  = desc->width,
         .window_height = desc->height,
         .font_size_px  = ED_FONT_SIZE_PX,
+        .ui_scale      = ED_UI_SCALE,
     });
     if (!ed->engine) {
         qs_free(ed);
         return NULL;
     }
 
-    ca_window_set_scale(qs_engine_window(ed->engine), ED_UI_SCALE);
     qs_engine_set_stylesheet(ed->engine, g_editor_css);
     if (ed->project)
         qs_engine_set_project(ed->engine, ed->project);

@@ -34,6 +34,7 @@ typedef struct Qs_EngineDesc {
     int         window_width;    ///< Initial window width  (default: 1280).
     int         window_height;   ///< Initial window height (default: 720).
     float       font_size_px;    ///< UI font size in logical pixels (default: 14).
+    float       ui_scale;        ///< Default UI scale for all windows (default: 1.0).
     /// Directory to scan for plugins. NULL = auto-detect as <exe_dir>/plugins.
     const char* plugin_dir;
 } Qs_EngineDesc;

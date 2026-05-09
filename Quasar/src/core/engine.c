@@ -116,8 +116,9 @@ Qs_Engine* qs_engine_create(const Qs_EngineDesc* desc) {
 
     /* ---- Create Causality instance ---- */
     engine->ca_instance = ca_instance_create(&(Ca_InstanceDesc){
-        .app_name     = desc->app_name,
-        .font_size_px = desc->font_size_px > 0 ? desc->font_size_px : 14.0f,
+        .app_name          = desc->app_name,
+        .font_size_px      = desc->font_size_px > 0 ? desc->font_size_px : 14.0f,
+        .default_ui_scale  = desc->ui_scale,
     });
     if (!engine->ca_instance) {
         qs_free(engine->app_name);

@@ -707,8 +707,9 @@ bool ed_project_launcher_run(char *out_path, size_t out_path_size)
 
     /* Create Causality instance for the launcher */
     s_launcher.instance = ca_instance_create(&(Ca_InstanceDesc){
-        .app_name     = "Quasar Engine",
-        .font_size_px = ED_FONT_SIZE_PX,
+        .app_name         = "Quasar Engine",
+        .font_size_px     = ED_FONT_SIZE_PX,
+        .default_ui_scale = ED_UI_SCALE,
     });
     if (!s_launcher.instance) return false;
 
