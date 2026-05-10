@@ -56,5 +56,4 @@ add_subdirectory(Editor)
 add_subdirectory(Runtime)
 
 # Plugins
-add_subdirectory(plugins/BuiltinRendererPBR)
 add_subdirectory(plugins/GltfImporter)

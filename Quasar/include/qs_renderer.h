@@ -240,11 +240,34 @@ void        qs_renderer_extents         (const Qs_Renderer *renderer,
 void        qs_renderer_set_wireframe   (Qs_Renderer *renderer, bool wireframe);
 bool        qs_renderer_wireframe       (const Qs_Renderer *renderer);
 
-/// Generic debug flag bitfield.  Backends define their own bit meanings and
-/// expose them through plugin toolbar items.  The engine writes the flags
-/// into Qs_FrameUBO.debug_flags each frame so shaders can read them.
+/// Generic debug flag bitfield.  The engine writes the flags into
+/// Qs_FrameUBO.debug_flags each frame so shaders can read them.
+/// Bit 0x1 = show normals (PBR renderer).
 void        qs_renderer_set_debug_flags (Qs_Renderer *renderer, uint32_t flags);
 uint32_t    qs_renderer_debug_flags     (const Qs_Renderer *renderer);
+
+/* ================================================================
+   POST-PROCESS SETTINGS
+   Controls for the built-in PBR renderer's post-processing stages.
+   ================================================================ */
+
+/// Post-process settings for the built-in PBR renderer.
+typedef struct Qs_PostProcessSettings {
+    float    bloom_strength;    ///< Bloom blend factor over HDR output (default 0.04).
+    float    vignette_strength; ///< Vignette power exponent (default 0.35).
+    uint32_t msaa_sample_count; ///< MSAA tier: 1=off, 2/4/8=on (default 4).
+} Qs_PostProcessSettings;
+
+/// Update the post-process settings. Applied each frame during rendering.
+void                          qs_renderer_set_post_process  (Qs_Renderer *renderer,
+                                                              const Qs_PostProcessSettings *settings);
+
+/// Read the current post-process settings. Returns NULL for an invalid renderer.
+const Qs_PostProcessSettings *qs_renderer_post_process      (const Qs_Renderer *renderer);
+
+/// Returns the maximum MSAA sample count supported by the device for this renderer.
+/// Returns 1 before the renderer has been resized at least once.
+uint32_t                      qs_renderer_max_msaa_samples  (const Qs_Renderer *renderer);
 
 Qs_RenderNode *qs_renderer_add_node   (Qs_Renderer *renderer,
                                         const Qs_RenderNodeDesc *desc);

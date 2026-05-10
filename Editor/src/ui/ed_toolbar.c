@@ -31,7 +31,37 @@ typedef struct ExtToolbarState {
 static ExtToolbarState s_ext_states[TOOLBAR_MAX_EXTENSIONS];
 
 static Ca_Div   *s_toolbar_div;
-static Qs_Engine *s_toolbar_engine;
+static void     *s_toolbar_editor;
+
+/* ---- Wireframe / normals state ---- */
+#define ICON_WIREFRAME  "\xEF\x82\x96"   /* U+F096 */
+#define ICON_NORMALS    "\xEF\x85\x8E"   /* U+F14E */
+
+static Ca_Button *s_wireframe_btn;
+static Ca_Button *s_normals_btn;
+static bool       s_wireframe_active;
+static bool       s_normals_active;
+
+static void on_wireframe_click(Ca_Button *btn, void *data)
+{
+    s_wireframe_active = !s_wireframe_active;
+    ed_icon_btn_set_active(btn, s_wireframe_active);
+    Qs_Renderer *r = editor_scene_renderer((Editor *)data);
+    if (r) qs_renderer_set_wireframe(r, s_wireframe_active);
+}
+
+static void on_normals_click(Ca_Button *btn, void *data)
+{
+    s_normals_active = !s_normals_active;
+    ed_icon_btn_set_active(btn, s_normals_active);
+    Qs_Renderer *r = editor_scene_renderer((Editor *)data);
+    if (r) {
+        uint32_t flags = qs_renderer_debug_flags(r);
+        if (s_normals_active) flags |= 0x1u;
+        else flags &= ~0x1u;
+        qs_renderer_set_debug_flags(r, flags);
+    }
+}
 
 /* ---- Gizmo mode button state ---- */
 #define ICON_GIZMO_TRANSLATE "\xEF\x81\x87"   /* U+F047  arrows (move)     */
@@ -59,7 +89,11 @@ void ed_toolbar_init(void *editor)
     (void)editor;
     memset(s_ext_states, 0, sizeof(s_ext_states));
     s_toolbar_div    = NULL;
-    s_toolbar_engine = NULL;
+    s_toolbar_editor = NULL;
+    s_wireframe_btn  = NULL;
+    s_normals_btn    = NULL;
+    s_wireframe_active = false;
+    s_normals_active   = false;
 }
 
 /* ---- Extension item trampoline ---- */
@@ -73,11 +107,12 @@ static void on_ext_item_click(Ca_Button *btn, void *user_data)
         ctx->on_click(ctx->engine, ctx->active);
 }
 
-/* Populates the toolbar div with gizmo mode buttons, a separator, then
-   extension icon buttons.
+/* Populates the toolbar div with gizmo mode buttons, a separator, built-in
+   renderer toggles, another separator, then extension icon buttons.
    Assumes the caller has already entered s_toolbar_div as the current parent. */
-static void toolbar_populate(Qs_Engine *engine)
+static void toolbar_populate(void *editor)
 {
+    Qs_Engine *engine = editor_engine((Editor *)editor);
     /* ---- Gizmo mode buttons ---- */
     EdGizmoMode mode = ed_gizmo_mode();
     static const struct { const char *icon; const char *id; const char *tip; EdGizmoMode m; Ca_ClickFn fn; }
@@ -97,6 +132,29 @@ static void toolbar_populate(Qs_Engine *engine)
     }
 
     /* Vertical separator */
+    ca_div_begin(&(Ca_DivDesc){ .style = "toolbar-separator" });
+    ca_div_end();
+
+    /* ---- Built-in renderer toggles ---- */
+    s_wireframe_btn = ed_icon_btn(&(EdIconBtnDesc){
+        .icon     = ICON_WIREFRAME,
+        .id       = "renderer-wireframe",
+        .tooltip  = "Wireframe",
+        .on_click = on_wireframe_click,
+        .click_data = editor,
+    });
+    ed_icon_btn_set_active(s_wireframe_btn, s_wireframe_active);
+
+    s_normals_btn = ed_icon_btn(&(EdIconBtnDesc){
+        .icon     = ICON_NORMALS,
+        .id       = "renderer-normals",
+        .tooltip  = "Show Normals",
+        .on_click = on_normals_click,
+        .click_data = editor,
+    });
+    ed_icon_btn_set_active(s_normals_btn, s_normals_active);
+
+    /* Vertical separator before extension buttons */
     ca_div_begin(&(Ca_DivDesc){ .style = "toolbar-separator" });
     ca_div_end();
 
@@ -151,9 +209,8 @@ static void toolbar_populate(Qs_Engine *engine)
 static void toolbar_builder(Ca_Div *div, void *user_data)
 {
     (void)div;
-    Qs_Engine *engine = (Qs_Engine *)user_data;
-    if (engine)
-        toolbar_populate(engine);
+    if (user_data)
+        toolbar_populate(user_data);
 }
 
 void ed_toolbar(Ca_Window *window, void *editor)
@@ -165,14 +222,10 @@ void ed_toolbar(Ca_Window *window, void *editor)
         .style     = "toolbar",
     });
 
-    Qs_Engine *engine = editor_engine(editor);
-    s_toolbar_engine = engine;
-    if (!engine) { ca_div_end(); return; }
+    if (!editor) { ca_div_end(); return; }
+    s_toolbar_editor = editor;
 
-    /* set_builder runs the builder immediately to capture deps, so the
-       toolbar is populated as part of registration — do not call
-       toolbar_populate manually here, or every button is rendered twice. */
-    ca_div_set_builder(s_toolbar_div, toolbar_builder, engine);
+    ca_div_set_builder(s_toolbar_div, toolbar_builder, editor);
 
     ca_div_end();
 }

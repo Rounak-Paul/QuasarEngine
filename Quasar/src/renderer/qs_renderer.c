@@ -91,6 +91,10 @@ struct Qs_Renderer {
     bool          wireframe;
     uint32_t      debug_flags;
 
+    /* Post-process settings (read by PBR renderer each frame) */
+    Qs_PostProcessSettings post_process;
+    uint32_t               max_msaa_samples;
+
     /* Bound viewport (for unbinding on destroy) */
     Qs_Viewport  *bound_viewport;
 };
@@ -500,6 +504,12 @@ Qs_Renderer *qs_renderer_create(Qs_Engine *engine, const Qs_RendererDesc *desc)
     }
     camera_defaults(&r->camera);
 
+    /* Post-process defaults */
+    r->post_process.bloom_strength    = 0.04f;
+    r->post_process.vignette_strength = 0.35f;
+    r->post_process.msaa_sample_count = 4;
+    r->max_msaa_samples               = 1;
+
     /* Create engine-owned per-frame UBOs before calling renderer_create so the
        backend can query them via qs_renderer_get_frame_ubo / get_lights_ubo. */
     r->frame_ubo = qs_gpu_create_buffer(r->gpu, &(Qs_GpuBufferDesc){
@@ -623,6 +633,27 @@ void qs_renderer_set_debug_flags(Qs_Renderer *r, uint32_t flags)
 uint32_t qs_renderer_debug_flags(const Qs_Renderer *r)
 {
     return r ? r->debug_flags : 0;
+}
+
+void qs_renderer_set_post_process(Qs_Renderer *r, const Qs_PostProcessSettings *s)
+{
+    if (r && s) r->post_process = *s;
+}
+
+const Qs_PostProcessSettings *qs_renderer_post_process(const Qs_Renderer *r)
+{
+    return r ? &r->post_process : NULL;
+}
+
+uint32_t qs_renderer_max_msaa_samples(const Qs_Renderer *r)
+{
+    return r ? r->max_msaa_samples : 1;
+}
+
+/* Internal: called by the PBR backend to report the device maximum. */
+void qs_renderer_set_max_msaa_samples(Qs_Renderer *r, uint32_t max)
+{
+    if (r) r->max_msaa_samples = max;
 }
 
 void qs_renderer_extents(const Qs_Renderer *r, uint32_t *out_w, uint32_t *out_h)

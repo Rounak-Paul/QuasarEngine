@@ -27,22 +27,13 @@
 #include "qs_log.h"
 #include "pbr_internal.h"
 
-#include <string.h>
-#include <math.h>
-
-/* ---- Post-process settings (mutable, read by composite pass each frame) ---- */
-static PbrPostProcessSettings g_pp_settings = {
-    .bloom_strength    = 0.04f,
-    .vignette_strength = 0.35f,
-    .msaa_sample_count = PBR_MSAA_SAMPLES,
-};
-
-PbrPostProcessSettings *pbr_post_process_settings(void) { return &g_pp_settings; }
 #include <stdlib.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdbool.h>
 #include <stdio.h>
+#include <string.h>
+#include <math.h>
 
 /* ================================================================
    GPU DATA STRUCTURES  (must match shader std140)
@@ -695,8 +686,9 @@ static void forward_pass_execute(const Qs_RenderContext *ctx, void *user_data)
 
     /* Lazy MSAA rebuild when the user changes the sample-count setting */
     {
+        const Qs_PostProcessSettings *pp = qs_renderer_post_process(ctx->renderer);
         uint32_t want = effective_sample_count(
-            g_pp_settings.msaa_sample_count, ps->dev_max_samples);
+            pp ? pp->msaa_sample_count : PBR_MSAA_SAMPLES, ps->dev_max_samples);
         if (want != r->current_msaa_samples && r->last_w > 0)
             pbr_forward_on_resize(r, r->last_w, r->last_h);
     }
@@ -871,8 +863,9 @@ static void composite_pass_execute(const Qs_RenderContext *ctx, void *user_data)
     qs_cmd_bind_pipeline(ctx->cmd, ps->composite_pipeline);
     qs_cmd_bind_descriptor_set(ctx->cmd, ps->composite_layout, 0, r->composite_desc_set);
     typedef struct { float inv_w, inv_h, bloom_str, vignette_str; } CompositePC;
+    const Qs_PostProcessSettings *pp = qs_renderer_post_process(ctx->renderer);
     CompositePC cpc={1.0f/(float)ctx->swapchain_width,1.0f/(float)ctx->swapchain_height,
-                     g_pp_settings.bloom_strength, g_pp_settings.vignette_strength};
+                     pp ? pp->bloom_strength : 0.04f, pp ? pp->vignette_strength : 0.35f};
     qs_cmd_push_constants(ctx->cmd,ps->composite_layout,QS_GPU_SHADER_FRAGMENT,0,16,&cpc);
     qs_cmd_draw(ctx->cmd,3,0);
     qs_cmd_end_rendering(ctx->cmd);
@@ -1022,8 +1015,9 @@ void pbr_forward_on_resize(PbrRenderer *r, uint32_t w, uint32_t h)
     r->last_h = h;
 
     /* Compute the effective MSAA sample count from the current setting */
+    const Qs_PostProcessSettings *pp = qs_renderer_post_process(r->engine_renderer);
     uint32_t want = effective_sample_count(
-        g_pp_settings.msaa_sample_count, ps->dev_max_samples);
+        pp ? pp->msaa_sample_count : PBR_MSAA_SAMPLES, ps->dev_max_samples);
 
     /* Destroy old MSAA images whenever dimensions or sample count change */
     if (r->msaa_color_view)  { qs_gpu_destroy_image_view(gpu, r->msaa_color_view);  r->msaa_color_view  = NULL; }

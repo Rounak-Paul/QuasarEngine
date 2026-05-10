@@ -1,22 +1,21 @@
-﻿/*
+/*
  * pbr_renderer.c — PBR renderer backend system lifecycle.
  *
- * The engine now owns:
- *   - Per-frame viewport callbacks (on_render / on_resize)
- *   - Camera, clear colour, render node list
- *   - Depth buffer, engine-declared render attachments
- *   - frame_ubo and lights_ubo (written by engine each frame)
+ * Implements the Qs_RendererBackend vtable for the built-in PBR renderer.
+ * Registered directly in engine.c; no plugin loading required.
  *
- * The backend is responsible for:
- *   - Initialising the Vulkan render system (GPU context cache)
- *   - Creating / destroying per-renderer GPU resources (pipelines,
- *     descriptor sets, shadow UBO) via pbr_forward_attach / detach
- *   - Re-writing descriptor sets after resize via pbr_forward_on_resize
+ * The engine owns: per-frame viewport callbacks, camera, clear colour, render
+ * node list, depth buffer, declared render attachments, frame_ubo, lights_ubo,
+ * and the default material.
+ *
+ * This backend owns: pipelines, descriptor sets, shadow UBO (CSM data), and
+ * MSAA transient resources — all via pbr_forward_attach / detach / on_resize.
  */
 
-#include "quasar.h"
 #include "qs_renderer.h"
+#include "qs_gpu.h"
 #include "qs_log.h"
+#include "qs_memory.h"
 #include "pbr_internal.h"
 
 #include <stdio.h>
@@ -28,19 +27,10 @@
 
 typedef struct {
     Qs_GpuContext   *gpu;
-    PbrPassResources  passes;  /* shared pipelines / samplers / layouts */
+    PbrPassResources  passes;
 } VkRenderSystemData;
 
 static VkRenderSystemData *g_render_system;
-
-/* Active Qs_Renderer handle — set in create, cleared in destroy.
-   Used by the plugin toolbar to access wireframe / debug_flags. */
-static Qs_Renderer *s_active_handle = NULL;
-
-Qs_Renderer *pbr_active_renderer(void)
-{
-    return s_active_handle;
-}
 
 /* ================================================================
    BACKEND LIFECYCLE
@@ -51,7 +41,7 @@ static bool pbr_render_init(Qs_Engine *engine, Qs_GpuContext *gpu, void **out_ct
     (void)engine;
     VkRenderSystemData *data = qs_calloc(1, sizeof(VkRenderSystemData), QS_MEM_RENDER);
     if (!data) return false;
-    data->gpu      = gpu;
+    data->gpu       = gpu;
     g_render_system = data;
     *out_ctx        = data;
     QS_LOG_INFO("PBR Renderer: render system initialised");
@@ -61,7 +51,6 @@ static bool pbr_render_init(Qs_Engine *engine, Qs_GpuContext *gpu, void **out_ct
 static void pbr_render_shutdown(void *ctx)
 {
     VkRenderSystemData *data = ctx;
-    /* All renderer instances are destroyed before shutdown is called */
     pbr_pass_resources_shutdown(data->gpu, &data->passes);
     g_render_system = NULL;
     qs_free(data);
@@ -69,14 +58,14 @@ static void pbr_render_shutdown(void *ctx)
 }
 
 /* ================================================================
-   RENDERER LIFECYCLE
+   RENDERER INSTANCE LIFECYCLE
    ================================================================ */
 
 static void *pbr_renderer_create(void *ctx, Qs_Engine *engine,
                                  const Qs_RendererDesc *desc, Qs_Renderer *handle)
 {
     VkRenderSystemData *sys = ctx;
-    if (!sys || !desc || !handle) return NULL;
+    if (!sys || !handle) return NULL;
 
     PbrRenderer *r = qs_calloc(1, sizeof(PbrRenderer), QS_MEM_RENDER);
     if (!r) return NULL;
@@ -85,16 +74,20 @@ static void *pbr_renderer_create(void *ctx, Qs_Engine *engine,
     r->engine_renderer = handle;
     r->gpu             = sys->gpu;
 
-    if (desc->name)
+    if (desc && desc->name)
         snprintf(r->name, sizeof(r->name), "%s", desc->name);
     else
         snprintf(r->name, sizeof(r->name), "renderer");
 
-    QS_LOG_INFO("PBR Renderer: '%s' created", r->name);
-
     /* Attach the forward pass — declares attachments and adds render nodes. */
     pbr_forward_attach(engine, r, handle);
-    s_active_handle = handle;
+
+    /* Report device maximum MSAA to the engine renderer. */
+    PbrPassResources *ps = pbr_renderer_pass_resources();
+    if (ps) qs_renderer_set_max_msaa_samples(handle, ps->dev_max_samples);
+
+    QS_LOG_INFO("PBR Renderer: '%s' created (max MSAA %ux)",
+                r->name, ps ? ps->dev_max_samples : 1);
     return r;
 }
 
@@ -103,12 +96,7 @@ static void pbr_renderer_destroy(void *ctx, void *impl)
     (void)ctx;
     PbrRenderer *r = impl;
     if (!r) return;
-
     pbr_forward_detach(r);
-
-    if (s_active_handle == r->engine_renderer)
-        s_active_handle = NULL;
-
     QS_LOG_INFO("PBR Renderer: '%s' destroyed", r->name);
     qs_free(r);
 }

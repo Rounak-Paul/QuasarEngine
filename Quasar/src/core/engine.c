@@ -167,11 +167,16 @@ Qs_Engine* qs_engine_create(const Qs_EngineDesc* desc) {
     if (!engine->extensions) goto fail;
 
     /* ---- Plugin loading ----
-       Plugins may register additional systems (e.g. renderer) here,
-       before Scene is initialised so dependency order is preserved. */
+       Plugins may register additional systems here before Scene is initialised
+       so that dependency order is preserved. */
     engine->plugins = qs_plugin_manager_create(engine, desc->plugin_dir);
     if (engine->plugins)
         qs_plugin_manager_scan(engine->plugins);
+
+    /* ---- Built-in PBR renderer backend ----
+       Registered before the render system so render_sys_init finds it. */
+    extern const Qs_RendererBackend pbr_renderer_backend;
+    qs_renderer_backend_register(&pbr_renderer_backend);
 
     /* ---- Renderer systems ---- */
     Qs_SystemDesc render_desc = qs_render_system_desc();
