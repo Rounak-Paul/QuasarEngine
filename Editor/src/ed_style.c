@@ -1550,10 +1550,18 @@ const char *g_editor_css =
     "  justify-content: flex-end;"
     "}"
 
+    /* Output pin label: grows to fill remaining row space, text right-aligned */
+    ".ng-out-label {"
+    "  flex-grow: 1;"
+    "  text-align: right;"
+    "}"
+
     ".ng-pin-label {"
-    "  color: #9090b0;"
-    "  font-size: 10px;"
-    "  text-align: left;"
+    "  font-size: " ED_FS "px;"
+    "}"
+
+    ".ng-node-title {"
+    "  font-size: " ED_FS "px;"
     "}"
 
     ".ng-pin-label-out {"

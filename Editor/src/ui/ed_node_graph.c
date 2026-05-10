@@ -283,6 +283,35 @@ static void canvas_builder(Ca_Div *div, void *ud)
         .on_node_select = on_node_selected,
     });
 
+    /* Pre-populate pin counts into ng state so wire routing is correct on
+     * frame 1 (before ca_ng_node_end has had a chance to record them). */
+    for (int i = 0; i < s_node_count; i++) {
+        const NgNodeInfo *info = &s_nodes[i];
+        if (!info->type) continue;
+        /* Find or prime the slot by matching key */
+        for (int j = 0; j < s_ng.node_count; j++) {
+            if (strncmp(s_ng.nodes[j].key, info->name, CA_NG_KEY_LEN) == 0) {
+                s_ng.nodes[j].input_count  = (int)info->type->input_count;
+                s_ng.nodes[j].output_count = (int)info->type->output_count;
+                break;
+            }
+        }
+    }
+
+    /* Wires — emitted first so they paint under nodes (stable sort preserves order
+     * for equal z_index, and wires share z_index 0 with unselected nodes). */
+    for (int c = 0; c < s_conn_count; c++) {
+        const NgConn *conn = &s_conns[c];
+        if (conn->src_node < 0 || conn->dst_node < 0) continue;
+        ca_ng_wire(&s_ng, &(Ca_NgWireDesc){
+            .src_node = s_nodes[conn->src_node].name,
+            .src_pin  = conn->src_pin,
+            .dst_node = s_nodes[conn->dst_node].name,
+            .dst_pin  = conn->dst_pin,
+            .color    = wire_color(conn->src_node),
+        });
+    }
+
     for (int i = 0; i < s_node_count; i++) {
         const NgNodeInfo *info = &s_nodes[i];
 
@@ -310,19 +339,6 @@ static void canvas_builder(Ca_Div *div, void *ud)
         }
 
         ca_ng_node_end(&s_ng);
-    }
-
-    /* Wires */
-    for (int c = 0; c < s_conn_count; c++) {
-        const NgConn *conn = &s_conns[c];
-        if (conn->src_node < 0 || conn->dst_node < 0) continue;
-        ca_ng_wire(&s_ng, &(Ca_NgWireDesc){
-            .src_node = s_nodes[conn->src_node].name,
-            .src_pin  = conn->src_pin,
-            .dst_node = s_nodes[conn->dst_node].name,
-            .dst_pin  = conn->dst_pin,
-            .color    = wire_color(conn->src_node),
-        });
     }
 
     ca_node_graph_end(&s_ng);
@@ -435,6 +451,24 @@ void ed_node_graph_init(void *editor)
     s_ng.pan_x = 20.0f;
     s_ng.pan_y = 20.0f;
     setup_graph();
+
+    /* Seed pin counts into ng node state so wire routing works on frame 1,
+     * before ca_ng_node_end has had a chance to record them. We replicate
+     * what ng_find_or_create does: add a slot for each node with the
+     * correct canvas position and pin counts. */
+    for (int i = 0; i < s_node_count; i++) {
+        const NgNodeInfo *info = &s_nodes[i];
+        if (!info->type) continue;
+        if (s_ng.node_count >= CA_NG_MAX_NODES) break;
+        Ca_NgNodeState *st = &s_ng.nodes[s_ng.node_count++];
+        snprintf(st->key, CA_NG_KEY_LEN, "%s", info->name);
+        st->canvas_x     = info->init_x;
+        st->canvas_y     = info->init_y;
+        st->input_count  = (int)info->type->input_count;
+        st->output_count = (int)info->type->output_count;
+        st->valid        = true;
+        st->_ng          = &s_ng;
+    }
 }
 
 void ed_node_graph_build(void)
