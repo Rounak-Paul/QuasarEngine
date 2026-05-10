@@ -298,8 +298,9 @@ static void canvas_builder(Ca_Div *div, void *ud)
         }
     }
 
-    /* Wires — emitted first so they paint under nodes (stable sort preserves order
-     * for equal z_index, and wires share z_index 0 with unselected nodes). */
+    /* Wires — emitted first so they paint under all nodes.
+     * All divs share z_index 0; the selected node is emitted last (pass 1)
+     * so it sits last in DFS child order and paints on top of everything. */
     for (int c = 0; c < s_conn_count; c++) {
         const NgConn *conn = &s_conns[c];
         if (conn->src_node < 0 || conn->dst_node < 0) continue;
@@ -312,33 +313,42 @@ static void canvas_builder(Ca_Div *div, void *ud)
         });
     }
 
-    for (int i = 0; i < s_node_count; i++) {
-        const NgNodeInfo *info = &s_nodes[i];
+    /* Pass 0: non-selected nodes.  Pass 1: selected node (emitted last so it
+     * paints on top without z_index, which would cause child draw commands to
+     * sort behind the parent background and hide the pin dots). */
+    for (int pass = 0; pass < 2; pass++) {
+        for (int i = 0; i < s_node_count; i++) {
+            bool is_sel = (i == s_ng.selected_node);
+            if (pass == 0 && is_sel)  continue;
+            if (pass == 1 && !is_sel) continue;
 
-        ca_ng_node_begin(&s_ng, &(Ca_NgNodeDesc){
-            .key          = info->name,
-            .title        = info->name,
-            .x            = info->init_x,
-            .y            = info->init_y,
-            .header_color = node_header_color(info),
-        });
+            const NgNodeInfo *info = &s_nodes[i];
 
-        if (info->type) {
-            for (uint32_t p = 0; p < info->type->input_count; p++) {
-                ca_ng_input_pin(&s_ng, &(Ca_NgPinDesc){
-                    .label = info->type->inputs[p].name,
-                    .color = pin_kind_color(info->type->inputs[p].kind),
-                });
+            ca_ng_node_begin(&s_ng, &(Ca_NgNodeDesc){
+                .key          = info->name,
+                .title        = info->name,
+                .x            = info->init_x,
+                .y            = info->init_y,
+                .header_color = node_header_color(info),
+            });
+
+            if (info->type) {
+                for (uint32_t p = 0; p < info->type->input_count; p++) {
+                    ca_ng_input_pin(&s_ng, &(Ca_NgPinDesc){
+                        .label = info->type->inputs[p].name,
+                        .color = pin_kind_color(info->type->inputs[p].kind),
+                    });
+                }
+                for (uint32_t p = 0; p < info->type->output_count; p++) {
+                    ca_ng_output_pin(&s_ng, &(Ca_NgPinDesc){
+                        .label = info->type->outputs[p].name,
+                        .color = pin_kind_color(info->type->outputs[p].kind),
+                    });
+                }
             }
-            for (uint32_t p = 0; p < info->type->output_count; p++) {
-                ca_ng_output_pin(&s_ng, &(Ca_NgPinDesc){
-                    .label = info->type->outputs[p].name,
-                    .color = pin_kind_color(info->type->outputs[p].kind),
-                });
-            }
+
+            ca_ng_node_end(&s_ng);
         }
-
-        ca_ng_node_end(&s_ng);
     }
 
     ca_node_graph_end(&s_ng);
