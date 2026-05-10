@@ -254,6 +254,7 @@ uint32_t    qs_renderer_debug_flags     (const Qs_Renderer *renderer);
 /// Post-process settings for the built-in PBR renderer.
 typedef struct Qs_PostProcessSettings {
     float    bloom_strength;    ///< Bloom blend factor over HDR output (default 0.04).
+    float    bloom_threshold;   ///< Luminance threshold for bloom extraction (default 0.4).
     float    vignette_strength; ///< Vignette power exponent (default 0.35).
     uint32_t msaa_sample_count; ///< MSAA tier: 1=off, 2/4/8=on (default 4).
 } Qs_PostProcessSettings;
@@ -268,6 +269,11 @@ const Qs_PostProcessSettings *qs_renderer_post_process      (const Qs_Renderer *
 /// Returns the maximum MSAA sample count supported by the device for this renderer.
 /// Returns 1 before the renderer has been resized at least once.
 uint32_t                      qs_renderer_max_msaa_samples  (const Qs_Renderer *renderer);
+
+/// Set the maximum MSAA sample count (called by the renderer backend after querying
+/// device capabilities in pbr_renderer_on_resize).
+void                          qs_renderer_set_max_msaa_samples(Qs_Renderer *renderer,
+                                                                uint32_t max_samples);
 
 Qs_RenderNode *qs_renderer_add_node   (Qs_Renderer *renderer,
                                         const Qs_RenderNodeDesc *desc);

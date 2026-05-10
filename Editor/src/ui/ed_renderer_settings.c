@@ -23,13 +23,23 @@ static Ca_Window *s_win;
    Slider / select callbacks
    ---------------------------------------------------------------- */
 
-static void on_bloom_change(Ca_Slider *s, void *user_data)
+static void on_bloom_strength_change(Ca_Slider *s, void *user_data)
 {
     (void)user_data;
     Qs_Renderer *r = editor_scene_renderer(s_editor);
     if (!r) return;
     Qs_PostProcessSettings pp = *qs_renderer_post_process(r);
     pp.bloom_strength = ca_slider_get(s);
+    qs_renderer_set_post_process(r, &pp);
+}
+
+static void on_bloom_threshold_change(Ca_Slider *s, void *user_data)
+{
+    (void)user_data;
+    Qs_Renderer *r = editor_scene_renderer(s_editor);
+    if (!r) return;
+    Qs_PostProcessSettings pp = *qs_renderer_post_process(r);
+    pp.bloom_threshold = ca_slider_get(s);
     qs_renderer_set_post_process(r, &pp);
 }
 
@@ -98,12 +108,23 @@ static void build_window_ui(void)
             ca_text(&(Ca_TextDesc){ .text = "POST PROCESSING", .style = "st-section-header" });
 
             ca_div_begin(&(Ca_DivDesc){ .direction = CA_HORIZONTAL, .style = "st-form-row" });
-            ca_text(&(Ca_TextDesc){ .text = "Bloom", .style = "rnd-field-label" });
+            ca_text(&(Ca_TextDesc){ .text = "Bloom Strength", .style = "rnd-field-label" });
             ca_slider(&(Ca_SliderDesc){
                 .min       = 0.0f,
                 .max       = 1.0f,
                 .value     = pp ? pp->bloom_strength : 0.04f,
-                .on_change = on_bloom_change,
+                .on_change = on_bloom_strength_change,
+                .style     = "rnd-slider",
+            });
+            ca_div_end();
+
+            ca_div_begin(&(Ca_DivDesc){ .direction = CA_HORIZONTAL, .style = "st-form-row" });
+            ca_text(&(Ca_TextDesc){ .text = "Bloom Threshold", .style = "rnd-field-label" });
+            ca_slider(&(Ca_SliderDesc){
+                .min       = 0.0f,
+                .max       = 2.0f,
+                .value     = pp ? pp->bloom_threshold : 0.4f,
+                .on_change = on_bloom_threshold_change,
                 .style     = "rnd-slider",
             });
             ca_div_end();

@@ -57,3 +57,6 @@ add_subdirectory(Runtime)
 
 # Plugins
 add_subdirectory(plugins/GltfImporter)
+add_subdirectory(plugins/SkyNode)
+add_subdirectory(plugins/BloomNode)
+add_subdirectory(plugins/VignetteNode)

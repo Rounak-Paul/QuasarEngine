@@ -333,11 +333,16 @@ static void renderer_on_render(const Qs_GpuFrame *frame,
     compute_matrices(&r->camera, w, h, view, proj);
 
     /* Write FrameUBO */
+    float view_proj[16], inv_vp[16];
+    qs_m4_mul(proj, view, view_proj);
+    if (!qs_m4_inverse(view_proj, inv_vp))
+        qs_m4_identity(inv_vp); /* fallback — degenerate camera */
+
     Qs_FrameUBO *fubo = qs_gpu_map_buffer(r->gpu, r->frame_ubo);
     if (fubo) {
         memcpy(fubo->view, view, 64);
         memcpy(fubo->proj, proj, 64);
-        qs_m4_identity(fubo->inv_view_proj);
+        memcpy(fubo->inv_view_proj, inv_vp, 64);
         fubo->cam_pos[0]    = r->camera.position[0];
         fubo->cam_pos[1]    = r->camera.position[1];
         fubo->cam_pos[2]    = r->camera.position[2];
@@ -506,6 +511,7 @@ Qs_Renderer *qs_renderer_create(Qs_Engine *engine, const Qs_RendererDesc *desc)
 
     /* Post-process defaults */
     r->post_process.bloom_strength    = 0.04f;
+    r->post_process.bloom_threshold   = 0.4f;
     r->post_process.vignette_strength = 0.35f;
     r->post_process.msaa_sample_count = 4;
     r->max_msaa_samples               = 1;
