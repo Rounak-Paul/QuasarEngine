@@ -626,9 +626,9 @@ const char *g_editor_css =
 
     ".st-form-row {"
     "  width: 100%;"
-    "  height: 26px;"
+    "  height: " ED_H_INPUT_SMALL "px;"
     "  align-items: center;"
-    "  gap: 10px;"
+    "  gap: 8px;"
     "}"
 
     ".st-form-label {"
@@ -638,16 +638,23 @@ const char *g_editor_css =
     "  text-align: left;"
     "}"
 
-    ".st-slider {"
+    ".st-scale-input {"
     "  flex-grow: 1;"
-    "  height: 4px;"
-    "}"
-
-    ".st-scale-value {"
+    "  height: " ED_H_INPUT_SMALL "px;"
+    "  background: " ED_COL_VOID ";"
     "  color: " ED_COL_TEXT_BRIGHT ";"
     "  font-size: " ED_FS "px;"
-    "  width: 40px;"
-    "  text-align: right;"
+    "  padding-left: 6px;"
+    "  corner-radius: " ED_R_SM ";"
+    "}"
+
+    ".st-apply-btn {"
+    "  width: 60px;"
+    "  height: 22px;"
+    "  background: " ED_COL_PRIMARY ";"
+    "  color: " ED_COL_VOID ";"
+    "  font-size: " ED_FS "px;"
+    "  corner-radius: " ED_R_BASE ";"
     "}"
 
     ".st-separator {"

@@ -45,9 +45,8 @@ static Ca_Div    *s_pages     [SETTINGS_TAB_COUNT];
 
 static SettingsTab s_active_tab;
 
-/* Scale slider widget handle — needed to push value changes back */
-static Ca_Slider  *s_scale_slider;
-static Ca_Label   *s_scale_label;
+/* Scale input + apply state */
+static Ca_TextInput *s_scale_input;
 
 /* Keybind list body — rebuilt each frame */
 static Ca_Div     *s_kb_body;
@@ -71,25 +70,20 @@ static void switch_settings_tab(SettingsTab tab)
 }
 
 /* ================================================================
-   SCALE SLIDER CALLBACK
+   SCALE APPLY CALLBACK
    ================================================================ */
 
-static void on_scale_change(Ca_Slider *sl, void *ud)
+static void on_scale_apply(Ca_Button *btn, void *ud)
 {
-    (void)ud;
-    float v = ca_slider_get(sl);
+    (void)btn; (void)ud;
+    if (!s_scale_input) return;
+    const char *txt = ca_get_text(s_scale_input);
+    float v = 0.0f;
+    if (sscanf(txt, "%f", &v) != 1 || v <= 0.0f) return;
 
-    /* Apply to all windows via the instance */
     Ca_Window   *main = qs_engine_window(editor_engine(s_editor));
     Ca_Instance *inst = ca_window_instance(main);
     if (inst) ca_instance_set_scale(inst, v);
-
-    /* Update the label */
-    if (s_scale_label) {
-        char buf[16];
-        snprintf(buf, sizeof(buf), "%.2f\xC3\x97", v);   /* "1.40×" */
-        ca_set_text(s_scale_label, buf);
-    }
 }
 
 /* ================================================================
@@ -204,9 +198,15 @@ static void build_settings_ui(float current_scale)
         .hidden    = false,
     });
     {
-        /* Page header */
+        /* Page header — title left, Apply button right */
         ca_div_begin(&(Ca_DivDesc){ .direction = CA_HORIZONTAL, .style = "st-page-header" });
         ca_text(&(Ca_TextDesc){ .text = "Theme & Scale", .style = "st-page-title" });
+        ca_btn_begin(&(Ca_BtnDesc){
+            .text     = "Apply",
+            .style    = "st-apply-btn",
+            .on_click = on_scale_apply,
+        });
+        ca_btn_end();
         ca_div_end();
 
         /* Body */
@@ -219,22 +219,13 @@ static void build_settings_ui(float current_scale)
             {
                 ca_text(&(Ca_TextDesc){ .text = "Scale", .style = "st-form-label" });
 
-                /* Slider */
-                s_scale_slider = ca_slider(&(Ca_SliderDesc){
-                    .id          = "st-scale-slider",
-                    .style       = "st-slider",
-                    .min         = 0.5f,
-                    .max         = 3.0f,
-                    .value       = current_scale,
-                    .on_change   = on_scale_change,
-                });
-
-                /* Value label */
-                char init_lbl[16];
-                snprintf(init_lbl, sizeof(init_lbl), "%.2f\xC3\x97", current_scale);
-                s_scale_label = ca_text(&(Ca_TextDesc){
-                    .text  = init_lbl,
-                    .style = "st-scale-value",
+                char init_val[16];
+                snprintf(init_val, sizeof(init_val), "%.2f", current_scale);
+                s_scale_input = ca_input(&(Ca_InputDesc){
+                    .id          = "st-scale-input",
+                    .style       = "st-scale-input",
+                    .placeholder = "1.00",
+                    .text        = init_val,
                 });
             }
             ca_div_end();
