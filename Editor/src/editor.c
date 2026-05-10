@@ -14,6 +14,7 @@
 #include "ui/ed_system_panel.h"
 #include "ui/ed_plugin_manager.h"
 #include "ui/ed_settings.h"
+#include "ui/ed_project_settings.h"
 
 #include "ui/ed_file_browser.h"
 #include "ui/ed_import_dialog.h"
@@ -403,6 +404,7 @@ Editor *editor_create(const EditorDesc *desc)
 
     ed_plugin_manager_init(ed);
     ed_settings_init(ed);
+    ed_project_settings_init(ed);
     ed_toolbar_init(ed);
 
     editor_build_ui(ed);

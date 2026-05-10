@@ -3,6 +3,7 @@
 #include "ed_import_dialog.h"
 #include "ed_plugin_manager.h"
 #include "ed_settings.h"
+#include "ed_project_settings.h"
 #include "ed_renderer_settings.h"
 #include "editor.h"
 
@@ -118,6 +119,12 @@ static void action_open_renderer_settings(void *user_data)
     ed_renderer_settings_open(user_data);
 }
 
+static void action_open_project_settings(void *user_data)
+{
+    (void)user_data;
+    ed_project_settings_open();
+}
+
 /* ---- Per-extension item storage for the current sync ---- */
 
 typedef struct {
@@ -210,19 +217,17 @@ static void menu_bar_rebuild(void)
     };
 
     /* ---- Push all menus to the title bar ---- */
-    Ca_MenuDesc menus[5] = {
-        { .label = "File",     .items = file_items,     .item_count = (int)(sizeof(file_items)/sizeof(file_items[0])) },
-        { .label = "Edit",     .items = edit_items,     .item_count = (int)(sizeof(edit_items)/sizeof(edit_items[0])) },
-        { .label = "Renderer", .items = (Ca_MenuItemDesc[]){
-            { .label = "Renderer Settings...", .action = action_open_renderer_settings, .action_data = s_editor },
-          }, .item_count = 1 },
-        { .label = "Plugins",  .items = plugins_items,  .item_count = plugins_item_count },
+    Ca_MenuDesc menus[4] = {
+        { .label = "File",     .items = file_items,    .item_count = (int)(sizeof(file_items)/sizeof(file_items[0])) },
+        { .label = "Edit",     .items = edit_items,    .item_count = (int)(sizeof(edit_items)/sizeof(edit_items[0])) },
+        { .label = "Plugins",  .items = plugins_items, .item_count = plugins_item_count },
         { .label = "Settings", .items = (Ca_MenuItemDesc[]){
-            { .label = "Editor Settings", .action = action_open_settings, .action_data = NULL },
-          }, .item_count = 1 },
+            { .label = "Editor Settings",   .action = action_open_settings,         .action_data = NULL },
+            { .label = "Project Settings",  .action = action_open_project_settings, .action_data = NULL },
+          }, .item_count = 2 },
     };
 
-    ca_window_set_title_bar_menus(s_window, menus, 5);
+    ca_window_set_title_bar_menus(s_window, menus, 4);
 }
 
 void ed_menu_bar_init(Ca_Window *window, void *editor)

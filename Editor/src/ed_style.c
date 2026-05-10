@@ -1487,6 +1487,138 @@ const char *g_editor_css =
     "tooltip {"
     "  font-size: 10px;"
     "}"
+
+    /* ---- Node Graph (Project Settings > Render Graph) ---- */
+
+    ".ng-root {"
+    "  flex-grow: 1;"
+    "  width: 100%;"
+    "  overflow: hidden;"
+    "}"
+
+    ".ng-canvas {"
+    "  flex-grow: 1;"
+    "  background: " ED_COL_VOID ";"
+    "  overflow: hidden;"
+    "}"
+
+    /* Utility: vertical centering for node graph header and pin rows */
+    ".ng-hdr {"
+    "  align-items: center;"
+    "}"
+
+    ".ng-node-header {"
+    "  width: 100%;"
+    "  height: " ED_H_CHROME "px;"
+    "  font-size: " ED_FS "px;"
+    "  color: #e0e0f0;"
+    "  corner-radius: 5px;"
+    "  justify-content: flex-start;"
+    "  padding-left: 8px;"
+    "}"
+
+    ".ng-node-body {"
+    "  width: 100%;"
+    "  padding: 2px 0px 4px 0px;"
+    "  gap: 0px;"
+    "}"
+
+    ".ng-pin-col {"
+    "  flex-grow: 1;"
+    "  gap: 0px;"
+    "  align-items: flex-start;"
+    "}"
+
+    ".ng-pin-col-out {"
+    "  flex-grow: 1;"
+    "  gap: 0px;"
+    "  align-items: flex-end;"
+    "}"
+
+    ".ng-pin-spacer {"
+    "  flex-grow: 1;"
+    "}"
+
+    ".ng-pin-row {"
+    "  height: " ED_H_CHROME "px;"
+    "  align-items: center;"
+    "  gap: 2px;"
+    "  padding-left: 0px;"
+    "}"
+
+    ".ng-pin-row-out {"
+    "  justify-content: flex-end;"
+    "}"
+
+    ".ng-pin-label {"
+    "  color: #9090b0;"
+    "  font-size: 10px;"
+    "  text-align: left;"
+    "}"
+
+    ".ng-pin-label-out {"
+    "  text-align: right;"
+    "}"
+
+    ".ng-props-panel {"
+    "  background: " ED_COL_ELEVATED ";"
+    "  border-left-width: 1px;"
+    "  border-left-color: " ED_COL_SEPARATOR ";"
+    "  overflow: hidden;"
+    "}"
+
+    ".ng-props-hdr {"
+    "  width: 100%;"
+    "  height: 30px;"
+    "  padding: 0px 10px;"
+    "  align-items: center;"
+    "  background: " ED_COL_ELEVATED ";"
+    "  border-bottom-width: 1px;"
+    "  border-bottom-color: " ED_COL_SEPARATOR ";"
+    "}"
+
+    ".ng-props-title {"
+    "  color: " ED_COL_TEXT_BRIGHT ";"
+    "  font-size: " ED_FS "px;"
+    "  font-weight: bold;"
+    "  text-align: left;"
+    "  flex-grow: 1;"
+    "}"
+
+    ".ng-props-body {"
+    "  flex-grow: 1;"
+    "  width: 100%;"
+    "  padding: 10px 10px;"
+    "  gap: 10px;"
+    "  overflow-y: scroll;"
+    "  align-items: flex-start;"
+    "}"
+
+    ".ng-props-empty {"
+    "  flex-grow: 1;"
+    "  width: 100%;"
+    "  align-items: center;"
+    "  justify-content: center;"
+    "}"
+
+    ".ng-props-hint {"
+    "  color: " ED_COL_TEXT_MUTED ";"
+    "  font-size: " ED_FS "px;"
+    "  text-align: center;"
+    "}"
+
+    ".ng-info-text {"
+    "  color: " ED_COL_TEXT_SEC ";"
+    "  font-size: " ED_FS "px;"
+    "  text-align: left;"
+    "}"
+
+    ".ng-breadcrumb {"
+    "  color: " ED_COL_TEXT_MUTED ";"
+    "  font-size: " ED_FS "px;"
+    "  text-align: right;"
+    "}"
+
 ;
 
 /* ------------------------------------------------------------------
