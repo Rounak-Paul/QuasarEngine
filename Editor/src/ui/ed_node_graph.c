@@ -107,6 +107,35 @@ static uint32_t pin_kind_color(Qs_RgResourceKind k)
 }
 
 /* ================================================================
+   SKY PARAM SLIDER CALLBACKS
+   ================================================================ */
+
+/* Find the Qs_RgNodeTypeExt for a plugin node by its type name. */
+static const Qs_RgNodeTypeExt *ng_find_ext_by_type_name(const char *type_name)
+{
+    Qs_Engine *engine = editor_engine(s_editor);
+    if (!engine || !type_name) return NULL;
+    uint32_t n = qs_engine_ext_count(engine, QS_EXT_RENDER_GRAPH_NODE);
+    for (uint32_t e = 0; e < n; e++) {
+        const Qs_RgNodeTypeExt *ext =
+            qs_engine_ext_interface(engine, QS_EXT_RENDER_GRAPH_NODE, e);
+        if (ext && ext->type && strcmp(ext->type->name, type_name) == 0)
+            return ext;
+    }
+    return NULL;
+}
+
+static void on_sky_param_change(Ca_Slider *sl, void *ud)
+{
+    uint32_t idx = (uint32_t)(uintptr_t)ud;
+    Qs_Engine *engine = editor_engine(s_editor);
+    if (!engine) return;
+    const Qs_RgNodeTypeExt *ext = ng_find_ext_by_type_name("sky");
+    if (ext && ext->set_param)
+        ext->set_param(engine, idx, ca_slider_get(sl));
+}
+
+/* ================================================================
    PROPERTIES PANEL BUILDER
    ================================================================ */
 
@@ -253,8 +282,44 @@ static void props_builder(Ca_Div *div, void *ud)
 
         } else if (strstr(node->name, "sky") != NULL) {
             ca_text(&(Ca_TextDesc){ .text = "SKY", .style = "st-section-header" });
-            ca_text(&(Ca_TextDesc){ .text = "Atmospheric sky background.\nRendered before PBR pass.",
-                                    .style = "ng-info-text", .id = "ng-info-sky" });
+
+            Qs_Engine *engine = editor_engine(s_editor);
+            const Qs_RgNodeTypeExt *ext = ng_find_ext_by_type_name("sky");
+
+            if (ext && ext->params && ext->get_param && ext->set_param && engine) {
+                /* Auto-generate a slider for every exposed parameter. */
+                for (uint32_t i = 0; i < ext->param_count; i++) {
+                    /* Insert a sub-header before the Horizon group */
+                    if (i == 0)
+                        ca_text(&(Ca_TextDesc){ .text = "ZENITH",  .style = "ng-sky-subhdr", .id = "ng-sky-zh" });
+                    else if (i == 3)
+                        ca_text(&(Ca_TextDesc){ .text = "HORIZON", .style = "ng-sky-subhdr", .id = "ng-sky-hh" });
+                    else if (i == 6)
+                        ca_text(&(Ca_TextDesc){ .text = "GRADIENT", .style = "ng-sky-subhdr", .id = "ng-sky-gh" });
+
+                    const Qs_RgNodeParam *p = &ext->params[i];
+                    char row_id[32], sl_id[32];
+                    snprintf(row_id, sizeof(row_id), "ng-sky-r%u", i);
+                    snprintf(sl_id,  sizeof(sl_id),  "ng-sky-s%u", i);
+
+                    ca_div_begin(&(Ca_DivDesc){ .direction = CA_HORIZONTAL,
+                                               .style = "st-form-row", .id = row_id });
+                    ca_text(&(Ca_TextDesc){ .text = p->name, .style = "rnd-field-label" });
+                    ca_slider(&(Ca_SliderDesc){
+                        .min         = p->min_val,
+                        .max         = p->max_val,
+                        .value       = ext->get_param(engine, i),
+                        .on_change   = on_sky_param_change,
+                        .change_data = (void *)(uintptr_t)i,
+                        .style       = "rnd-slider",
+                        .id          = sl_id,
+                    });
+                    ca_div_end();
+                }
+            } else {
+                ca_text(&(Ca_TextDesc){ .text = "Atmospheric sky background.\nRendered before PBR pass.",
+                                        .style = "ng-info-text", .id = "ng-info-sky" });
+            }
         } else {
             ca_text(&(Ca_TextDesc){ .text = "No settings available.",
                                     .style = "ng-info-text", .id = "ng-info-none" });

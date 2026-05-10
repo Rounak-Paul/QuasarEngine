@@ -9,11 +9,19 @@
 #include "quasar.h"
 
 /* Declared in sky_node.c */
-extern const Qs_RgNodeType sky_node_type;
+extern const Qs_RgNodeType  sky_node_type;
+extern const Qs_RgNodeParam sky_node_params[];
+#define SKY_PARAM_COUNT 7
+extern float sky_get_param(Qs_Engine *engine, uint32_t idx);
+extern void  sky_set_param(Qs_Engine *engine, uint32_t idx, float val);
 
 static const Qs_RgNodeTypeExt s_sky_ext = {
-    .type  = &sky_node_type,
-    .stage = QS_RG_STAGE_PRE_GEOMETRY,
+    .type        = &sky_node_type,
+    .stage       = QS_RG_STAGE_PRE_GEOMETRY,
+    .params      = sky_node_params,
+    .param_count = SKY_PARAM_COUNT,
+    .get_param   = sky_get_param,
+    .set_param   = sky_set_param,
 };
 
 static Qs_Extension *s_ext = NULL;

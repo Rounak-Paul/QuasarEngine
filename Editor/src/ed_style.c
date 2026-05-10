@@ -1621,6 +1621,13 @@ const char *g_editor_css =
     "  text-align: left;"
     "}"
 
+    ".ng-sky-subhdr {"
+    "  color: " ED_COL_TEXT_MUTED ";"
+    "  font-size: " ED_FS_CONSOLE "px;"
+    "  margin-top: 8px;"
+    "  margin-bottom: 2px;"
+    "}"
+
     ".ng-breadcrumb {"
     "  color: " ED_COL_TEXT_MUTED ";"
     "  font-size: " ED_FS "px;"

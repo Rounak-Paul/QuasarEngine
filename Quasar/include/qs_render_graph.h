@@ -215,10 +215,27 @@ typedef enum Qs_RgNodeStage {
     QS_RG_STAGE_POST_TONEMAP  = 2, ///< After tonemap, chained to swapchain (e.g. vignette).
 } Qs_RgNodeStage;
 
+/// Descriptor for a single named float parameter exposed by a dynamic node.
+/// The editor uses this to auto-generate a slider in the node properties panel.
+typedef struct Qs_RgNodeParam {
+    const char *name;    ///< Display label (e.g. "Zenith R", "Falloff").
+    float       min_val; ///< Slider minimum.
+    float       max_val; ///< Slider maximum.
+    float       def_val; ///< Default value (shown on first open).
+} Qs_RgNodeParam;
+
 /// Interface for QS_EXT_RENDER_GRAPH_NODE extensions.
 typedef struct Qs_RgNodeTypeExt {
     const Qs_RgNodeType *type;
     Qs_RgNodeStage       stage;
+
+    /// Optional editor parameter interface.
+    /// When non-NULL, `param_count` entries describe each float parameter and
+    /// the editor auto-generates a slider for each one in the properties panel.
+    const Qs_RgNodeParam *params;
+    uint32_t              param_count;
+    float (*get_param)(Qs_Engine *engine, uint32_t idx);
+    void  (*set_param)(Qs_Engine *engine, uint32_t idx, float val);
 } Qs_RgNodeTypeExt;
 
 /* ================================================================

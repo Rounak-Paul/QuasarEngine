@@ -39,7 +39,7 @@ static const char *SKY_FRAG =
     "layout(push_constant) uniform PC {\n"
     "    vec4 zenith_color;\n"
     "    vec4 horizon_color;\n"
-    "    float inv_w; float inv_h; float _p0; float _p1;\n"
+    "    float inv_w; float inv_h; float horizon_falloff; float _p1;\n"
     "} pc;\n"
     "layout(location=0) out vec4 out_color;\n"
     "void main() {\n"
@@ -48,8 +48,41 @@ static const char *SKY_FRAG =
     "    vec4 world = frame.inv_view_proj * clip;\n"
     "    vec3 dir   = normalize(world.xyz / world.w - frame.cam_pos);\n"
     "    float t = clamp(dir.y * 0.5 + 0.5, 0.0, 1.0);\n"
-    "    out_color = mix(pc.horizon_color, pc.zenith_color, t * t);\n"
+    "    out_color = mix(pc.horizon_color, pc.zenith_color, pow(t, pc.horizon_falloff));\n"
     "}\n";
+
+/* ================================================================
+   SKY PARAMETERS  (mutable, edited from the properties panel)
+   ================================================================ */
+
+typedef struct {
+    float zenith[3];   /* RGB zenith colour   */
+    float horizon[3];  /* RGB horizon colour  */
+    float falloff;     /* gradient exponent — lower = more zenith coverage */
+} SkyParams;
+
+/* Defaults tuned for a rich, clearly-blue sky.
+ * zenith: deep blue, horizon: light but unmistakably blue. */
+static SkyParams s_sky_params = {
+    .zenith  = {0.04f, 0.18f, 0.60f},
+    .horizon = {0.35f, 0.60f, 0.95f},
+    .falloff = 1.50f,
+};
+
+/* ================================================================
+   PARAM TABLE  (consumed by the editor props panel)
+   ================================================================ */
+
+const Qs_RgNodeParam sky_node_params[] = {
+    { "Zenith R",  0.0f, 1.0f, 0.04f },
+    { "Zenith G",  0.0f, 1.0f, 0.18f },
+    { "Zenith B",  0.0f, 1.0f, 0.60f },
+    { "Horizon R", 0.0f, 1.0f, 0.35f },
+    { "Horizon G", 0.0f, 1.0f, 0.60f },
+    { "Horizon B", 0.0f, 1.0f, 0.95f },
+    { "Falloff",   0.5f, 5.0f, 1.50f },
+};
+#define SKY_PARAM_COUNT 7
 
 /* ================================================================
    NODE STATE
@@ -73,10 +106,10 @@ typedef struct {
 
 /* Push constant layout must match SKY_FRAG */
 typedef struct {
-    float zenith_color[4];
-    float horizon_color[4];
-    float inv_w, inv_h, _p0, _p1;
-} SkyPC; /* 40 bytes */
+    float zenith_color[4];    /* 16 bytes */
+    float horizon_color[4];   /* 16 bytes */
+    float inv_w, inv_h, horizon_falloff, _p1; /* 16 bytes */
+} SkyPC; /* 48 bytes */
 
 /* ================================================================
    NODE VTABLE
@@ -193,12 +226,14 @@ static void sky_execute(void *state, const Qs_RgExecCtx *ctx)
         .new_layout=QS_GPU_IMAGE_LAYOUT_COLOR_ATTACHMENT,
         .aspect=QS_GPU_IMAGE_ASPECT_COLOR, .base_mip=0, .mip_count=1});
 
-    /* Default sky colours */
     SkyPC pc = {
-        .zenith_color  = {0.10f, 0.25f, 0.70f, 1.0f},
-        .horizon_color = {0.70f, 0.80f, 0.95f, 1.0f},
-        .inv_w = 1.0f / (float)ctx->width,
-        .inv_h = 1.0f / (float)ctx->height,
+        .zenith_color    = {s_sky_params.zenith[0],  s_sky_params.zenith[1],
+                            s_sky_params.zenith[2],  1.0f},
+        .horizon_color   = {s_sky_params.horizon[0], s_sky_params.horizon[1],
+                            s_sky_params.horizon[2], 1.0f},
+        .inv_w           = 1.0f / (float)ctx->width,
+        .inv_h           = 1.0f / (float)ctx->height,
+        .horizon_falloff = s_sky_params.falloff,
     };
 
     qs_cmd_begin_rendering(ctx->cmd, &(Qs_GpuRenderTarget){
@@ -221,6 +256,40 @@ static void sky_execute(void *state, const Qs_RgExecCtx *ctx)
 
 emit:
     ctx->outputs[0].texture = (Qs_RgTexture){ s->sky_image, s->sky_view };
+}
+
+/* ================================================================
+   EDITOR PARAMETER CALLBACKS
+   ================================================================ */
+
+float sky_get_param(Qs_Engine *engine, uint32_t idx)
+{
+    (void)engine;
+    switch (idx) {
+        case 0: return s_sky_params.zenith[0];
+        case 1: return s_sky_params.zenith[1];
+        case 2: return s_sky_params.zenith[2];
+        case 3: return s_sky_params.horizon[0];
+        case 4: return s_sky_params.horizon[1];
+        case 5: return s_sky_params.horizon[2];
+        case 6: return s_sky_params.falloff;
+        default: return 0.0f;
+    }
+}
+
+void sky_set_param(Qs_Engine *engine, uint32_t idx, float val)
+{
+    (void)engine;
+    switch (idx) {
+        case 0: s_sky_params.zenith[0]  = val; break;
+        case 1: s_sky_params.zenith[1]  = val; break;
+        case 2: s_sky_params.zenith[2]  = val; break;
+        case 3: s_sky_params.horizon[0] = val; break;
+        case 4: s_sky_params.horizon[1] = val; break;
+        case 5: s_sky_params.horizon[2] = val; break;
+        case 6: s_sky_params.falloff    = val; break;
+        default: break;
+    }
 }
 
 /* ================================================================
