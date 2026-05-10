@@ -291,7 +291,7 @@ void ed_settings_open(void)
     float current_scale = ca_instance_get_scale(inst);
 
     s_win = ca_window_create(inst, &(Ca_WindowDesc){
-        .title  = "Settings",
+        .title  = "Editor Settings",
         .width  = 520,
         .height = 380,
     });

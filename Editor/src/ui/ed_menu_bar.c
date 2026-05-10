@@ -209,7 +209,7 @@ static void menu_bar_rebuild(void)
         { .label = "Edit",     .items = edit_items,     .item_count = (int)(sizeof(edit_items)/sizeof(edit_items[0])) },
         { .label = "Plugins",  .items = plugins_items,  .item_count = plugins_item_count },
         { .label = "Settings", .items = (Ca_MenuItemDesc[]){
-            { .label = "Settings...", .action = action_open_settings, .action_data = NULL },
+            { .label = "Editor Settings", .action = action_open_settings, .action_data = NULL },
           }, .item_count = 1 },
     };
 
