@@ -12,47 +12,6 @@ static Qs_Engine    *s_engine          = NULL;
 static Qs_Extension *s_ext_menu        = NULL;
 static Qs_Extension *s_ext_toolbar     = NULL;
 static Ca_Window    *s_renderer_win    = NULL;
-static Ca_Label     *s_lbl_fps         = NULL;
-static Ca_Label     *s_lbl_frametime   = NULL;
-static Ca_Label     *s_lbl_bloom       = NULL;
-static Ca_Label     *s_lbl_vignette    = NULL;
-static Ca_Label     *s_lbl_msaa        = NULL;
-
-/* ---- on_frame: update stat labels ---- */
-
-static void renderer_win_frame(void *data)
-{
-    (void)data;
-    float dt  = s_engine ? qs_engine_dt(s_engine) : 0.0f;
-    float fps = (dt > 0.0f) ? (1.0f / dt) : 0.0f;
-    float ms  = dt * 1000.0f;
-
-    char buf[64];
-    snprintf(buf, sizeof(buf), "FPS:         %.1f", fps);
-    ca_set_text(s_lbl_fps, buf);
-
-    snprintf(buf, sizeof(buf), "Frame Time:  %.2f ms", ms);
-    ca_set_text(s_lbl_frametime, buf);
-
-    PbrPostProcessSettings *pp = pbr_post_process_settings();
-    if (pp) {
-        snprintf(buf, sizeof(buf), "Bloom:       %.3f", pp->bloom_strength);
-        ca_set_text(s_lbl_bloom, buf);
-
-        snprintf(buf, sizeof(buf), "Vignette:    %.3f", pp->vignette_strength);
-        ca_set_text(s_lbl_vignette, buf);
-
-        PbrPassResources *ps = pbr_renderer_pass_resources();
-        uint32_t samples = ps ? ps->dev_max_samples : 1;
-        uint32_t cur = pp ? pp->msaa_sample_count : 1;
-        if (pp->msaa_sample_count > 1)
-            snprintf(buf, sizeof(buf), "MSAA:        %ux", pp->msaa_sample_count);
-        else
-            snprintf(buf, sizeof(buf), "MSAA:        off");
-        (void)samples;
-        ca_set_text(s_lbl_msaa, buf);
-    }
-}
 
 /* ---- Slider callbacks ---- */
 
@@ -88,111 +47,82 @@ static void open_renderer_window(void *user_data)
     Ca_Instance *inst = ca_window_instance(qs_engine_window(s_engine));
     if (!inst) return;
 
-    PbrPostProcessSettings *pp = pbr_post_process_settings();
+    PbrPostProcessSettings *pp  = pbr_post_process_settings();
+    PbrPassResources       *ps  = pbr_renderer_pass_resources();
+
+    /* MSAA option list (hardware-capped) */
+    static const char    *k_labels[4] = {"Off", "2x", "4x", "8x"};
+    static const uint32_t k_counts[4] = {1, 2, 4, 8};
+    uint32_t dev_max = ps ? ps->dev_max_samples : 1;
+    int n_opts = 1;
+    for (int i = 1; i < 4; i++) { if (k_counts[i] <= dev_max) n_opts = i + 1; }
+    uint32_t cur = pp ? pp->msaa_sample_count : 1;
+    int sel_idx = 0;
+    for (int i = 0; i < n_opts; i++) { if (k_counts[i] == cur) sel_idx = i; }
 
     s_renderer_win = ca_window_create(inst, &(Ca_WindowDesc){
-        .title  = "Renderer",
-        .width  = 360,
-        .height = 400,
+        .title  = "Renderer Settings",
+        .width  = 320,
+        .height = 220,
     });
     if (!s_renderer_win) return;
 
     ca_ui_begin(s_renderer_win, &(Ca_DivDesc){
         .direction = CA_VERTICAL,
-        .style     = "renderer-settings-panel",
+        .style     = "st-root",
     });
     {
-        ca_hr(&(Ca_HrDesc){ .color = 0 });
-
-        /* ---- Settings section ---- */
-        ca_text(&(Ca_TextDesc){
-            .text  = "Settings",
-            .style = "renderer-section-label",
-        });
-
-        ca_div_begin(&(Ca_DivDesc){
-            .direction = CA_VERTICAL,
-            .style     = "renderer-setting-row",
-        });
-        ca_text(&(Ca_TextDesc){
-            .text  = "Bloom Strength",
-            .style = "renderer-setting-label",
-        });
-        ca_slider(&(Ca_SliderDesc){
-            .min       = 0.0f,
-            .max       = 1.0f,
-            .value     = pp ? pp->bloom_strength : 0.0f,
-            .on_change = on_bloom_change,
-        });
+        /* ---- Page header ---- */
+        ca_div_begin(&(Ca_DivDesc){ .direction = CA_HORIZONTAL, .style = "st-page-header" });
+        ca_text(&(Ca_TextDesc){ .text = "Renderer Settings", .style = "st-page-title" });
         ca_div_end();
 
-        ca_div_begin(&(Ca_DivDesc){
-            .direction = CA_VERTICAL,
-            .style     = "renderer-setting-row",
-        });
-        ca_text(&(Ca_TextDesc){
-            .text  = "Vignette Strength",
-            .style = "renderer-setting-label",
-        });
-        ca_slider(&(Ca_SliderDesc){
-            .min       = 0.0f,
-            .max       = 1.0f,
-            .value     = pp ? pp->vignette_strength : 0.0f,
-            .on_change = on_vignette_change,
-        });
-        ca_div_end();
-
+        /* ---- Scrollable body ---- */
+        ca_div_begin(&(Ca_DivDesc){ .direction = CA_VERTICAL, .style = "st-page-body" });
         {
-            static const char *k_labels[4] = {"Off (1x)", "2x", "4x", "8x"};
-            static const uint32_t k_counts[4] = {1, 2, 4, 8};
-            PbrPassResources *ps2 = pbr_renderer_pass_resources();
-            uint32_t dev_max = ps2 ? ps2->dev_max_samples : 1;
-            int n_opts = 1;
-            for (int i = 1; i < 4; i++) { if (k_counts[i] <= dev_max) n_opts = i + 1; }
-            uint32_t cur = pp ? pp->msaa_sample_count : 1;
-            int sel_idx = 0;
-            for (int i = 0; i < n_opts; i++) { if (k_counts[i] == cur) sel_idx = i; }
-            ca_div_begin(&(Ca_DivDesc){
-                .direction = CA_HORIZONTAL,
-                .style     = "renderer-setting-row",
+            /* Post Processing */
+            ca_text(&(Ca_TextDesc){ .text = "POST PROCESSING", .style = "st-section-header" });
+
+            ca_div_begin(&(Ca_DivDesc){ .direction = CA_HORIZONTAL, .style = "st-form-row" });
+            ca_text(&(Ca_TextDesc){ .text = "Bloom",   .style = "rnd-field-label" });
+            ca_slider(&(Ca_SliderDesc){
+                .min       = 0.0f,
+                .max       = 1.0f,
+                .value     = pp ? pp->bloom_strength : 0.0f,
+                .on_change = on_bloom_change,
+                .style     = "rnd-slider",
             });
-            ca_text(&(Ca_TextDesc){
-                .text  = "MSAA",
-                .style = "renderer-setting-label",
+            ca_div_end();
+
+            ca_div_begin(&(Ca_DivDesc){ .direction = CA_HORIZONTAL, .style = "st-form-row" });
+            ca_text(&(Ca_TextDesc){ .text = "Vignette", .style = "rnd-field-label" });
+            ca_slider(&(Ca_SliderDesc){
+                .min       = 0.0f,
+                .max       = 1.0f,
+                .value     = pp ? pp->vignette_strength : 0.0f,
+                .on_change = on_vignette_change,
+                .style     = "rnd-slider",
             });
+            ca_div_end();
+
+            /* Anti-Aliasing */
+            ca_text(&(Ca_TextDesc){ .text = "ANTI-ALIASING", .style = "st-section-header" });
+
+            ca_div_begin(&(Ca_DivDesc){ .direction = CA_HORIZONTAL, .style = "st-form-row" });
+            ca_text(&(Ca_TextDesc){ .text = "MSAA", .style = "rnd-field-label" });
             ca_div_begin(&(Ca_DivDesc){ .style = "pm-spacer" }); ca_div_end();
             ca_select(&(Ca_SelectDesc){
                 .options      = k_labels,
                 .option_count = n_opts,
                 .selected     = sel_idx,
                 .on_change    = on_msaa_select,
-                .style        = "inspector-select",
+                .style        = "rnd-select",
             });
             ca_div_end();
         }
-
-        ca_hr(&(Ca_HrDesc){ .color = 0 });
-
-        /* ---- Stats section ---- */
-        ca_text(&(Ca_TextDesc){
-            .text  = "Stats",
-            .style = "renderer-section-label",
-        });
-
-        ca_div_begin(&(Ca_DivDesc){
-            .direction = CA_VERTICAL,
-            .style     = "renderer-stats-content",
-        });
-        s_lbl_fps      = ca_text(&(Ca_TextDesc){ .text = "FPS:",        .style = "renderer-stat-row" });
-        s_lbl_frametime = ca_text(&(Ca_TextDesc){ .text = "Frame Time:", .style = "renderer-stat-row" });
-        s_lbl_bloom    = ca_text(&(Ca_TextDesc){ .text = "Bloom:",       .style = "renderer-stat-row" });
-        s_lbl_vignette = ca_text(&(Ca_TextDesc){ .text = "Vignette:",    .style = "renderer-stat-row" });
-        s_lbl_msaa     = ca_text(&(Ca_TextDesc){ .text = "MSAA:",        .style = "renderer-stat-row" });
         ca_div_end();
     }
     ca_ui_end();
-
-    ca_window_set_on_frame(s_renderer_win, renderer_win_frame, NULL);
 }
 
 /* ---- Plugin lifecycle ---- */
@@ -234,11 +164,6 @@ static void on_unload(Qs_Engine *engine)
     if (s_renderer_win && ca_window_is_open(s_renderer_win))
         ca_window_close(s_renderer_win);
     s_renderer_win    = NULL;
-    s_lbl_fps        = NULL;
-    s_lbl_frametime  = NULL;
-    s_lbl_bloom      = NULL;
-    s_lbl_vignette   = NULL;
-    s_lbl_msaa       = NULL;
     s_engine         = NULL;
     qs_renderer_backend_unregister("PBRRenderer");
 }

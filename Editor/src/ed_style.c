@@ -1161,6 +1161,29 @@ const char *g_editor_css =
     "  height: " ED_H_ROW_TIGHT "px;"
     "}"
 
+    /* ---- Renderer Settings window ---- */
+    ".rnd-field-label {"
+    "  color: " ED_COL_TEXT_MUTED ";"
+    "  font-size: " ED_FS "px;"
+    "  width: 70px;"
+    "  text-align: left;"
+    "}"
+
+    ".rnd-slider {"
+    "  flex-grow: 1;"
+    "}"
+
+    ".rnd-select {"
+    "  width: 110px;"
+    "  height: " ED_H_INPUT_SMALL "px;"
+    "  background: " ED_COL_VOID ";"
+    "  color: " ED_COL_TEXT_BRIGHT ";"
+    "  font-size: " ED_FS "px;"
+    "  padding-left: 6px;"
+    "  padding-right: 18px;"
+    "  corner-radius: " ED_R_SM ";"
+    "}"
+
     /* ---- Renderer Settings modal ---- */
     ".renderer-settings-modal {"
     "  width: 340px;"
