@@ -4,6 +4,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <stdbool.h>
+#include "qs_api.h"
 
 /* Forward-declare cJSON so consumers don't need the full header. */
 struct cJSON;

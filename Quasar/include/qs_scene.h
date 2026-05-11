@@ -5,6 +5,7 @@
 #include <stdint.h>
 #include <stddef.h>
 
+#include "qs_api.h"
 #include "qs_light.h"
 #include "qs_reflect.h"
 
@@ -52,24 +53,24 @@ typedef struct Qs_ComponentTypeDesc {
 } Qs_ComponentTypeDesc;
 
 /// Registers a new component type globally.  Returns the type handle.
-Qs_ComponentType *qs_component_register(Qs_Engine *engine,
+QS_API Qs_ComponentType *qs_component_register(Qs_Engine *engine,
                                          const Qs_ComponentTypeDesc *desc);
 
 /// Finds a registered component type by name.  Returns NULL if not found.
-Qs_ComponentType *qs_component_find(const char *name);
+QS_API Qs_ComponentType *qs_component_find(const char *name);
 
 /// Returns the reflection type info linked to a component type, or NULL.
-const Qs_TypeInfo *qs_component_type_info(const Qs_ComponentType *type);
+QS_API const Qs_TypeInfo *qs_component_type_info(const Qs_ComponentType *type);
 
 /// Returns the name of a component type.
-const char *qs_component_type_name(const Qs_ComponentType *type);
+QS_API const char *qs_component_type_name(const Qs_ComponentType *type);
 
 /// Returns the number of registered component types.
-uint32_t qs_component_type_count(void);
+QS_API uint32_t qs_component_type_count(void);
 
 /// Returns the i-th registered component type (0-based dense index).
 /// Returns NULL if index >= count.
-Qs_ComponentType *qs_component_type_at(uint32_t index);
+QS_API Qs_ComponentType *qs_component_type_at(uint32_t index);
 
 /* ================================================================
    BUILT-IN COMPONENT TYPES
@@ -166,7 +167,7 @@ typedef struct Qs_PrototypeComp {
 /// point to data matching `type` (e.g. float[3] for FLOAT3, char* for
 /// STRING).  Returns true on success.  The override is applied to the
 /// inner scene immediately if it is loaded, and re-applied each frame.
-bool qs_prototype_set_override(Qs_PrototypeComp *pc,
+QS_API bool qs_prototype_set_override(Qs_PrototypeComp *pc,
                                uint32_t inner_entity_id,
                                const char *comp_name,
                                const char *field_name,
@@ -177,35 +178,35 @@ bool qs_prototype_set_override(Qs_PrototypeComp *pc,
 /// inner-scene field reverts to its source-prototype value on the next
 /// override-apply pass; if you need an immediate revert, reload the inner
 /// scene via qs_prototype_reload().
-bool qs_prototype_clear_override(Qs_PrototypeComp *pc,
+QS_API bool qs_prototype_clear_override(Qs_PrototypeComp *pc,
                                  uint32_t inner_entity_id,
                                  const char *comp_name,
                                  const char *field_name);
 
 /// Returns the override matching the key, or NULL if none.
-const Qs_PrototypeOverride *qs_prototype_find_override(
+QS_API const Qs_PrototypeOverride *qs_prototype_find_override(
     const Qs_PrototypeComp *pc,
     uint32_t inner_entity_id,
     const char *comp_name,
     const char *field_name);
 
 /// Number of overrides currently stored on the instance.
-uint32_t qs_prototype_override_count(const Qs_PrototypeComp *pc);
+QS_API uint32_t qs_prototype_override_count(const Qs_PrototypeComp *pc);
 
 /// Indexed access to the overrides list (0 .. count-1).
-const Qs_PrototypeOverride *qs_prototype_override_at(
+QS_API const Qs_PrototypeOverride *qs_prototype_override_at(
     const Qs_PrototypeComp *pc, uint32_t index);
 
 /// Applies all stored overrides to the inner scene's component data.
 /// Safe to call when inner is NULL (no-op).  Called automatically before
 /// rendering, but can be invoked manually after editing for an
 /// immediate UI refresh.
-void qs_prototype_apply_overrides(Qs_PrototypeComp *pc);
+QS_API void qs_prototype_apply_overrides(Qs_PrototypeComp *pc);
 
 /// Drops the lazy-loaded inner scene so it will be reloaded fresh from
 /// disk on the next render.  Useful after clearing overrides to discard
 /// any side-effects in the inner ECS data.
-void qs_prototype_reload(Qs_PrototypeComp *pc);
+QS_API void qs_prototype_reload(Qs_PrototypeComp *pc);
 
 /* ---- Prototype dependency / cycle detection ----------------------- */
 
@@ -219,7 +220,7 @@ void qs_prototype_reload(Qs_PrototypeComp *pc);
 /// `Qs_PrototypeComp.path`).  An equal subject/target counts as a cycle.
 /// The check is bounded; cycles in already-corrupted files are detected
 /// via an internal visited set rather than recursing forever.
-bool qs_prototype_path_depends_on(Qs_Project *project,
+QS_API bool qs_prototype_path_depends_on(Qs_Project *project,
                                   const char *subject_path,
                                   const char *target_path);
 
@@ -227,32 +228,32 @@ bool qs_prototype_path_depends_on(Qs_Project *project,
 /// `PrototypeComp.path` inside `host_path` would create a cycle.
 /// Equivalent to:
 ///   candidate == host || qs_prototype_path_depends_on(candidate, host)
-bool qs_prototype_would_create_cycle(Qs_Project *project,
+QS_API bool qs_prototype_would_create_cycle(Qs_Project *project,
                                      const char *host_path,
                                      const char *candidate_inner_path);
 
 /// Looks up an inner-scene entity by its stable IdComp.id.  Returns
 /// QS_ENTITY_INVALID if no entity with that id exists.
-Qs_Entity qs_scene_find_by_id(Qs_Scene *scene, uint32_t id);
+QS_API Qs_Entity qs_scene_find_by_id(Qs_Scene *scene, uint32_t id);
 
 
 /// Returns the built-in Transform component type handle.
-Qs_ComponentType *qs_transform_type(void);
+QS_API Qs_ComponentType *qs_transform_type(void);
 
 /// Returns the built-in MeshComp component type handle.
-Qs_ComponentType *qs_mesh_comp_type(void);
+QS_API Qs_ComponentType *qs_mesh_comp_type(void);
 
 /// Returns the built-in LightComp component type handle.
-Qs_ComponentType *qs_light_comp_type(void);
+QS_API Qs_ComponentType *qs_light_comp_type(void);
 
 /// Returns the built-in IdComp component type handle.
-Qs_ComponentType *qs_id_comp_type(void);
+QS_API Qs_ComponentType *qs_id_comp_type(void);
 
 /// Returns the built-in TagComp component type handle.
-Qs_ComponentType *qs_tag_comp_type(void);
+QS_API Qs_ComponentType *qs_tag_comp_type(void);
 
 /// Returns the built-in PrototypeComp component type handle.
-Qs_ComponentType *qs_prototype_comp_type(void);
+QS_API Qs_ComponentType *qs_prototype_comp_type(void);
 
 /* ================================================================
    SCENE
@@ -269,54 +270,54 @@ typedef struct Qs_SceneDesc {
 } Qs_SceneDesc;
 
 /// Creates a new scene.  Returns NULL on failure.
-Qs_Scene *qs_scene_create(Qs_Engine *engine, const Qs_SceneDesc *desc);
+QS_API Qs_Scene *qs_scene_create(Qs_Engine *engine, const Qs_SceneDesc *desc);
 
 /// Destroys a scene and all its entities.
-void qs_scene_destroy(Qs_Scene *scene);
+QS_API void qs_scene_destroy(Qs_Scene *scene);
 
 /// Returns the scene name.
-const char *qs_scene_name(const Qs_Scene *scene);
+QS_API const char *qs_scene_name(const Qs_Scene *scene);
 
 /// Sets the active scene.  Pass NULL to deactivate all.
 /// Fires on_deactivate for the previous scene, on_activate for the new one.
-void qs_scene_set_active(Qs_Scene *scene);
+QS_API void qs_scene_set_active(Qs_Scene *scene);
 
 /// Returns the currently active scene, or NULL.
-Qs_Scene *qs_scene_active(void);
+QS_API Qs_Scene *qs_scene_active(void);
 
 /* ================================================================
    ENTITY LIFECYCLE
    ================================================================ */
 
 /// Creates an entity in the scene.  A Transform component is auto-added.
-Qs_Entity qs_entity_create(Qs_Scene *scene, const char *name);
+QS_API Qs_Entity qs_entity_create(Qs_Scene *scene, const char *name);
 
 /// Destroys an entity and all its components.
-void qs_entity_destroy(Qs_Scene *scene, Qs_Entity entity);
+QS_API void qs_entity_destroy(Qs_Scene *scene, Qs_Entity entity);
 
 /// Returns true if the entity handle is alive.
-bool qs_entity_valid(const Qs_Scene *scene, Qs_Entity entity);
+QS_API bool qs_entity_valid(const Qs_Scene *scene, Qs_Entity entity);
 
 /// Returns the entity's name.
-const char *qs_entity_name(const Qs_Scene *scene, Qs_Entity entity);
+QS_API const char *qs_entity_name(const Qs_Scene *scene, Qs_Entity entity);
 
 /// Sets the entity's display name.
-void qs_entity_set_name(Qs_Scene *scene, Qs_Entity entity, const char *name);
+QS_API void qs_entity_set_name(Qs_Scene *scene, Qs_Entity entity, const char *name);
 
 /// Enables or disables an entity.  Disabled entities skip component updates.
-void qs_entity_set_enabled(Qs_Scene *scene, Qs_Entity entity, bool enabled);
+QS_API void qs_entity_set_enabled(Qs_Scene *scene, Qs_Entity entity, bool enabled);
 
 /// Returns true if the entity is enabled.
-bool qs_entity_enabled(const Qs_Scene *scene, Qs_Entity entity);
+QS_API bool qs_entity_enabled(const Qs_Scene *scene, Qs_Entity entity);
 
 /// Sets the parent of an entity.  Pass QS_ENTITY_INVALID to make it a root entity.
-void qs_entity_set_parent(Qs_Scene *scene, Qs_Entity entity, Qs_Entity parent);
+QS_API void qs_entity_set_parent(Qs_Scene *scene, Qs_Entity entity, Qs_Entity parent);
 
 /// Returns the parent entity, or QS_ENTITY_INVALID if the entity is a root.
-Qs_Entity qs_entity_get_parent(const Qs_Scene *scene, Qs_Entity entity);
+QS_API Qs_Entity qs_entity_get_parent(const Qs_Scene *scene, Qs_Entity entity);
 
 /// Returns the number of alive entities in the scene.
-uint32_t qs_scene_entity_count(const Qs_Scene *scene);
+QS_API uint32_t qs_scene_entity_count(const Qs_Scene *scene);
 
 /* ================================================================
    COMPONENT CRUD
@@ -325,19 +326,19 @@ uint32_t qs_scene_entity_count(const Qs_Scene *scene);
 /// Adds a component of the given type to an entity.  Returns a pointer to
 /// the zeroed (then init'd) component data.  Returns NULL if already present
 /// or on failure.
-void *qs_entity_add(Qs_Scene *scene, Qs_Entity entity,
+QS_API void *qs_entity_add(Qs_Scene *scene, Qs_Entity entity,
                      Qs_ComponentType *type);
 
 /// Returns a pointer to the entity's component data, or NULL if absent.
-void *qs_entity_get(const Qs_Scene *scene, Qs_Entity entity,
+QS_API void *qs_entity_get(const Qs_Scene *scene, Qs_Entity entity,
                      const Qs_ComponentType *type);
 
 /// Removes a component from an entity.
-void qs_entity_remove(Qs_Scene *scene, Qs_Entity entity,
+QS_API void qs_entity_remove(Qs_Scene *scene, Qs_Entity entity,
                        Qs_ComponentType *type);
 
 /// Returns true if the entity has the given component type.
-bool qs_entity_has(const Qs_Scene *scene, Qs_Entity entity,
+QS_API bool qs_entity_has(const Qs_Scene *scene, Qs_Entity entity,
                     const Qs_ComponentType *type);
 
 /* ================================================================
@@ -345,12 +346,12 @@ bool qs_entity_has(const Qs_Scene *scene, Qs_Entity entity,
    ================================================================ */
 
 /// Returns the first entity with the given component, or QS_ENTITY_INVALID.
-Qs_Entity qs_scene_first(const Qs_Scene *scene,
+QS_API Qs_Entity qs_scene_first(const Qs_Scene *scene,
                           const Qs_ComponentType *type);
 
 /// Returns the next entity after `after` with the component,
 /// or QS_ENTITY_INVALID when done.
-Qs_Entity qs_scene_next(const Qs_Scene *scene,
+QS_API Qs_Entity qs_scene_next(const Qs_Scene *scene,
                          const Qs_ComponentType *type,
                          Qs_Entity after);
 
@@ -360,20 +361,20 @@ Qs_Entity qs_scene_next(const Qs_Scene *scene,
 
 /// Serializes the entire scene to a cJSON object.  Caller owns the result.
 /// Components with reflection type_info are auto-serialized.
-struct cJSON *qs_scene_to_json(const Qs_Scene *scene);
+QS_API struct cJSON *qs_scene_to_json(const Qs_Scene *scene);
 
 /// Deserializes a cJSON object into a scene, creating entities and components.
 /// The scene should be empty or newly created.  Returns true on success.
-bool qs_scene_from_json(Qs_Scene *scene, Qs_Engine *engine,
+QS_API bool qs_scene_from_json(Qs_Scene *scene, Qs_Engine *engine,
                         const struct cJSON *json);
 
 /// Saves the scene to a .qscene JSON file at the given path.
 /// Returns true on success.
-bool qs_scene_save(const Qs_Scene *scene, const char *path);
+QS_API bool qs_scene_save(const Qs_Scene *scene, const char *path);
 
 /// Loads a scene from a .qscene JSON file.  Creates entities and components
 /// inside the given (empty/new) scene.  Returns true on success.
-bool qs_scene_load(Qs_Scene *scene, Qs_Engine *engine, const char *path);
+QS_API bool qs_scene_load(Qs_Scene *scene, Qs_Engine *engine, const char *path);
 
 /* ================================================================
    WORLD TRANSFORM
@@ -381,7 +382,7 @@ bool qs_scene_load(Qs_Scene *scene, Qs_Engine *engine, const char *path);
 
 /// Computes the world-space model matrix for an entity by composing
 /// local transforms up the parent chain.  Result is column-major 4×4.
-void qs_scene_world_matrix(const Qs_Scene *scene, Qs_Entity entity,
+QS_API void qs_scene_world_matrix(const Qs_Scene *scene, Qs_Entity entity,
                            float out[16]);
 
 /* ================================================================
@@ -399,7 +400,7 @@ typedef struct Qs_Renderer Qs_Renderer;
 /// recursively in nested PrototypeComp scenes) to `renderer`.
 /// `parent_world` is the world matrix to compose with each entity's
 /// local transform — pass an identity matrix for top-level scenes.
-void qs_scene_submit_renderables(Qs_Scene *scene,
+QS_API void qs_scene_submit_renderables(Qs_Scene *scene,
                                  Qs_Engine *engine,
                                  Qs_Renderer *renderer,
                                  const float parent_world[16]);

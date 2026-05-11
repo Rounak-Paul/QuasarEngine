@@ -2,6 +2,7 @@
 #define QS_MATERIAL_H
 
 #include "qs_gpu.h"
+#include "qs_api.h"
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -113,7 +114,7 @@ Qs_GpuDescriptorSet *qs_material_descriptor_set(const Qs_Material *material);
 Qs_GpuDescriptorSetLayout *qs_material_set_layout(void);
 
 /// Returns the materialâ€™s PBR parameters for GPU upload.
-const Qs_PBRParams *qs_material_params(const Qs_Material *material);
+QS_API const Qs_PBRParams *qs_material_params(const Qs_Material *material);
 
 /// Returns the alpha mode of the material.
 Qs_AlphaMode qs_material_alpha_mode(const Qs_Material *material);
@@ -130,12 +131,12 @@ void qs_material_set_texture(Qs_Material *mat, uint32_t slot, Qs_Texture *tex);
 
 /// Returns the currently assigned texture for a slot, or NULL if the slot
 /// uses the default fallback.  Slot indices same as qs_material_set_texture.
-Qs_Texture *qs_material_get_texture(const Qs_Material *mat, uint32_t slot);
+QS_API Qs_Texture *qs_material_get_texture(const Qs_Material *mat, uint32_t slot);
 
 /// Overwrites the material's PBR scalar parameter block.  The new values
 /// take effect on the next rendered frame (params are copied per-frame into
 /// each Qs_Renderable).  Does NOT affect texture bindings.
-void qs_material_update_params(Qs_Material *mat, const Qs_PBRParams *params);
+QS_API void qs_material_update_params(Qs_Material *mat, const Qs_PBRParams *params);
 
 /// Returns the number of live (in-use) materials managed by the material system.
 uint32_t qs_material_count(void);

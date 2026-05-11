@@ -40,10 +40,8 @@ file(GLOB_RECURSE QUASAR_SOURCES CONFIGURE_DEPENDS src/*.c)
 
 add_library(Quasar SHARED ${QUASAR_SOURCES})
 
-# Automatically export all symbols on Windows (no manual __declspec needed).
-if(WIN32)
-    set_target_properties(Quasar PROPERTIES WINDOWS_EXPORT_ALL_SYMBOLS ON)
-endif()
+# Mark the DLL side of the export macro.
+target_compile_definitions(Quasar PRIVATE QUASAR_BUILD)
 
 # Precompiled header
 target_precompile_headers(Quasar PRIVATE src/qs_pch.h)

@@ -4,6 +4,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "qs_api.h"
 #include "qs_gpu.h"
 #include "qs_light.h"
 #include "qs_mesh.h"
@@ -217,34 +218,34 @@ typedef struct Qs_RendererBackend {
     void  (*renderer_on_resize)(void *ctx, void *impl, uint32_t w, uint32_t h);
 } Qs_RendererBackend;
 
-void qs_renderer_backend_register  (const Qs_RendererBackend *backend);
-void qs_renderer_backend_unregister(const char *name);
-void qs_renderer_backend_set_default(const char *name);
+QS_API void qs_renderer_backend_register  (const Qs_RendererBackend *backend);
+QS_API void qs_renderer_backend_unregister(const char *name);
+QS_API void qs_renderer_backend_set_default(const char *name);
 
 /* ================================================================
    PUBLIC RENDERER API
    ================================================================ */
 
-Qs_Renderer *qs_renderer_create (Qs_Engine *engine, const Qs_RendererDesc *desc);
-void         qs_renderer_destroy(Qs_Renderer *renderer);
-void         qs_renderer_bind   (Qs_Renderer *renderer, Qs_Viewport *viewport);
+QS_API Qs_Renderer *qs_renderer_create (Qs_Engine *engine, const Qs_RendererDesc *desc);
+QS_API void         qs_renderer_destroy(Qs_Renderer *renderer);
+QS_API void         qs_renderer_bind   (Qs_Renderer *renderer, Qs_Viewport *viewport);
 
-Qs_Camera  *qs_renderer_camera          (Qs_Renderer *renderer);
-void        qs_renderer_set_clear_color (Qs_Renderer *renderer, const float color[4]);
-const float *qs_renderer_clear_color    (const Qs_Renderer *renderer);
-const char *qs_renderer_name            (const Qs_Renderer *renderer);
-void        qs_renderer_extents         (const Qs_Renderer *renderer,
+QS_API Qs_Camera  *qs_renderer_camera          (Qs_Renderer *renderer);
+QS_API void        qs_renderer_set_clear_color (Qs_Renderer *renderer, const float color[4]);
+QS_API const float *qs_renderer_clear_color    (const Qs_Renderer *renderer);
+QS_API const char *qs_renderer_name            (const Qs_Renderer *renderer);
+QS_API void        qs_renderer_extents         (const Qs_Renderer *renderer,
                                           uint32_t *out_w, uint32_t *out_h);
 
 /// Toggle wireframe rendering.  When enabled, all geometry is drawn as lines.
-void        qs_renderer_set_wireframe   (Qs_Renderer *renderer, bool wireframe);
-bool        qs_renderer_wireframe       (const Qs_Renderer *renderer);
+QS_API void        qs_renderer_set_wireframe   (Qs_Renderer *renderer, bool wireframe);
+QS_API bool        qs_renderer_wireframe       (const Qs_Renderer *renderer);
 
 /// Generic debug flag bitfield.  The engine writes the flags into
 /// Qs_FrameUBO.debug_flags each frame so shaders can read them.
 /// Bit 0x1 = show normals (PBR renderer).
-void        qs_renderer_set_debug_flags (Qs_Renderer *renderer, uint32_t flags);
-uint32_t    qs_renderer_debug_flags     (const Qs_Renderer *renderer);
+QS_API void        qs_renderer_set_debug_flags (Qs_Renderer *renderer, uint32_t flags);
+QS_API uint32_t    qs_renderer_debug_flags     (const Qs_Renderer *renderer);
 
 /* ================================================================
    POST-PROCESS SETTINGS
@@ -260,24 +261,24 @@ typedef struct Qs_PostProcessSettings {
 } Qs_PostProcessSettings;
 
 /// Update the post-process settings. Applied each frame during rendering.
-void                          qs_renderer_set_post_process  (Qs_Renderer *renderer,
+QS_API void                          qs_renderer_set_post_process  (Qs_Renderer *renderer,
                                                               const Qs_PostProcessSettings *settings);
 
 /// Read the current post-process settings. Returns NULL for an invalid renderer.
-const Qs_PostProcessSettings *qs_renderer_post_process      (const Qs_Renderer *renderer);
+QS_API const Qs_PostProcessSettings *qs_renderer_post_process      (const Qs_Renderer *renderer);
 
 /// Returns the maximum MSAA sample count supported by the device for this renderer.
 /// Returns 1 before the renderer has been resized at least once.
-uint32_t                      qs_renderer_max_msaa_samples  (const Qs_Renderer *renderer);
+QS_API uint32_t                      qs_renderer_max_msaa_samples  (const Qs_Renderer *renderer);
 
 /// Set the maximum MSAA sample count (called by the renderer backend after querying
 /// device capabilities in pbr_renderer_on_resize).
-void                          qs_renderer_set_max_msaa_samples(Qs_Renderer *renderer,
+QS_API void                          qs_renderer_set_max_msaa_samples(Qs_Renderer *renderer,
                                                                 uint32_t max_samples);
 
-Qs_RenderNode *qs_renderer_add_node   (Qs_Renderer *renderer,
+QS_API Qs_RenderNode *qs_renderer_add_node   (Qs_Renderer *renderer,
                                         const Qs_RenderNodeDesc *desc);
-void           qs_renderer_remove_node(Qs_Renderer *renderer, Qs_RenderNode *node);
+QS_API void           qs_renderer_remove_node(Qs_Renderer *renderer, Qs_RenderNode *node);
 
 /* ================================================================
    RENDER ATTACHMENT API
@@ -285,13 +286,13 @@ void           qs_renderer_remove_node(Qs_Renderer *renderer, Qs_RenderNode *nod
    that the engine owns and resizes automatically.
    ================================================================ */
 
-Qs_RenderAttachment *qs_renderer_add_attachment(Qs_Renderer *renderer,
+QS_API Qs_RenderAttachment *qs_renderer_add_attachment(Qs_Renderer *renderer,
                                                  const Qs_RenderAttachmentDesc *desc);
-Qs_GpuImageView     *qs_attachment_view (const Qs_RenderAttachment *att);
-Qs_GpuImage         *qs_attachment_image(const Qs_RenderAttachment *att);
+QS_API Qs_GpuImageView     *qs_attachment_view (const Qs_RenderAttachment *att);
+QS_API Qs_GpuImage         *qs_attachment_image(const Qs_RenderAttachment *att);
 
 /// Engine-managed depth buffer view (NULL when depth_test=false).
-Qs_GpuImageView *qs_renderer_depth_view(const Qs_Renderer *renderer);
+QS_API Qs_GpuImageView *qs_renderer_depth_view(const Qs_Renderer *renderer);
 
 /* ================================================================
    ENGINE UBO ACCESSORS
@@ -299,8 +300,8 @@ Qs_GpuImageView *qs_renderer_depth_view(const Qs_Renderer *renderer);
    write descriptor sets that reference them during renderer_create.
    ================================================================ */
 
-Qs_GpuBuffer *qs_renderer_get_frame_ubo (const Qs_Renderer *renderer);
-Qs_GpuBuffer *qs_renderer_get_lights_ubo(const Qs_Renderer *renderer);
+QS_API Qs_GpuBuffer *qs_renderer_get_frame_ubo (const Qs_Renderer *renderer);
+QS_API Qs_GpuBuffer *qs_renderer_get_lights_ubo(const Qs_Renderer *renderer);
 
 /* ================================================================
    RENDERABLE / LIGHT SUBMISSION
@@ -309,17 +310,17 @@ Qs_GpuBuffer *qs_renderer_get_lights_ubo(const Qs_Renderer *renderer);
 /// Submit a renderable for this frame.  The engine extracts GPU handles from
 /// desc->mesh and desc->material and stores a GPU-packed Qs_Renderable
 /// internally.  If desc->material is NULL the renderer default material is used.
-void                  qs_renderer_submit_renderable (Qs_Renderer *renderer,
+QS_API void                  qs_renderer_submit_renderable (Qs_Renderer *renderer,
                                                       const Qs_RenderableDesc *desc);
-void                  qs_renderer_clear_renderables (Qs_Renderer *renderer);
-const Qs_Renderable  *qs_renderer_renderables       (const Qs_Renderer *renderer,
+QS_API void                  qs_renderer_clear_renderables (Qs_Renderer *renderer);
+QS_API const Qs_Renderable  *qs_renderer_renderables       (const Qs_Renderer *renderer,
                                                       uint32_t *out_count);
 
-void               qs_renderer_submit_light    (Qs_Renderer *renderer, Qs_Light *light);
-void               qs_renderer_submit_light_comp(Qs_Renderer *renderer,
+QS_API void               qs_renderer_submit_light    (Qs_Renderer *renderer, Qs_Light *light);
+QS_API void               qs_renderer_submit_light_comp(Qs_Renderer *renderer,
                                                  const Qs_LightComp *comp);
-void               qs_renderer_clear_lights(Qs_Renderer *renderer);
-const Qs_LightGPU *qs_renderer_lights      (const Qs_Renderer *renderer,
+QS_API void               qs_renderer_clear_lights(Qs_Renderer *renderer);
+QS_API const Qs_LightGPU *qs_renderer_lights      (const Qs_Renderer *renderer,
                                              uint32_t *out_count);
 
 #endif /* QS_RENDERER_H */

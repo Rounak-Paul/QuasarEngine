@@ -2,6 +2,7 @@
 #define QS_MESH_H
 
 #include "qs_gpu.h"
+#include "qs_api.h"
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -45,33 +46,33 @@ typedef struct Qs_MeshDesc {
    ================================================================ */
 
 /// Creates a GPU mesh. Destroy with qs_mesh_destroy.
-Qs_Mesh *qs_mesh_create(Qs_Engine *engine, const Qs_MeshDesc *desc);
+QS_API Qs_Mesh *qs_mesh_create(Qs_Engine *engine, const Qs_MeshDesc *desc);
 
 /// Destroys a mesh and frees its GPU resources.
-void qs_mesh_destroy(Qs_Mesh *mesh);
+QS_API void qs_mesh_destroy(Qs_Mesh *mesh);
 
 /// Returns the debug name.
-const char *qs_mesh_name(const Qs_Mesh *mesh);
+QS_API const char *qs_mesh_name(const Qs_Mesh *mesh);
 
 /// Returns the number of vertices.
-uint32_t qs_mesh_vertex_count(const Qs_Mesh *mesh);
+QS_API uint32_t qs_mesh_vertex_count(const Qs_Mesh *mesh);
 
 /// Returns the number of indices (0 if non-indexed).
-uint32_t qs_mesh_index_count(const Qs_Mesh *mesh);
+QS_API uint32_t qs_mesh_index_count(const Qs_Mesh *mesh);
 
 /// Binds vertex and index buffers to a command buffer.
-void qs_mesh_bind(const Qs_Mesh *mesh, Qs_GpuCmd *cmd);
+QS_API void qs_mesh_bind(const Qs_Mesh *mesh, Qs_GpuCmd *cmd);
 
 /// Binds and issues the draw call.
-void qs_mesh_draw(const Qs_Mesh *mesh, Qs_GpuCmd *cmd);
+QS_API void qs_mesh_draw(const Qs_Mesh *mesh, Qs_GpuCmd *cmd);
 
 /// Returns the GPU vertex buffer.  Used by the engine to pack renderables.
-Qs_GpuBuffer *qs_mesh_vertex_buffer(const Qs_Mesh *mesh);
+QS_API Qs_GpuBuffer *qs_mesh_vertex_buffer(const Qs_Mesh *mesh);
 
 /// Returns the GPU index buffer, or NULL if the mesh is non-indexed.
-Qs_GpuBuffer *qs_mesh_index_buffer(const Qs_Mesh *mesh);
+QS_API Qs_GpuBuffer *qs_mesh_index_buffer(const Qs_Mesh *mesh);
 
 /// Returns the index element type (UINT16 or UINT32).
-Qs_IndexType qs_mesh_index_type(const Qs_Mesh *mesh);
+QS_API Qs_IndexType qs_mesh_index_type(const Qs_Mesh *mesh);
 
 #endif

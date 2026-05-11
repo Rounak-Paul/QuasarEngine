@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include "qs_api.h"
 
 typedef struct Qs_Engine        Qs_Engine;
 typedef struct Qs_PluginManager Qs_PluginManager;
@@ -73,62 +74,62 @@ typedef const Qs_PluginDesc *(*Qs_PluginEntryFn)(void);
 /// If plugin_dir is NULL the directory is resolved automatically as
 /// "plugins/" adjacent to the running executable.
 /// Returns NULL on allocation failure.
-Qs_PluginManager *qs_plugin_manager_create(Qs_Engine *engine,
+QS_API Qs_PluginManager *qs_plugin_manager_create(Qs_Engine *engine,
                                             const char *plugin_dir);
 
 /// Scans the plugin directory, loads all enabled plugins, and persists state.
 /// Call once after the core engine systems (Log, Job, Event, Input) are
 /// registered and before Scene is registered, so that renderer plugins can
 /// register their systems in the correct order.
-void qs_plugin_manager_scan(Qs_PluginManager *pm);
+QS_API void qs_plugin_manager_scan(Qs_PluginManager *pm);
 
 /// Calls on_unload for every loaded plugin in reverse load order,
 /// saves plugin state to the user config directory, and frees the manager.
-void qs_plugin_manager_destroy(Qs_PluginManager *pm);
+QS_API void qs_plugin_manager_destroy(Qs_PluginManager *pm);
 
 /// Enables a plugin by id and loads it if not already loaded.
 /// Returns false if the plugin id is unknown.
-bool qs_plugin_enable(Qs_PluginManager *pm, const char *id);
+QS_API bool qs_plugin_enable(Qs_PluginManager *pm, const char *id);
 
 /// Disables a plugin by id and unloads it if currently loaded.
 /// Returns false if the plugin id is unknown.
-bool qs_plugin_disable(Qs_PluginManager *pm, const char *id);
+QS_API bool qs_plugin_disable(Qs_PluginManager *pm, const char *id);
 
 /// Returns the number of discovered plugins (enabled or disabled).
-uint32_t qs_plugin_count(const Qs_PluginManager *pm);
+QS_API uint32_t qs_plugin_count(const Qs_PluginManager *pm);
 
 /// Returns the state record for the plugin at index idx.
-const Qs_PluginState *qs_plugin_state_at(const Qs_PluginManager *pm,
+QS_API const Qs_PluginState *qs_plugin_state_at(const Qs_PluginManager *pm,
                                           uint32_t idx);
 
 /// Returns the descriptor of a plugin state record.  NULL if not loaded.
-const Qs_PluginDesc *qs_plugin_state_desc(const Qs_PluginState *state);
+QS_API const Qs_PluginDesc *qs_plugin_state_desc(const Qs_PluginState *state);
 
 /// Returns true if the plugin is currently enabled.
-bool qs_plugin_state_enabled(const Qs_PluginState *state);
+QS_API bool qs_plugin_state_enabled(const Qs_PluginState *state);
 
 /// Returns true if the plugin library is currently loaded in memory.
-bool qs_plugin_state_loaded(const Qs_PluginState *state);
+QS_API bool qs_plugin_state_loaded(const Qs_PluginState *state);
 
 /// Returns the file-system path of the plugin shared library.
-const char *qs_plugin_state_path(const Qs_PluginState *state);
+QS_API const char *qs_plugin_state_path(const Qs_PluginState *state);
 
 /// Returns the plugin id (available even before the library is loaded,
 /// from the persisted state).
-const char *qs_plugin_state_id(const Qs_PluginState *state);
+QS_API const char *qs_plugin_state_id(const Qs_PluginState *state);
 
 /// Returns the plugin's human-readable name.
-const char *qs_plugin_state_name(const Qs_PluginState *state);
+QS_API const char *qs_plugin_state_name(const Qs_PluginState *state);
 
 /// Returns the plugin's version string.
-const char *qs_plugin_state_version(const Qs_PluginState *state);
+QS_API const char *qs_plugin_state_version(const Qs_PluginState *state);
 
 /// Returns the plugin's author.
-const char *qs_plugin_state_author(const Qs_PluginState *state);
+QS_API const char *qs_plugin_state_author(const Qs_PluginState *state);
 
 /// Unloads a currently loaded plugin and immediately reloads it from disk.
 /// Useful for hot-reload during development.  Returns false if the plugin id
 /// is unknown or if the reload fails (the plugin is left unloaded in that case).
-bool qs_plugin_reload(Qs_PluginManager *pm, const char *id);
+QS_API bool qs_plugin_reload(Qs_PluginManager *pm, const char *id);
 
 #endif

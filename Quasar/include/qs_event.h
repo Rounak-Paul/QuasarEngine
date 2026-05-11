@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include "qs_api.h"
 
 /// Event ID type — engine reserves IDs below QS_EVENT_USER_BASE.
 typedef uint32_t Qs_EventId;
@@ -46,15 +47,15 @@ typedef struct Qs_Event {
 typedef bool (*Qs_EventFn)(const Qs_Event* event, void* user_data);
 
 /// Subscribes a listener to an event ID. Returns a handle for unsubscribing.
-uint32_t qs_event_subscribe(Qs_EventBus* bus, Qs_EventId id,
+QS_API uint32_t qs_event_subscribe(Qs_EventBus* bus, Qs_EventId id,
                             Qs_EventFn callback, void* user_data);
 
 /// Removes a listener by its handle.
-void qs_event_unsubscribe(Qs_EventBus* bus, uint32_t handle);
+QS_API void qs_event_unsubscribe(Qs_EventBus* bus, uint32_t handle);
 
 /// Fires an event immediately. Listeners are called in subscription order.
 /// Stops early if a listener marks the event as handled.
-void qs_event_fire(Qs_EventBus* bus, Qs_EventId id,
+QS_API void qs_event_fire(Qs_EventBus* bus, Qs_EventId id,
                    void* data, uint32_t data_size);
 
 #endif

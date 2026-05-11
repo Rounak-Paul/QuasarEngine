@@ -31,6 +31,7 @@
 #ifndef QS_RENDER_GRAPH_H
 #define QS_RENDER_GRAPH_H
 
+#include "qs_api.h"
 #include "qs_gpu.h"
 #include "qs_renderer.h"
 #include <stdint.h>
@@ -150,54 +151,54 @@ typedef struct Qs_RgNode      Qs_RgNode;   ///< Opaque node instance in a graph.
    ================================================================ */
 
 /// Create an empty render graph.
-Qs_RenderGraph *qs_rg_create (Qs_Engine *engine, Qs_GpuContext *gpu);
+QS_API Qs_RenderGraph *qs_rg_create (Qs_Engine *engine, Qs_GpuContext *gpu);
 
 /// Destroy the graph and all node instances it owns.
-void            qs_rg_destroy(Qs_RenderGraph *rg);
+QS_API void            qs_rg_destroy(Qs_RenderGraph *rg);
 
 /// Add a node of the given type.  The node's create() callback is called
 /// immediately.  Returns the node handle (valid until qs_rg_destroy).
-Qs_RgNode *qs_rg_add_node  (Qs_RenderGraph *rg, const Qs_RgNodeType *type);
+QS_API Qs_RgNode *qs_rg_add_node  (Qs_RenderGraph *rg, const Qs_RgNodeType *type);
 
 /// Add a "source" node — zero inputs, one output of the given kind.
 /// The current value is injected via qs_rg_source_set() before each execute.
-Qs_RgNode *qs_rg_add_source(Qs_RenderGraph *rg, const char *name,
+QS_API Qs_RgNode *qs_rg_add_source(Qs_RenderGraph *rg, const char *name,
                              Qs_RgResourceKind kind);
 
 /// Update the value emitted by a source node.
-void       qs_rg_source_set(Qs_RgNode *source, Qs_RgValue value);
+QS_API void       qs_rg_source_set(Qs_RgNode *source, Qs_RgValue value);
 
 /// Connect src_node's output port [src_output] to dst_node's input port [dst_input].
 /// Returns false if indices are out of range, kinds mismatch, or the input is
 /// already connected.
-bool qs_rg_connect(Qs_RenderGraph *rg,
+QS_API bool qs_rg_connect(Qs_RenderGraph *rg,
                    Qs_RgNode *src, uint32_t src_output,
                    Qs_RgNode *dst, uint32_t dst_input);
 
 /// Convenience wrapper: connect by port name instead of index.
-bool qs_rg_connect_named(Qs_RenderGraph *rg,
+QS_API bool qs_rg_connect_named(Qs_RenderGraph *rg,
                          Qs_RgNode *src, const char *src_out_name,
                          Qs_RgNode *dst, const char *dst_in_name);
 
 /// Validate connections and compute the topological execution order.
 /// Must be called once after all nodes and connections are established.
 /// Returns false if the graph has cycles or missing required inputs.
-bool qs_rg_compile(Qs_RenderGraph *rg);
+QS_API bool qs_rg_compile(Qs_RenderGraph *rg);
 
 /// Execute the compiled graph for one frame.
-void qs_rg_execute(Qs_RenderGraph *rg, const Qs_RenderContext *ctx);
+QS_API void qs_rg_execute(Qs_RenderGraph *rg, const Qs_RenderContext *ctx);
 
 /// Notify the graph that the viewport was resized.  Calls on_resize on every
 /// non-source node in compile order.
-void qs_rg_on_resize(Qs_RenderGraph *rg, uint32_t w, uint32_t h);
+QS_API void qs_rg_on_resize(Qs_RenderGraph *rg, uint32_t w, uint32_t h);
 
 /// Find a node in the graph by its node-type name.  Returns NULL if not found.
-Qs_RgNode *qs_rg_find_node(Qs_RenderGraph *rg, const char *type_name);
+QS_API Qs_RgNode *qs_rg_find_node(Qs_RenderGraph *rg, const char *type_name);
 
 /// Return the private implementation pointer (state) of a node, as created by
 /// the node type's create() callback.  Useful for fixed nodes that need to
 /// expose additional data (e.g. device max MSAA).
-void *qs_rg_node_impl(Qs_RgNode *node);
+QS_API void *qs_rg_node_impl(Qs_RgNode *node);
 
 /* ================================================================
    EXTENSION POINT: render_graph.node
@@ -242,8 +243,8 @@ typedef struct Qs_RgNodeTypeExt {
    BUILT-IN FIXED NODE TYPE DECLARATIONS
    ================================================================ */
 
-extern const Qs_RgNodeType qs_rg_shadow_node_type;
-extern const Qs_RgNodeType qs_rg_pbr_node_type;
-extern const Qs_RgNodeType qs_rg_tonemap_node_type;
+QS_API extern const Qs_RgNodeType qs_rg_shadow_node_type;
+QS_API extern const Qs_RgNodeType qs_rg_pbr_node_type;
+QS_API extern const Qs_RgNodeType qs_rg_tonemap_node_type;
 
 #endif /* QS_RENDER_GRAPH_H */

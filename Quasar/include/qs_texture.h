@@ -2,6 +2,7 @@
 #define QS_TEXTURE_H
 
 #include "qs_gpu.h"
+#include "qs_api.h"
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -57,32 +58,32 @@ typedef struct Qs_TextureDesc {
    ================================================================ */
 
 /// Creates a GPU texture.  Destroy with qs_texture_destroy.
-Qs_Texture *qs_texture_create(Qs_Engine *engine, const Qs_TextureDesc *desc);
+QS_API Qs_Texture *qs_texture_create(Qs_Engine *engine, const Qs_TextureDesc *desc);
 
 /// Destroys a texture and frees its GPU resources.
-void qs_texture_destroy(Qs_Texture *texture);
+QS_API void qs_texture_destroy(Qs_Texture *texture);
 
 /// Returns the debug name.
-const char *qs_texture_name(const Qs_Texture *texture);
+QS_API const char *qs_texture_name(const Qs_Texture *texture);
 
 /// Returns the image view for shader binding.
-Qs_GpuImageView *qs_texture_image_view(const Qs_Texture *texture);
+QS_API Qs_GpuImageView *qs_texture_image_view(const Qs_Texture *texture);
 
 /// Returns the sampler for shader binding.
-Qs_GpuSampler *qs_texture_sampler(const Qs_Texture *texture);
+QS_API Qs_GpuSampler *qs_texture_sampler(const Qs_Texture *texture);
 
 /// Returns the texture dimensions.
-void qs_texture_extents(const Qs_Texture *texture,
+QS_API void qs_texture_extents(const Qs_Texture *texture,
                         uint32_t *out_width, uint32_t *out_height);
 
 /// Returns the mip level count.
-uint32_t qs_texture_mip_levels(const Qs_Texture *texture);
+QS_API uint32_t qs_texture_mip_levels(const Qs_Texture *texture);
 
 /// Returns the number of live (in-use) textures managed by the texture system.
-uint32_t qs_texture_count(void);
+QS_API uint32_t qs_texture_count(void);
 
 /// Returns the i-th live texture (0-based, dense order).
 /// Returns NULL if index >= qs_texture_count().
-Qs_Texture *qs_texture_at(uint32_t index);
+QS_API Qs_Texture *qs_texture_at(uint32_t index);
 
 #endif

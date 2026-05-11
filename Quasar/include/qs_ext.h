@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include "qs_api.h"
 
 typedef struct Qs_Engine      Qs_Engine;
 typedef struct Qs_ExtRegistry Qs_ExtRegistry;
@@ -47,7 +48,7 @@ Qs_Extension *qs_ext_register(Qs_ExtRegistry *reg, const char *point,
                               const void *iface, void *data);
 
 /// Unregister a previously registered extension.
-void qs_ext_unregister(Qs_Extension *ext);
+QS_API void qs_ext_unregister(Qs_Extension *ext);
 
 /// Number of extensions currently registered at the given point.
 uint32_t qs_ext_count(const Qs_ExtRegistry *reg, const char *point);
@@ -69,18 +70,18 @@ void *qs_ext_data(const Qs_ExtRegistry *reg,
    ================================================================ */
 
 /// Register an extension through the engine's registry.
-Qs_Extension *qs_engine_ext_register(Qs_Engine *engine, const char *point,
+QS_API Qs_Extension *qs_engine_ext_register(Qs_Engine *engine, const char *point,
                                      const void *iface, void *data);
 
 /// Number of extensions at a point in the engine's registry.
-uint32_t qs_engine_ext_count(const Qs_Engine *engine, const char *point);
+QS_API uint32_t qs_engine_ext_count(const Qs_Engine *engine, const char *point);
 
 /// Interface vtable for the i-th extension at a point (engine registry).
-const void *qs_engine_ext_interface(const Qs_Engine *engine,
+QS_API const void *qs_engine_ext_interface(const Qs_Engine *engine,
                                    const char *point, uint32_t index);
 
 /// User data for the i-th extension at a point (engine registry).
-void *qs_engine_ext_data(const Qs_Engine *engine,
+QS_API void *qs_engine_ext_data(const Qs_Engine *engine,
                          const char *point, uint32_t index);
 
 /* ================================================================

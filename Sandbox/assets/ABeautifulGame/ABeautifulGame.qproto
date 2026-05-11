@@ -1,6 +1,6 @@
 {
 	"name":	"Prototype",
-	"next_entity_id":	561,
+	"next_entity_id":	612,
 	"entities":	[{
 			"name":	"ABeautifulGame",
 			"enabled":	true,
@@ -206,7 +206,7 @@
 					"tag":	"Untagged"
 				},
 				"Transform":	{
-					"position":	[0.15633293986320496, 0.1966073215007782, -0.15608981251716614],
+					"position":	[0.15633293986320496, 0.054030030965805054, -0.15608981251716614],
 					"rotation":	[0, 0, 0, 1],
 					"scale":	[1, 1, 1]
 				},

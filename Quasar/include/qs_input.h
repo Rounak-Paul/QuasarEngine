@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include "qs_api.h"
 
 /// Key action types.
 typedef enum Qs_KeyAction {
@@ -87,19 +88,19 @@ typedef enum Qs_Key {
 #define QS_KEY_MAX 349
 
 /// Feed a key event into the input system. Called by the platform layer.
-void qs_input_key_event(Qs_Key key, Qs_KeyAction action, int mods);
+QS_API void qs_input_key_event(Qs_Key key, Qs_KeyAction action, int mods);
 
 /// Returns true if the key is currently held down.
-bool qs_input_key_down(Qs_Key key);
+QS_API bool qs_input_key_down(Qs_Key key);
 
 /// Returns true if the key was pressed this frame (transition from up to down).
-bool qs_input_key_pressed(Qs_Key key);
+QS_API bool qs_input_key_pressed(Qs_Key key);
 
 /// Returns true if the key was released this frame.
-bool qs_input_key_released(Qs_Key key);
+QS_API bool qs_input_key_released(Qs_Key key);
 
 /// Returns the human-readable name for a key code.
-const char *qs_key_name(Qs_Key key);
+QS_API const char *qs_key_name(Qs_Key key);
 
 /* ================================================================
    MOUSE INPUT
@@ -114,34 +115,34 @@ typedef enum Qs_MouseButton {
 } Qs_MouseButton;
 
 /// Feed a mouse button event into the input system.  Called by the platform layer.
-void qs_input_mouse_button_event(Qs_MouseButton button, int action);
+QS_API void qs_input_mouse_button_event(Qs_MouseButton button, int action);
 
 /// Feed a cursor position event into the input system.  Called by the platform layer.
-void qs_input_mouse_pos_event(double x, double y);
+QS_API void qs_input_mouse_pos_event(double x, double y);
 
 /// Feed a scroll event into the input system.  Called by the platform layer.
-void qs_input_mouse_scroll_event(double dx, double dy);
+QS_API void qs_input_mouse_scroll_event(double dx, double dy);
 
 /// Returns true while the button is held down.
-bool qs_input_mouse_down(Qs_MouseButton button);
+QS_API bool qs_input_mouse_down(Qs_MouseButton button);
 
 /// Returns true on the first frame the button was pressed.
-bool qs_input_mouse_pressed(Qs_MouseButton button);
+QS_API bool qs_input_mouse_pressed(Qs_MouseButton button);
 
 /// Returns true on the frame the button was released.
-bool qs_input_mouse_released(Qs_MouseButton button);
+QS_API bool qs_input_mouse_released(Qs_MouseButton button);
 
 /// Fills *out_x/*out_y with the current cursor position.
-void qs_input_mouse_pos(float *out_x, float *out_y);
+QS_API void qs_input_mouse_pos(float *out_x, float *out_y);
 
 /// Fills *out_dx/*out_dy with cursor movement since the previous frame.
-void qs_input_mouse_delta(float *out_dx, float *out_dy);
+QS_API void qs_input_mouse_delta(float *out_dx, float *out_dy);
 
 /// Fills *out_dx/*out_dy with accumulated scroll since the previous frame (auto-cleared).
-void qs_input_mouse_scroll(float *out_dx, float *out_dy);
+QS_API void qs_input_mouse_scroll(float *out_dx, float *out_dy);
 
 /// Must be called at the end of each frame, after all input has been consumed.
 /// Clears per-frame mouse delta and scroll accumulators.
-void qs_input_end_frame(void);
+QS_API void qs_input_end_frame(void);
 
 #endif

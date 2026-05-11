@@ -2,6 +2,7 @@
 #define QS_PRIMITIVE_H
 
 #include "qs_mesh.h"
+#include "qs_api.h"
 
 /* ================================================================
    BUILT-IN ENGINE PRIMITIVES
@@ -30,14 +31,14 @@ typedef enum Qs_PrimitiveType {
 
 /// Returns the shared mesh for the requested primitive.
 /// Returns NULL if the mesh system has not been initialised yet.
-Qs_Mesh *qs_primitive_mesh(Qs_PrimitiveType type);
+QS_API Qs_Mesh *qs_primitive_mesh(Qs_PrimitiveType type);
 
 /// Returns the canonical mesh_path string for the given primitive
 /// (e.g. "@cube").  Suitable for storing directly in MeshComp.mesh_path.
-const char *qs_primitive_path(Qs_PrimitiveType type);
+QS_API const char *qs_primitive_path(Qs_PrimitiveType type);
 
 /// Returns the Qs_PrimitiveType for a "@"-prefixed path, or -1 if not a
 /// recognised primitive path.
-int qs_primitive_type_from_path(const char *path);
+QS_API int qs_primitive_type_from_path(const char *path);
 
 #endif /* QS_PRIMITIVE_H */

@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include "qs_api.h"
 
 /* ================================================================
    ASSET IMPORT TYPES
@@ -80,7 +81,7 @@ typedef struct Qs_ImportResult {
 } Qs_ImportResult;
 
 /// Free all staging data inside an import result.
-void qs_import_result_free(Qs_ImportResult *result);
+QS_API void qs_import_result_free(Qs_ImportResult *result);
 
 /* ================================================================
    ASSET IMPORTER EXTENSION POINT

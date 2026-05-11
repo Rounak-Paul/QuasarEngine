@@ -5,6 +5,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 
+#include "qs_api.h"
 #include "qs_asset.h"   /* Qs_ImportResult */
 #include "qs_job.h"     /* Qs_JobSystem */
 #include "qs_mesh.h"    /* Qs_Vertex */
@@ -126,7 +127,7 @@ typedef struct Qs_CookOptions {
 /// receives the absolute path of the written .qproto file.
 /// The caller still owns and must free `result` afterwards
 /// (typically via qs_import_result_free).
-bool qs_asset_cook(const Qs_ImportResult *result,
+QS_API bool qs_asset_cook(const Qs_ImportResult *result,
                    const Qs_CookOptions  *options,
                    char                  *out_qproto_abs,
                    size_t                 out_qproto_size);
@@ -142,16 +143,16 @@ bool qs_asset_cook(const Qs_ImportResult *result,
 
 /// Release a ref acquired by qs_asset_cache_mesh_async.
 /// The GPU resource is destroyed when the ref count reaches zero.
-void qs_asset_cache_release_mesh(const char *abs_path);
+QS_API void qs_asset_cache_release_mesh(const char *abs_path);
 
 /// Release a ref acquired by qs_asset_cache_material.
 /// Also releases the material's internally-acquired texture refs.
 /// The GPU resource is destroyed when the ref count reaches zero.
-void qs_asset_cache_release_material(const char *abs_path);
+QS_API void qs_asset_cache_release_material(const char *abs_path);
 
 /// Release a ref acquired by qs_asset_cache_texture.
 /// The GPU resource is destroyed when the ref count reaches zero.
-void qs_asset_cache_release_texture(const char *abs_path);
+QS_API void qs_asset_cache_release_texture(const char *abs_path);
 
 /// Swap one texture slot of a cached material.  Releases the ref for the old
 /// texture at that slot, acquires one for the new texture, updates the material's
@@ -159,13 +160,13 @@ void qs_asset_cache_release_texture(const char *abs_path);
 /// abs_mat_path must be the exact path passed to qs_asset_cache_material.
 /// Pass NULL/empty abs_new_tex_path to clear the slot (reverts to default fallback).
 /// Slot indices: 0=base_color, 1=metallic_roughness, 2=normal, 3=occlusion, 4=emissive.
-Qs_Texture *qs_asset_cache_material_swap_texture(Qs_Engine  *engine,
+QS_API Qs_Texture *qs_asset_cache_material_swap_texture(Qs_Engine  *engine,
                                                   const char *abs_mat_path,
                                                   uint32_t    slot,
                                                   const char *abs_new_tex_path);
 
 /// Drop and destroy every cached entry.  Called at asset-system shutdown.
-void qs_asset_cache_clear(void);
+QS_API void qs_asset_cache_clear(void);
 
 /* ================================================================
    ASYNC / STREAMING CACHE
@@ -195,7 +196,7 @@ void qs_asset_cache_clear(void);
 /// Returns NULL permanently if the file cannot be read (load error).
 /// On success, increments the cache ref count — release with
 /// qs_asset_cache_release_mesh when done.
-Qs_Mesh *qs_asset_cache_mesh_async(Qs_Engine    *engine,
+QS_API Qs_Mesh *qs_asset_cache_mesh_async(Qs_Engine    *engine,
                                    Qs_JobSystem *jobs,
                                    const char   *abs_path);
 
@@ -207,14 +208,14 @@ Qs_Mesh *qs_asset_cache_mesh_async(Qs_Engine    *engine,
 /// creation fails.
 /// On success, increments the cache ref count — release with
 /// qs_asset_cache_release_material when done.
-Qs_Material *qs_asset_cache_material_async(Qs_Engine    *engine,
+QS_API Qs_Material *qs_asset_cache_material_async(Qs_Engine    *engine,
                                            Qs_JobSystem *jobs,
                                            const char   *abs_path);
 
 /// Promote any CPU-complete async load requests to GPU and insert them into
 /// the main cache.  Called automatically by the asset system's update hook —
 /// no manual invocation needed.
-void qs_asset_cache_pump(Qs_Engine *engine);
+QS_API void qs_asset_cache_pump(Qs_Engine *engine);
 
 /* ================================================================
    ENGINE BINDING — set by the asset system at init time so internal
@@ -223,8 +224,8 @@ void qs_asset_cache_pump(Qs_Engine *engine);
    `Qs_Engine *` through every call site.
    ================================================================ */
 
-void       qs_pack_set_active_engine(Qs_Engine *engine);
-Qs_Engine *qs_pack_active_engine(void);
+QS_API void       qs_pack_set_active_engine(Qs_Engine *engine);
+QS_API Qs_Engine *qs_pack_active_engine(void);
 
 /* ================================================================
    RAW ASSET FILE READERS
@@ -240,14 +241,14 @@ Qs_Engine *qs_pack_active_engine(void);
 
 /// Reads a .qstex file and returns its header plus heap-allocated pixel data.
 /// Returns false on failure (bad magic, I/O error, out of memory).
-bool qs_asset_pack_read_texture(const char       *path,
+QS_API bool qs_asset_pack_read_texture(const char       *path,
                                  Qs_TexFileHeader  *out_header,
                                  void             **out_pixels,
                                  uint32_t          *out_size);
 
 /// Reads a .qsmesh file and returns its header plus heap-allocated vertex and
 /// index arrays.  Returns false on failure.
-bool qs_asset_pack_read_mesh(const char        *path,
+QS_API bool qs_asset_pack_read_mesh(const char        *path,
                               Qs_MeshFileHeader  *out_header,
                               Qs_Vertex         **out_verts,
                               uint32_t          **out_indices);
