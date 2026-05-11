@@ -144,26 +144,35 @@ static void on_mouse_button(const Ca_Event *event, void *userdata)
 }
 
 /* Fires synchronously before the plugin library is unloaded.
-   Destroy any scene renderer that references the plugin's backend so
-   the backend and its Vulkan context can be cleanly shut down. */
+   Only destroy the scene renderer when the plugin provides a renderer backend
+   or render nodes — those require the pipeline to be torn down cleanly.
+   Plugins that only provide asset importers, editor UI, etc. are safe to
+   hot-reload without touching the renderer at all. */
 static bool on_plugin_reload_begin(const Qs_Event *e, void *userdata)
 {
-    (void)e;
     Editor *ed = (Editor *)userdata;
-    if (ed->scene_renderer) {
-        qs_renderer_destroy(ed->scene_renderer);
-        ed->scene_renderer = NULL;
+    const char *plugin_id = (const char *)e->data;
+    Qs_PluginManager *pm = qs_engine_plugin_manager(ed->engine);
+    uint32_t caps = qs_plugin_capabilities_for_id(pm, plugin_id);
+    if (caps & QS_PLUGIN_CAP_AFFECTS_RENDERER) {
+        if (ed->scene_renderer) {
+            qs_renderer_destroy(ed->scene_renderer);
+            ed->scene_renderer = NULL;
+        }
     }
     return false;
 }
 
 /* Fires synchronously after the plugin has been successfully reloaded
-   or enabled.  Recreate the scene renderer and rebuild the toolbar. */
+   or enabled.  Recreate the scene renderer only when required by the
+   plugin's declared capabilities, then refresh UI extensions. */
 static bool on_plugin_reload_end(const Qs_Event *e, void *userdata)
 {
-    (void)e;
     Editor *ed = (Editor *)userdata;
-    if (!ed->scene_renderer) {
+    const char *plugin_id = (const char *)e->data;
+    Qs_PluginManager *pm = qs_engine_plugin_manager(ed->engine);
+    uint32_t caps = qs_plugin_capabilities_for_id(pm, plugin_id);
+    if ((caps & QS_PLUGIN_CAP_AFFECTS_RENDERER) && !ed->scene_renderer) {
         ed->scene_renderer = qs_renderer_create(ed->engine, &(Qs_RendererDesc){
             .name        = "scene",
             .clear_color = { 0.0f, 0.0f, 0.0f, 1.0f },
@@ -177,17 +186,19 @@ static bool on_plugin_reload_end(const Qs_Event *e, void *userdata)
             ed_gizmo_attach(ed->scene_renderer);
         }
     }
+    /* Always refresh toolbar and menus — any plugin may contribute UI. */
     ed_toolbar_rebuild();
     ed_menu_bar_invalidate();
     return false;
 }
 
 /* Fires after a plugin is fully disabled and unloaded.
-   Only rebuild the toolbar and menu — do NOT recreate the renderer since
-   the backend that provides it may be the one being disabled. */
+   Renderer cleanup already happened in on_plugin_reload_begin (subscribed to
+   DISABLE_BEGIN), so only a toolbar/menu refresh is needed here. */
 static bool on_plugin_disable_end(const Qs_Event *e, void *userdata)
 {
-    (void)e; (void)userdata;
+    (void)e;
+    Editor *ed = (Editor *)userdata;
     ed_toolbar_rebuild();
     ed_menu_bar_invalidate();
     return false;

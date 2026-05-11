@@ -36,14 +36,15 @@ static void on_unload(Qs_Engine *engine)
 }
 
 static const Qs_PluginDesc s_desc = {
-    .id          = "com.quasar.plugins.vignette_node",
-    .name        = "Vignette Node",
-    .version     = "1.0.0",
-    .author      = "Quasar Engine",
-    .description = "Radial vignette applied after tone-mapping as the final swapchain pass.",
-    .api_version = QS_PLUGIN_API_VERSION,
-    .on_load     = on_load,
-    .on_unload   = on_unload,
+    .id           = "com.quasar.plugins.vignette_node",
+    .name         = "Vignette Node",
+    .version      = "1.0.0",
+    .author       = "Quasar Engine",
+    .description  = "Radial vignette applied after tone-mapping as the final swapchain pass.",
+    .api_version  = QS_PLUGIN_API_VERSION,
+    .on_load      = on_load,
+    .on_unload    = on_unload,
+    .capabilities = QS_PLUGIN_CAP_RENDER_NODE,
 };
 
 QS_PLUGIN_EXPORT const Qs_PluginDesc *qs_plugin_entry(void)

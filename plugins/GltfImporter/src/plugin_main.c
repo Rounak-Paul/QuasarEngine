@@ -24,14 +24,15 @@ static void on_unload(Qs_Engine *engine)
 }
 
 static const Qs_PluginDesc s_desc = {
-    .id          = "com.quasar.builtin.importer.gltf",
-    .name        = "glTF Importer",
-    .version     = "1.0.0",
-    .author      = "Quasar Engine",
-    .description = "Loads glTF 2.0 and GLB assets into the engine resource system.",
-    .api_version = QS_PLUGIN_API_VERSION,
-    .on_load     = on_load,
-    .on_unload   = on_unload,
+    .id           = "com.quasar.builtin.importer.gltf",
+    .name         = "glTF Importer",
+    .version      = "1.0.0",
+    .author       = "Quasar Engine",
+    .description  = "Loads glTF 2.0 and GLB assets into the engine resource system.",
+    .api_version  = QS_PLUGIN_API_VERSION,
+    .on_load      = on_load,
+    .on_unload    = on_unload,
+    .capabilities = QS_PLUGIN_CAP_ASSET_IMPORTER,
 };
 
 QS_PLUGIN_EXPORT const Qs_PluginDesc *qs_plugin_entry(void)

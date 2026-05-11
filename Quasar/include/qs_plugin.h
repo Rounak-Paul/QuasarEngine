@@ -27,6 +27,45 @@ typedef struct Qs_PluginState   Qs_PluginState;
   #define QS_PLUGIN_EXPORT __attribute__((visibility("default")))
 #endif
 
+/* ================================================================
+   PLUGIN CAPABILITY FLAGS
+   ================================================================
+   Plugins declare their capabilities via a bitmask in Qs_PluginDesc.
+   The engine uses these flags to make scoped decisions on reload/
+   enable/disable: only plugins that provide a renderer backend cause
+   the renderer to be torn down; asset importers and UI extensions do
+   not touch the render pipeline at all.
+   ================================================================ */
+
+typedef enum Qs_PluginCapability {
+    /// Plugin does not affect any specific engine subsystem.
+    QS_PLUGIN_CAP_NONE              = 0,
+
+    /// Plugin registers a Qs_RendererBackend (via qs_renderer_backend_register).
+    /// Reloading requires the scene renderer to be destroyed and recreated.
+    QS_PLUGIN_CAP_RENDERER_BACKEND  = 1 << 0,
+
+    /// Plugin registers one or more render graph nodes (QS_EXT_RENDER_GRAPH_NODE).
+    /// Reloading requires the render pipeline to be rebuilt.
+    QS_PLUGIN_CAP_RENDER_NODE       = 1 << 1,
+
+    /// Plugin registers asset importers (QS_EXT_ASSET_IMPORTER).
+    /// Safe to hot-reload without touching the renderer.
+    QS_PLUGIN_CAP_ASSET_IMPORTER    = 1 << 2,
+
+    /// Plugin contributes editor UI (toolbar, menus, inspector panels).
+    /// Safe to hot-reload; only toolbar and menu are refreshed.
+    QS_PLUGIN_CAP_EDITOR_UI         = 1 << 3,
+
+    /// Plugin registers ECS systems or scene processors.
+    /// Safe to hot-reload; scene systems are re-registered automatically.
+    QS_PLUGIN_CAP_SCENE_SYSTEM      = 1 << 4,
+} Qs_PluginCapability;
+
+/// Convenience: any capability that requires destroying the renderer on reload.
+#define QS_PLUGIN_CAP_AFFECTS_RENDERER \
+    (QS_PLUGIN_CAP_RENDERER_BACKEND | QS_PLUGIN_CAP_RENDER_NODE)
+
 /// Describes a plugin and provides its lifecycle callbacks.
 ///
 /// All capabilities (toolbar items, menu entries, inspector panels, engine
@@ -60,6 +99,13 @@ typedef struct Qs_PluginDesc {
     /// Unregister extensions, release plugin-owned resources here.
     /// May be NULL.
     void (*on_unload)(Qs_Engine *engine);
+
+    /// Bitmask of Qs_PluginCapability flags declaring what subsystems this
+    /// plugin extends. The engine uses this to make scoped reload decisions
+    /// (e.g. only rebuild the renderer when a RENDERER_BACKEND or RENDER_NODE
+    /// plugin changes).  Leave 0 / QS_PLUGIN_CAP_NONE if the plugin is
+    /// self-contained (e.g. pure scripting / data).
+    uint32_t capabilities;
 } Qs_PluginDesc;
 
 /// Entry point function type.  Every plugin library must export a function
@@ -126,6 +172,14 @@ QS_API const char *qs_plugin_state_version(const Qs_PluginState *state);
 
 /// Returns the plugin's author.
 QS_API const char *qs_plugin_state_author(const Qs_PluginState *state);
+
+/// Returns the plugin's declared capability flags (bitmask of Qs_PluginCapability).
+/// The value is cached from the descriptor at load time and remains available
+/// even after the plugin is unloaded, so event handlers can safely query it.
+QS_API uint32_t qs_plugin_state_capabilities(const Qs_PluginState *state);
+
+/// Looks up capabilities by plugin id. Returns 0 if the id is unknown.
+QS_API uint32_t qs_plugin_capabilities_for_id(const Qs_PluginManager *pm, const char *id);
 
 /// Unloads a currently loaded plugin and immediately reloads it from disk.
 /// Useful for hot-reload during development.  Returns false if the plugin id

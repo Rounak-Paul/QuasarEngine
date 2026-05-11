@@ -48,6 +48,7 @@ struct Qs_PluginState {
     char              name[128];            /* human-readable name              */
     char              version[32];          /* version string                   */
     char              author[128];          /* author name                      */
+    uint32_t          capabilities;         /* Qs_PluginCapability bitmask; cached from desc */
     bool              enabled;
     bool              loaded;
     Qs_Dylib         *lib;
@@ -234,6 +235,7 @@ static bool plugin_load(Qs_PluginManager *pm, Qs_PluginState *s)
     if (desc->name)    snprintf(s->name,    sizeof(s->name),    "%s", desc->name);
     if (desc->version) snprintf(s->version, sizeof(s->version), "%s", desc->version);
     if (desc->author)  snprintf(s->author,  sizeof(s->author),  "%s", desc->author);
+    s->capabilities = desc->capabilities;
 
     s->lib    = lib;
     s->desc   = desc;
@@ -511,6 +513,21 @@ const char *qs_plugin_state_version(const Qs_PluginState *state)
 const char *qs_plugin_state_author(const Qs_PluginState *state)
 {
     return (state && state->author[0]) ? state->author : NULL;
+}
+
+uint32_t qs_plugin_state_capabilities(const Qs_PluginState *state)
+{
+    return state ? state->capabilities : 0;
+}
+
+uint32_t qs_plugin_capabilities_for_id(const Qs_PluginManager *pm, const char *id)
+{
+    if (!pm || !id) return 0;
+    for (uint32_t i = 0; i < pm->count; i++) {
+        if (strcmp(pm->entries[i].id, id) == 0)
+            return pm->entries[i].capabilities;
+    }
+    return 0;
 }
 
 bool qs_plugin_reload(Qs_PluginManager *pm, const char *id)
