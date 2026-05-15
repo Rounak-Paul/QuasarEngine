@@ -5,45 +5,43 @@
 #include <stdio.h>
 #include <string.h>
 
-/* ================================================================
-   PLUGIN MANAGER WINDOW  –  two-pane layout
-   ================================================================
-   Follows the Causality retained-mode pattern: build the widget
-   tree ONCE at window creation (keeping all handles), then push
-   state changes via ca_set_* from callbacks only.  No per-frame
-   tree rebuilds.
-   ================================================================ */
+/*
+ * Plugin Manager Window  —  two-pane layout.
+ *
+ * Retained-mode pattern: build the widget tree ONCE at window creation,
+ * then imperatively push state changes via ca_set_* from callbacks only.
+ */
 
 #define ICON_RELOAD  "\xEF\x80\xA1"  /* U+F021  refresh */
 #define ICON_SEARCH  "\xEF\x80\x82"  /* U+F002  search  */
-#define ICON_DOT     "\xE2\x97\x8F"  /* U+25CF  ●       */
 
 #define MAX_PLUGINS 64
 
-/* ---- Module state ---- */
+/* Module state */
 
 static Editor       *s_editor;
 static Ca_Window    *s_win;
 static Ca_TextInput *s_search_input;
+static Ca_Label     *s_count_lbl;
 static char          s_selected_id[256];
 
-/* ---- List item pool (pre-allocated at build time) ---- */
+/* List item pool (pre-allocated at build time) */
 
 typedef struct {
     Ca_Button *btn;
-    Ca_Label  *dot;
+    Ca_Div    *accent;     /* 3px status bar — colored when active       */
     Ca_Label  *name_lbl;
-    Ca_Label  *ver_lbl;
+    Ca_Label  *sub_lbl;    /* "v0.1.0  ·  Author" subtitle               */
     char       plugin_id[256];
     char       btn_id[32];
 } PluginListItem;
 
 static PluginListItem s_items[MAX_PLUGINS];
 
-/* ---- Detail pane widget handles ---- */
+/* Detail pane widget handles */
 
-static Ca_Div    *s_det_empty;       /* "select a plugin" placeholder     */
-static Ca_Div    *s_det_content;     /* full detail view                  */
+static Ca_Div    *s_det_empty;
+static Ca_Div    *s_det_content;
 static Ca_Label  *s_det_name;
 static Ca_Label  *s_det_status;
 static Ca_Label  *s_det_desc;
@@ -52,17 +50,19 @@ static Ca_Label  *s_det_ver_val;
 static Ca_Div    *s_det_auth_row;
 static Ca_Label  *s_det_auth_val;
 static Ca_Label  *s_det_id_val;
+static Ca_Div    *s_det_path_row;
+static Ca_Label  *s_det_path_val;
 static Ca_Button *s_det_reload_btn;
 static Ca_Button *s_det_enable_btn;
 
-/* ---- Init ---- */
+/* Init */
 
 void ed_plugin_manager_init(void *editor)
 {
     s_editor = (Editor *)editor;
 }
 
-/* ---- Helpers ---- */
+/* Helpers */
 
 static bool matches_search(const char *name, const char *query)
 {
@@ -84,22 +84,26 @@ static bool matches_search(const char *name, const char *query)
     return false;
 }
 
-/* ---- Sync functions (imperatively push state into widgets) ---- */
+/* Sync functions (imperatively push state into widgets) */
 
 static void sync_list(const char *query)
 {
     Qs_PluginManager *pm = s_editor
         ? qs_engine_plugin_manager(editor_engine(s_editor)) : NULL;
 
-    uint32_t slot = 0;
+    uint32_t slot   = 0;
+    uint32_t active = 0;
+
     if (pm) {
         uint32_t count = qs_plugin_count(pm);
         for (uint32_t i = 0; i < count && slot < MAX_PLUGINS; i++) {
             const Qs_PluginState *state = qs_plugin_state_at(pm, i);
             if (!state) continue;
 
-            const char *pid  = qs_plugin_state_id(state);
-            const char *name = qs_plugin_state_name(state);
+            const char *pid    = qs_plugin_state_id(state);
+            const char *name   = qs_plugin_state_name(state);
+            const char *ver    = qs_plugin_state_version(state);
+            const char *author = qs_plugin_state_author(state);
             if (!pid)  pid  = "unknown";
             if (!name) name = pid;
             if (!matches_search(name, query)) continue;
@@ -109,20 +113,36 @@ static void sync_list(const char *query)
             bool selected = s_selected_id[0]
                          && strcmp(s_selected_id, pid) == 0;
 
-            const char *ver = qs_plugin_state_version(state);
+            if (loaded) active++;
 
-            const char *dot_style = loaded  ? "pm-dot pm-dot-active"
-                                  : enabled ? "pm-dot pm-dot-loading"
-                                            : "pm-dot pm-dot-disabled";
+            const char *accent_style =
+                loaded  ? "pm-list-accent pm-list-accent-active"
+                : enabled ? "pm-list-accent pm-list-accent-loading"
+                          : "pm-list-accent pm-list-accent-disabled";
+
             const char *btn_style = selected
                 ? "pm-list-item pm-list-item-selected"
                 : "pm-list-item";
 
-            snprintf(s_items[slot].plugin_id, 256, "%s", pid);
+            const char *name_style = loaded
+                ? "pm-list-item-name pm-list-item-name-active"
+                : "pm-list-item-name";
+
+            char sub[128] = "";
+            if (ver && author)
+                snprintf(sub, sizeof(sub), "%s  \xC2\xB7  %s", ver, author);
+            else if (ver)
+                snprintf(sub, sizeof(sub), "%s", ver);
+            else if (author)
+                snprintf(sub, sizeof(sub), "%s", author);
+
+            snprintf(s_items[slot].plugin_id, sizeof(s_items[slot].plugin_id),
+                     "%s", pid);
             ca_set_text(s_items[slot].name_lbl, name);
-            ca_set_text(s_items[slot].ver_lbl,  ver ? ver : "");
-            ca_set_style(s_items[slot].dot, dot_style);
-            ca_set_style(s_items[slot].btn, btn_style);
+            ca_set_text(s_items[slot].sub_lbl,  sub);
+            ca_set_style(s_items[slot].accent,   accent_style);
+            ca_set_style(s_items[slot].btn,      btn_style);
+            ca_set_style(s_items[slot].name_lbl, name_style);
             ca_set_hidden(s_items[slot].btn, false);
             slot++;
         }
@@ -130,6 +150,12 @@ static void sync_list(const char *query)
 
     for (uint32_t i = slot; i < MAX_PLUGINS; i++)
         ca_set_hidden(s_items[i].btn, true);
+
+    if (s_count_lbl) {
+        char badge[32];
+        snprintf(badge, sizeof(badge), "%u active", active);
+        ca_set_text(s_count_lbl, badge);
+    }
 }
 
 static void sync_detail(void)
@@ -162,6 +188,7 @@ static void sync_detail(void)
     const char *name        = qs_plugin_state_name(state);
     const char *version     = qs_plugin_state_version(state);
     const char *author      = qs_plugin_state_author(state);
+    const char *path        = qs_plugin_state_path(state);
     bool        enabled     = qs_plugin_state_enabled(state);
     bool        loaded      = qs_plugin_state_loaded(state);
     const Qs_PluginDesc *d  = qs_plugin_state_desc(state);
@@ -170,9 +197,9 @@ static void sync_detail(void)
     if (!pid)  pid  = "unknown";
     if (!name) name = pid;
 
-    const char *status_text  = loaded  ? "Active"
-                             : enabled ? "Loading"
-                                       : "Disabled";
+    const char *status_text  = loaded  ? "\xE2\x97\x8F  Active"
+                             : enabled ? "\xE2\x97\x8B  Loading"
+                                       : "\xE2\x97\x8B  Disabled";
     const char *status_style = loaded  ? "pm-status pm-status-active"
                              : enabled ? "pm-status pm-status-loading"
                                        : "pm-status pm-status-disabled";
@@ -202,6 +229,13 @@ static void sync_detail(void)
 
     ca_set_text(s_det_id_val, pid);
 
+    if (path) {
+        ca_set_text(s_det_path_val, path);
+        ca_set_hidden(s_det_path_row, false);
+    } else {
+        ca_set_hidden(s_det_path_row, true);
+    }
+
     ca_set_hidden(s_det_reload_btn, !loaded);
     ca_set_text(s_det_enable_btn, enabled ? "Disable" : "Enable");
     ca_set_style(s_det_enable_btn,
@@ -212,7 +246,7 @@ static void sync_detail(void)
     ca_set_hidden(s_det_content, false);
 }
 
-/* ---- Callbacks ---- */
+/* Callbacks */
 
 static void on_plugin_select(Ca_Button *btn, void *user_data)
 {
@@ -273,7 +307,7 @@ static void on_search_change(Ca_TextInput *input, void *user_data)
     sync_list(query);
 }
 
-/* ---- Open ---- */
+/* Open */
 
 void ed_plugin_manager_open(void)
 {
@@ -289,203 +323,209 @@ void ed_plugin_manager_open(void)
 
     s_win = ca_window_create(inst, &(Ca_WindowDesc){
         .title  = "Plugin Manager",
-        .width  = 680,
-        .height = 440,
+        .width  = 700,
+        .height = 420,
     });
     if (!s_win) return;
 
     ca_window_set_scale(s_win, ED_UI_SCALE);
 
     ca_ui_begin(s_win, &(Ca_DivDesc){
-        .direction = CA_VERTICAL,
+        .direction = CA_HORIZONTAL,
         .style     = "pm-root",
     });
     {
-        /* ---- Top bar ---- */
+        /* Left sidebar */
         ca_div_begin(&(Ca_DivDesc){
-            .direction = CA_HORIZONTAL,
-            .style     = "pm-top-bar",
-        });
-        ca_text(&(Ca_TextDesc){ .text = "Plugin Manager", .style = "pm-top-title" });
-        ca_div_end();
-
-        /* ---- Main split ---- */
-        ca_div_begin(&(Ca_DivDesc){
-            .direction = CA_HORIZONTAL,
-            .style     = "pm-panes",
+            .direction = CA_VERTICAL,
+            .style     = "pm-left",
         });
         {
-            /* ---- Left sidebar ---- */
+            /* Search bar + active count badge */
             ca_div_begin(&(Ca_DivDesc){
-                .direction = CA_VERTICAL,
-                .style     = "pm-left",
+                .direction = CA_HORIZONTAL,
+                .style     = "pm-search-bar",
             });
-            {
-                /* Search bar */
-                ca_div_begin(&(Ca_DivDesc){
-                    .direction = CA_HORIZONTAL,
-                    .style     = "pm-search-bar",
-                });
-                s_search_input = ca_input(&(Ca_InputDesc){
-                    .placeholder = ICON_SEARCH "  Search plugins...",
-                    .style       = "pm-search-input",
-                    .on_change   = on_search_change,
-                });
-                ca_div_end();
-
-                /* Plugin list — pre-allocate MAX_PLUGINS slots, all hidden */
-                ca_div_begin(&(Ca_DivDesc){
-                    .direction = CA_VERTICAL,
-                    .style     = "pm-list",
-                });
-                for (uint32_t i = 0; i < MAX_PLUGINS; i++) {
-                    snprintf(s_items[i].btn_id, sizeof(s_items[i].btn_id),
-                             "pml-%u", i);
-                    s_items[i].plugin_id[0] = '\0';
-
-                    s_items[i].btn = ca_btn_begin(&(Ca_BtnDesc){
-                        .id         = s_items[i].btn_id,
-                        .style      = "pm-list-item",
-                        .direction  = CA_HORIZONTAL,
-                        .on_click   = on_plugin_select,
-                        .click_data = &s_items[i],
-                        .hidden     = true,
-                    });
-                    s_items[i].dot = ca_text(&(Ca_TextDesc){
-                        .text  = ICON_DOT,
-                        .style = "pm-dot pm-dot-disabled",
-                    });
-                    ca_div_begin(&(Ca_DivDesc){
-                        .direction = CA_VERTICAL,
-                        .style     = "pm-list-item-info",
-                    });
-                    s_items[i].name_lbl = ca_text(&(Ca_TextDesc){
-                        .text  = "",
-                        .style = "pm-list-item-name",
-                    });
-                    s_items[i].ver_lbl = ca_text(&(Ca_TextDesc){
-                        .text  = "",
-                        .style = "pm-list-item-ver",
-                    });
-                    ca_div_end();
-                    ca_btn_end();
-                }
-                ca_div_end(); /* pm-list */
-            }
-            ca_div_end(); /* pm-left */
-
-            /* Vertical divider */
-            ca_div_begin(&(Ca_DivDesc){ .style = "pm-vert-divider" });
+            s_search_input = ca_input(&(Ca_InputDesc){
+                .placeholder = ICON_SEARCH "  Search...",
+                .style       = "pm-search-input",
+                .on_change   = on_search_change,
+            });
+            s_count_lbl = ca_text(&(Ca_TextDesc){
+                .text  = "0 active",
+                .style = "pm-count-badge",
+            });
             ca_div_end();
 
-            /* ---- Right detail pane ---- */
+            /* Plugin list — pre-allocate MAX_PLUGINS slots, all hidden */
             ca_div_begin(&(Ca_DivDesc){
                 .direction = CA_VERTICAL,
-                .style     = "pm-right",
+                .style     = "pm-list",
+            });
+            for (uint32_t i = 0; i < MAX_PLUGINS; i++) {
+                snprintf(s_items[i].btn_id, sizeof(s_items[i].btn_id),
+                         "pml-%u", i);
+                s_items[i].plugin_id[0] = '\0';
+
+                s_items[i].btn = ca_btn_begin(&(Ca_BtnDesc){
+                    .id         = s_items[i].btn_id,
+                    .style      = "pm-list-item",
+                    .direction  = CA_HORIZONTAL,
+                    .on_click   = on_plugin_select,
+                    .click_data = &s_items[i],
+                    .hidden     = true,
+                });
+                s_items[i].accent = ca_div_begin(&(Ca_DivDesc){
+                    .style = "pm-list-accent pm-list-accent-disabled",
+                });
+                ca_div_end();
+                ca_div_begin(&(Ca_DivDesc){
+                    .direction = CA_VERTICAL,
+                    .style     = "pm-list-item-info",
+                });
+                s_items[i].name_lbl = ca_text(&(Ca_TextDesc){
+                    .text  = "",
+                    .style = "pm-list-item-name",
+                });
+                s_items[i].sub_lbl = ca_text(&(Ca_TextDesc){
+                    .text  = "",
+                    .style = "pm-list-item-sub",
+                });
+                ca_div_end();
+                ca_btn_end();
+            }
+            ca_div_end(); /* pm-list */
+        }
+        ca_div_end(); /* pm-left */
+
+        /* Vertical divider */
+        ca_div_begin(&(Ca_DivDesc){ .style = "pm-vert-divider" });
+        ca_div_end();
+
+        /* Right detail pane */
+        ca_div_begin(&(Ca_DivDesc){
+            .direction = CA_VERTICAL,
+            .style     = "pm-right",
+        });
+        {
+            /* Empty state */
+            s_det_empty = ca_div_begin(&(Ca_DivDesc){
+                .style = "pm-detail-empty-wrap",
+            });
+            ca_text(&(Ca_TextDesc){
+                .text  = "Select a plugin to view details.",
+                .style = "pm-detail-empty",
+            });
+            ca_div_end();
+
+            /* Detail content (hidden until a plugin is selected) */
+            s_det_content = ca_div_begin(&(Ca_DivDesc){
+                .direction = CA_VERTICAL,
+                .style     = "pm-detail-content",
+                .hidden    = true,
             });
             {
-                /* Empty state */
-                s_det_empty = ca_div_begin(&(Ca_DivDesc){
-                    .style = "pm-detail-empty-wrap",
+                /* Header bar */
+                ca_div_begin(&(Ca_DivDesc){
+                    .direction = CA_HORIZONTAL,
+                    .style     = "pm-detail-header",
                 });
-                ca_text(&(Ca_TextDesc){
-                    .text  = "Select a plugin to view details.",
-                    .style = "pm-detail-empty",
+                s_det_name = ca_text(&(Ca_TextDesc){
+                    .text  = "",
+                    .style = "pm-detail-name",
+                });
+                ca_div_begin(&(Ca_DivDesc){ .style = "pm-spacer" }); ca_div_end();
+                s_det_status = ca_text(&(Ca_TextDesc){
+                    .text  = "",
+                    .style = "pm-status",
                 });
                 ca_div_end();
 
-                /* Detail content (hidden until a plugin is selected) */
-                s_det_content = ca_div_begin(&(Ca_DivDesc){
+                ca_div_begin(&(Ca_DivDesc){ .style = "pm-detail-sep" }); ca_div_end();
+
+                /* Scrollable body */
+                ca_div_begin(&(Ca_DivDesc){
                     .direction = CA_VERTICAL,
-                    .style     = "pm-detail-content",
-                    .hidden    = true,
+                    .style     = "pm-detail-body",
                 });
                 {
-                    /* Header bar */
-                    ca_div_begin(&(Ca_DivDesc){
-                        .direction = CA_HORIZONTAL,
-                        .style     = "pm-detail-header",
+                    s_det_desc = ca_text(&(Ca_TextDesc){
+                        .text  = "",
+                        .style = "pm-detail-desc",
+                        .wrap  = true,
                     });
-                    s_det_name   = ca_text(&(Ca_TextDesc){ .text = "", .style = "pm-detail-name" });
-                    s_det_status = ca_text(&(Ca_TextDesc){ .text = "", .style = "pm-status" });
+
+                    ca_div_begin(&(Ca_DivDesc){ .style = "pm-prop-sep" }); ca_div_end();
+
+                    s_det_ver_row = ca_div_begin(&(Ca_DivDesc){
+                        .direction = CA_HORIZONTAL,
+                        .style     = "pm-prop-row",
+                    });
+                    ca_text(&(Ca_TextDesc){ .text = "Version", .style = "pm-prop-label" });
+                    s_det_ver_val = ca_text(&(Ca_TextDesc){ .text = "", .style = "pm-prop-value" });
                     ca_div_end();
 
-                    ca_div_begin(&(Ca_DivDesc){ .style = "pm-detail-sep" }); ca_div_end();
-
-                    /* Scrollable body */
-                    ca_div_begin(&(Ca_DivDesc){
-                        .direction = CA_VERTICAL,
-                        .style     = "pm-detail-body",
+                    s_det_auth_row = ca_div_begin(&(Ca_DivDesc){
+                        .direction = CA_HORIZONTAL,
+                        .style     = "pm-prop-row",
                     });
-                    {
-                        s_det_desc = ca_text(&(Ca_TextDesc){
-                            .text  = "",
-                            .style = "pm-detail-desc",
-                            .wrap  = true,
-                        });
+                    ca_text(&(Ca_TextDesc){ .text = "Author", .style = "pm-prop-label" });
+                    s_det_auth_val = ca_text(&(Ca_TextDesc){ .text = "", .style = "pm-prop-value" });
+                    ca_div_end();
 
-                        ca_div_begin(&(Ca_DivDesc){ .style = "pm-prop-sep" }); ca_div_end();
-
-                        s_det_ver_row = ca_div_begin(&(Ca_DivDesc){
-                            .direction = CA_HORIZONTAL,
-                            .style     = "pm-prop-row",
-                        });
-                        ca_text(&(Ca_TextDesc){ .text = "Version", .style = "pm-prop-label" });
-                        s_det_ver_val = ca_text(&(Ca_TextDesc){ .text = "", .style = "pm-prop-value" });
-                        ca_div_end();
-
-                        s_det_auth_row = ca_div_begin(&(Ca_DivDesc){
-                            .direction = CA_HORIZONTAL,
-                            .style     = "pm-prop-row",
-                        });
-                        ca_text(&(Ca_TextDesc){ .text = "Author", .style = "pm-prop-label" });
-                        s_det_auth_val = ca_text(&(Ca_TextDesc){ .text = "", .style = "pm-prop-value" });
-                        ca_div_end();
-
-                        ca_div_begin(&(Ca_DivDesc){
-                            .direction = CA_HORIZONTAL,
-                            .style     = "pm-prop-row",
-                        });
-                        ca_text(&(Ca_TextDesc){ .text = "ID", .style = "pm-prop-label" });
-                        s_det_id_val = ca_text(&(Ca_TextDesc){ .text = "", .style = "pm-prop-id" });
-                        ca_div_end();
-                    }
-                    ca_div_end(); /* pm-detail-body */
-
-                    ca_div_begin(&(Ca_DivDesc){ .style = "pm-detail-sep" }); ca_div_end();
-
-                    /* Footer */
                     ca_div_begin(&(Ca_DivDesc){
                         .direction = CA_HORIZONTAL,
-                        .style     = "pm-detail-footer",
+                        .style     = "pm-prop-row",
                     });
-                    {
-                        s_det_reload_btn = ca_btn_begin(&(Ca_BtnDesc){
-                            .text     = ICON_RELOAD "  Reload",
-                            .style    = "pm-action-btn pm-action-reload",
-                            .on_click = on_reload,
-                            .hidden   = true,
-                        });
-                        ca_btn_end();
+                    ca_text(&(Ca_TextDesc){ .text = "ID", .style = "pm-prop-label" });
+                    s_det_id_val = ca_text(&(Ca_TextDesc){ .text = "", .style = "pm-prop-id" });
+                    ca_div_end();
 
-                        s_det_enable_btn = ca_btn_begin(&(Ca_BtnDesc){
-                            .text     = "Enable",
-                            .style    = "pm-action-btn pm-action-enable",
-                            .on_click = on_enable_toggle,
-                        });
-                        ca_btn_end();
-                    }
-                    ca_div_end(); /* pm-detail-footer */
+                    s_det_path_row = ca_div_begin(&(Ca_DivDesc){
+                        .direction = CA_HORIZONTAL,
+                        .style     = "pm-prop-row",
+                    });
+                    ca_text(&(Ca_TextDesc){ .text = "Path", .style = "pm-prop-label" });
+                    s_det_path_val = ca_text(&(Ca_TextDesc){
+                        .text  = "",
+                        .style = "pm-prop-path",
+                        .wrap  = true,
+                    });
+                    ca_div_end();
                 }
-                ca_div_end(); /* s_det_content */
+                ca_div_end(); /* pm-detail-body */
+
+                ca_div_begin(&(Ca_DivDesc){ .style = "pm-detail-sep" }); ca_div_end();
+
+                /* Footer */
+                ca_div_begin(&(Ca_DivDesc){
+                    .direction = CA_HORIZONTAL,
+                    .style     = "pm-detail-footer",
+                });
+                {
+                    s_det_reload_btn = ca_btn_begin(&(Ca_BtnDesc){
+                        .text     = ICON_RELOAD "  Reload",
+                        .style    = "pm-action-btn pm-action-reload",
+                        .on_click = on_reload,
+                        .hidden   = true,
+                    });
+                    ca_btn_end();
+
+                    s_det_enable_btn = ca_btn_begin(&(Ca_BtnDesc){
+                        .text     = "Enable",
+                        .style    = "pm-action-btn pm-action-enable",
+                        .on_click = on_enable_toggle,
+                    });
+                    ca_btn_end();
+                }
+                ca_div_end(); /* pm-detail-footer */
             }
-            ca_div_end(); /* pm-right */
+            ca_div_end(); /* s_det_content */
         }
-        ca_div_end(); /* pm-panes */
+        ca_div_end(); /* pm-right */
     }
     ca_ui_end();
 
-    /* Initial population */
     sync_list("");
     sync_detail();
 }
