@@ -161,7 +161,7 @@ static bool on_plugin_reload_begin(const Qs_Event *e, void *userdata)
         }
     }
     return false;
-}
+} 
 
 /* Fires synchronously after the plugin has been successfully reloaded
    or enabled.  Recreate the scene renderer only when required by the
