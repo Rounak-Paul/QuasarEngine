@@ -20,10 +20,12 @@ int main(void) {
     Editor *editor = editor_create(&(EditorDesc){
         .title        = "Quasar Editor",
         .project_path = project_path,
-        .width        = 600,
-        .height       = 400,
+        .width        = 1280,
+        .height       = 720,
     });
     if (!editor) return 1;
+
+    ca_window_maximize(qs_engine_window(editor_engine(editor)));
 
     int result = editor_run(editor);
     editor_destroy(editor);
