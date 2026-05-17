@@ -18,6 +18,7 @@
 #include "../editor.h"
 #include "../ed_style.h"
 
+#include "ca_theme.h"
 #include "quasar.h"
 
 #include <string.h>
@@ -62,6 +63,8 @@ static int           s_conn_count;
 
 static Ca_Div       *s_canvas_host;
 static Ca_Div       *s_props_div;
+
+static float         s_split_ratio = 0.68f;
 
 /* ================================================================
    COLOUR HELPERS
@@ -188,34 +191,36 @@ static void props_builder(Ca_Div *div, void *ud)
 
     Qs_Renderer *r = editor_scene_renderer(s_editor);
     const Qs_PostProcessSettings *pp = r ? qs_renderer_post_process(r) : NULL;
+    const NgNodeInfo *node = NULL;
 
-    if (s_ng.selected_node < 0 || s_ng.selected_node >= s_node_count) {
-        ca_div_begin(&(Ca_DivDesc){ .direction = CA_VERTICAL,
-                                    .style = "ng-props-empty", .id = "ng-pe" });
-        ca_text(&(Ca_TextDesc){ .text = "Select a node to\nsee its settings.",
-                                .style = "ng-props-hint", .id = "ng-ph" });
-        ca_div_end();
-        return;
-    }
-
-    const NgNodeInfo *node = &s_nodes[s_ng.selected_node];
+    if (s_ng.selected_node >= 0 && s_ng.selected_node < s_node_count)
+        node = &s_nodes[s_ng.selected_node];
 
     /* Header */
     ca_div_begin(&(Ca_DivDesc){ .direction = CA_HORIZONTAL,
                                 .style = "ng-props-hdr", .id = "ng-phdiv" });
-    ca_text(&(Ca_TextDesc){ .text = node->name, .style = "ng-props-title",
+    ca_text(&(Ca_TextDesc){ .text = node ? node->name : "Node Settings", .style = "ng-props-title",
                              .id = "ng-ptitle" });
     ca_div_end();
-
-    ca_hr(&(Ca_HrDesc){ .style = "st-separator" });
+    ca_hr(&(Ca_HrDesc){ .style = "st-separator", .id = "ng-hdr-sep" });
 
     /* Content */
     ca_div_begin(&(Ca_DivDesc){ .direction = CA_VERTICAL,
                                 .style = "ng-props-body", .id = "ng-pbody" });
 
+    if (!node) {
+        ca_div_begin(&(Ca_DivDesc){ .direction = CA_VERTICAL,
+                                    .style = "ng-props-empty", .id = "ng-pe" });
+        ca_text(&(Ca_TextDesc){ .text = "Select a node to\nsee its settings.",
+                                .style = "ng-props-hint", .id = "ng-ph" });
+        ca_div_end();
+        ca_div_end();
+        return;
+    }
+
     if (node->is_fixed) {
         if (strcmp(node->name, "shadow_csm") == 0) {
-            ca_text(&(Ca_TextDesc){ .text = "SHADOW", .style = "st-section-header" });
+            ca_text(&(Ca_TextDesc){ .text = "SHADOW", .style = "ng-props-section" });
             ca_text(&(Ca_TextDesc){ .text = "Cascaded Shadow Maps\n3 cascades, 2048x2048",
                                     .style = "ng-info-text", .id = "ng-info-sh" });
         } else if (strcmp(node->name, "forward_pbr") == 0) {
@@ -228,60 +233,60 @@ static void props_builder(Ca_Div *div, void *ud)
             int sel_idx = 0;
             for (int i = 0; i < n_opts; i++) { if (k_counts[i] == cur) sel_idx = i; }
 
-            ca_text(&(Ca_TextDesc){ .text = "ANTI-ALIASING", .style = "st-section-header" });
+            ca_text(&(Ca_TextDesc){ .text = "ANTI-ALIASING", .style = "ng-props-section" });
             ca_div_begin(&(Ca_DivDesc){ .direction = CA_HORIZONTAL,
-                                        .style = "st-form-row", .id = "ng-msaa-row" });
-            ca_text(&(Ca_TextDesc){ .text = "MSAA", .style = "rnd-field-label" });
+                                        .style = "ng-prop-row", .id = "ng-msaa-row" });
+            ca_text(&(Ca_TextDesc){ .text = "MSAA", .style = "ng-prop-label" });
             ca_div_begin(&(Ca_DivDesc){ .style = "pm-spacer", .id = "ng-msaa-sp" }); ca_div_end();
             ca_select(&(Ca_SelectDesc){
                 .options = k_labels, .option_count = n_opts, .selected = sel_idx,
-                .on_change = on_msaa_select, .style = "rnd-select", .id = "ng-msaa-sel",
+                .on_change = on_msaa_select, .style = "ng-prop-select", .id = "ng-msaa-sel",
             });
             ca_div_end();
         } else if (strcmp(node->name, "tonemap") == 0) {
-            ca_text(&(Ca_TextDesc){ .text = "TONEMAP", .style = "st-section-header" });
+            ca_text(&(Ca_TextDesc){ .text = "TONEMAP", .style = "ng-props-section" });
             ca_text(&(Ca_TextDesc){ .text = "ACES Filmic Tonemapping\n+ Gamma Correction (2.2)",
                                     .style = "ng-info-text", .id = "ng-info-tm" });
         }
     } else {
         if (strstr(node->name, "bloom") != NULL) {
-            ca_text(&(Ca_TextDesc){ .text = "BLOOM", .style = "st-section-header" });
+            ca_text(&(Ca_TextDesc){ .text = "BLOOM", .style = "ng-props-section" });
 
             ca_div_begin(&(Ca_DivDesc){ .direction = CA_HORIZONTAL,
-                                        .style = "st-form-row", .id = "ng-bs-row" });
-            ca_text(&(Ca_TextDesc){ .text = "Strength", .style = "rnd-field-label" });
+                                        .style = "ng-prop-row", .id = "ng-bs-row" });
+            ca_text(&(Ca_TextDesc){ .text = "Strength", .style = "ng-prop-label" });
             ca_slider(&(Ca_SliderDesc){
                 .min=0.0f, .max=1.0f, .value = pp ? pp->bloom_strength : 0.04f,
                 .on_change = on_bloom_strength_change,
-                .style = "rnd-slider", .id = "ng-bs-sl",
+                .style = "ng-prop-slider", .id = "ng-bs-sl",
             });
             ca_div_end();
 
             ca_div_begin(&(Ca_DivDesc){ .direction = CA_HORIZONTAL,
-                                        .style = "st-form-row", .id = "ng-bt-row" });
-            ca_text(&(Ca_TextDesc){ .text = "Threshold", .style = "rnd-field-label" });
+                                        .style = "ng-prop-row", .id = "ng-bt-row" });
+            ca_text(&(Ca_TextDesc){ .text = "Threshold", .style = "ng-prop-label" });
             ca_slider(&(Ca_SliderDesc){
                 .min=0.0f, .max=2.0f, .value = pp ? pp->bloom_threshold : 0.4f,
                 .on_change = on_bloom_threshold_change,
-                .style = "rnd-slider", .id = "ng-bt-sl",
+                .style = "ng-prop-slider", .id = "ng-bt-sl",
             });
             ca_div_end();
 
         } else if (strstr(node->name, "vignette") != NULL) {
-            ca_text(&(Ca_TextDesc){ .text = "VIGNETTE", .style = "st-section-header" });
+            ca_text(&(Ca_TextDesc){ .text = "VIGNETTE", .style = "ng-props-section" });
 
             ca_div_begin(&(Ca_DivDesc){ .direction = CA_HORIZONTAL,
-                                        .style = "st-form-row", .id = "ng-vg-row" });
-            ca_text(&(Ca_TextDesc){ .text = "Strength", .style = "rnd-field-label" });
+                                        .style = "ng-prop-row", .id = "ng-vg-row" });
+            ca_text(&(Ca_TextDesc){ .text = "Strength", .style = "ng-prop-label" });
             ca_slider(&(Ca_SliderDesc){
                 .min=0.0f, .max=1.0f, .value = pp ? pp->vignette_strength : 0.35f,
                 .on_change = on_vignette_change,
-                .style = "rnd-slider", .id = "ng-vg-sl",
+                .style = "ng-prop-slider", .id = "ng-vg-sl",
             });
             ca_div_end();
 
         } else if (strstr(node->name, "sky") != NULL) {
-            ca_text(&(Ca_TextDesc){ .text = "SKY", .style = "st-section-header" });
+            ca_text(&(Ca_TextDesc){ .text = "SKY", .style = "ng-props-section" });
 
             Qs_Engine *engine = editor_engine(s_editor);
             const Qs_RgNodeTypeExt *ext = ng_find_ext_by_type_name("sky");
@@ -291,11 +296,11 @@ static void props_builder(Ca_Div *div, void *ud)
                 for (uint32_t i = 0; i < ext->param_count; i++) {
                     /* Insert a sub-header before the Horizon group */
                     if (i == 0)
-                        ca_text(&(Ca_TextDesc){ .text = "ZENITH",  .style = "ng-sky-subhdr", .id = "ng-sky-zh" });
+                        ca_text(&(Ca_TextDesc){ .text = "ZENITH",  .style = "ng-props-subhdr", .id = "ng-sky-zh" });
                     else if (i == 3)
-                        ca_text(&(Ca_TextDesc){ .text = "HORIZON", .style = "ng-sky-subhdr", .id = "ng-sky-hh" });
+                        ca_text(&(Ca_TextDesc){ .text = "HORIZON", .style = "ng-props-subhdr", .id = "ng-sky-hh" });
                     else if (i == 6)
-                        ca_text(&(Ca_TextDesc){ .text = "GRADIENT", .style = "ng-sky-subhdr", .id = "ng-sky-gh" });
+                        ca_text(&(Ca_TextDesc){ .text = "GRADIENT", .style = "ng-props-subhdr", .id = "ng-sky-gh" });
 
                     const Qs_RgNodeParam *p = &ext->params[i];
                     char row_id[32], sl_id[32];
@@ -303,15 +308,15 @@ static void props_builder(Ca_Div *div, void *ud)
                     snprintf(sl_id,  sizeof(sl_id),  "ng-sky-s%u", i);
 
                     ca_div_begin(&(Ca_DivDesc){ .direction = CA_HORIZONTAL,
-                                               .style = "st-form-row", .id = row_id });
-                    ca_text(&(Ca_TextDesc){ .text = p->name, .style = "rnd-field-label" });
+                                               .style = "ng-prop-row", .id = row_id });
+                    ca_text(&(Ca_TextDesc){ .text = p->name, .style = "ng-prop-label" });
                     ca_slider(&(Ca_SliderDesc){
                         .min         = p->min_val,
                         .max         = p->max_val,
                         .value       = ext->get_param(engine, i),
                         .on_change   = on_sky_param_change,
                         .change_data = (void *)(uintptr_t)i,
-                        .style       = "rnd-slider",
+                        .style       = "ng-prop-slider",
                         .id          = sl_id,
                     });
                     ca_div_end();
@@ -363,9 +368,7 @@ static void canvas_builder(Ca_Div *div, void *ud)
         }
     }
 
-    /* Wires — emitted first so they paint under all nodes.
-     * All divs share z_index 0; the selected node is emitted last (pass 1)
-     * so it sits last in DFS child order and paints on top of everything. */
+    /* Wires — emitted first so they paint under all nodes. */
     for (int c = 0; c < s_conn_count; c++) {
         const NgConn *conn = &s_conns[c];
         if (conn->src_node < 0 || conn->dst_node < 0) continue;
@@ -378,45 +381,42 @@ static void canvas_builder(Ca_Div *div, void *ud)
         });
     }
 
-    /* Pass 0: non-selected nodes.  Pass 1: selected node (emitted last so it
-     * paints on top without z_index, which would cause child draw commands to
-     * sort behind the parent background and hide the pin dots). */
-    for (int pass = 0; pass < 2; pass++) {
-        for (int i = 0; i < s_node_count; i++) {
-            bool is_sel = (i == s_ng.selected_node);
-            if (pass == 0 && is_sel)  continue;
-            if (pass == 1 && !is_sel) continue;
+    for (int i = 0; i < s_node_count; i++) {
+        const NgNodeInfo *info = &s_nodes[i];
 
-            const NgNodeInfo *info = &s_nodes[i];
+        ca_ng_node_begin(&s_ng, &(Ca_NgNodeDesc){
+            .key          = info->name,
+            .title        = info->name,
+            .x            = info->init_x,
+            .y            = info->init_y,
+            .header_color = node_header_color(info),
+        });
 
-            ca_ng_node_begin(&s_ng, &(Ca_NgNodeDesc){
-                .key          = info->name,
-                .title        = info->name,
-                .x            = info->init_x,
-                .y            = info->init_y,
-                .header_color = node_header_color(info),
-            });
-
-            if (info->type) {
-                for (uint32_t p = 0; p < info->type->input_count; p++) {
-                    ca_ng_input_pin(&s_ng, &(Ca_NgPinDesc){
-                        .label = info->type->inputs[p].name,
-                        .color = pin_kind_color(info->type->inputs[p].kind),
-                    });
-                }
-                for (uint32_t p = 0; p < info->type->output_count; p++) {
-                    ca_ng_output_pin(&s_ng, &(Ca_NgPinDesc){
-                        .label = info->type->outputs[p].name,
-                        .color = pin_kind_color(info->type->outputs[p].kind),
-                    });
-                }
+        if (info->type) {
+            for (uint32_t p = 0; p < info->type->input_count; p++) {
+                ca_ng_input_pin(&s_ng, &(Ca_NgPinDesc){
+                    .label = info->type->inputs[p].name,
+                    .color = pin_kind_color(info->type->inputs[p].kind),
+                });
             }
-
-            ca_ng_node_end(&s_ng);
+            for (uint32_t p = 0; p < info->type->output_count; p++) {
+                ca_ng_output_pin(&s_ng, &(Ca_NgPinDesc){
+                    .label = info->type->outputs[p].name,
+                    .color = pin_kind_color(info->type->outputs[p].kind),
+                });
+            }
         }
+
+        ca_ng_node_end(&s_ng);
     }
 
     ca_node_graph_end(&s_ng);
+}
+
+static void on_split_resize(float ratio, void *ud)
+{
+    (void)ud;
+    s_split_ratio = ratio;
 }
 
 /* ================================================================
@@ -548,32 +548,36 @@ void ed_node_graph_init(void *editor)
 
 void ed_node_graph_build(void)
 {
-    /* Outer split: canvas (left 68%) + properties (right 32%) */
     ca_split_begin(&(Ca_SplitDesc){
-        .direction = CA_HORIZONTAL,
-        .ratio     = 0.68f,
-        .min_ratio = 0.40f,
-        .max_ratio = 0.85f,
-        .id        = "ng-split",
+        .direction       = CA_HORIZONTAL,
+        .ratio           = s_split_ratio,
+        .min_ratio       = 0.50f,
+        .max_ratio       = 0.75f,
+        .bar_size        = 1.0f,
+        .bar_color       = ca_color(0.271f, 0.278f, 0.353f, 1.0f), /* ED_COL_SEPARATOR */
+        .bar_hover_color = CA_THEME_ACCENT,
+        .on_resize       = on_split_resize,
+        .style           = "ng-split",
     });
+    {
+        /* LEFT PANE: canvas host div — builder emits the Ca_NodeGraph */
+        s_canvas_host = ca_div_begin(&(Ca_DivDesc){
+            .id        = "ng-canvas",
+            .direction = CA_VERTICAL,
+            .style     = "ng-canvas-host",
+        });
+        ca_div_set_builder(s_canvas_host, canvas_builder, NULL);
+        ca_div_end();
 
-    /* LEFT PANE: canvas host div — builder emits the Ca_NodeGraph */
-    s_canvas_host = ca_div_begin(&(Ca_DivDesc){
-        .id        = "ng-canvas",
-        .direction = CA_VERTICAL,
-    });
-    ca_div_set_builder(s_canvas_host, canvas_builder, NULL);
-    ca_div_end();
-
-    /* RIGHT PANE: properties panel — builder emits settings widgets */
-    s_props_div = ca_div_begin(&(Ca_DivDesc){
-        .id        = "ng-props",
-        .direction = CA_VERTICAL,
-        .style     = "ng-props-panel",
-    });
-    ca_div_set_builder(s_props_div, props_builder, NULL);
-    ca_div_end();
-
+        /* RIGHT PANE: properties panel — builder emits settings widgets */
+        s_props_div = ca_div_begin(&(Ca_DivDesc){
+            .id        = "ng-props",
+            .direction = CA_VERTICAL,
+            .style     = "ng-props-panel",
+        });
+        ca_div_set_builder(s_props_div, props_builder, NULL);
+        ca_div_end();
+    }
     ca_split_end();
 }
 

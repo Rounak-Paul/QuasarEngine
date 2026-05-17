@@ -1551,12 +1551,23 @@ void ed_layout(Ca_Window *window, void *editor)
                     });
                     ca_btn_end();
 
-                    /* Search — intentionally narrow and flex-shrink */
-                    s_assets_search_input = ca_input(&(Ca_InputDesc){
-                        .text        = s_assets_search,
-                        .placeholder = "Search...",
-                        .style       = "assets-search-input",
+                    /* Search — styled box with icon (mirrors console search) */
+                    ca_div_begin(&(Ca_DivDesc){
+                        .direction = CA_HORIZONTAL,
+                        .style     = "assets-search-box",
                     });
+                    {
+                        ca_text(&(Ca_TextDesc){
+                            .text  = ICON_SEARCH,
+                            .style = "assets-search-icon",
+                        });
+                        s_assets_search_input = ca_input(&(Ca_InputDesc){
+                            .text        = s_assets_search,
+                            .placeholder = "Search...",
+                            .style       = "assets-search-input",
+                        });
+                    }
+                    ca_div_end();
                 }
                 ca_div_end();
 
