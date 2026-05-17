@@ -32,6 +32,17 @@
 #define ICON_VIEW_GRID "\xEF\x80\x8A"   /* fa-th           U+F00A */
 #define ICON_VIEW_THUMB "\xEF\x80\x89"  /* fa-th-large     U+F009 */
 
+#define ICON_LOG_DEBUG "\xEF\x86\x88"   /* fa-bug                  U+F188 */
+#define ICON_LOG_TRACE "\xEF\x80\xBA"   /* fa-list                 U+F03A */
+#define ICON_LOG_INFO  "\xEF\x81\x9A"   /* fa-info-circle          U+F05A */
+#define ICON_LOG_WARN  "\xEF\x81\xB1"   /* fa-exclamation-triangle U+F071 */
+#define ICON_LOG_ERROR "\xEF\x81\x97"   /* fa-times-circle         U+F057 */
+#define ICON_LOG_FATAL "\xEF\x81\xAA"   /* fa-exclamation-circle   U+F06A */
+#define ICON_LOCK      "\xEF\x80\xA3"   /* fa-lock                 U+F023 */
+#define ICON_UNLOCK    "\xEF\x82\x9C"   /* fa-unlock               U+F09C */
+#define ICON_COPY      "\xEF\x83\x85"   /* fa-copy                 U+F0C5 */
+#define ICON_SEARCH    "\xEF\x80\x82"   /* fa-search               U+F002 */
+
 #ifdef _WIN32
   #ifndef WIN32_LEAN_AND_MEAN
     #define WIN32_LEAN_AND_MEAN
@@ -46,15 +57,31 @@
 
 /* ---- Console ---- */
 #define CONSOLE_MAX_LINES 100
+#define CONSOLE_LINE_MAX  1280
 #define ASSETS_MAX_ENTRIES 220
 #define ASSETS_MAX_PATH    1024
 #define ASSETS_THUMB_SIZE  72
 #define ASSETS_TREE_CTX_MAX 512
 
+typedef struct ConsoleLineCtx {
+    uint32_t entry_index;
+    bool     has_entry;
+} ConsoleLineCtx;
+
 static Ca_Window *s_console_window;
 static Ca_Label  *s_console_lines[CONSOLE_MAX_LINES];
+static ConsoleLineCtx s_console_line_ctx[CONSOLE_MAX_LINES];
+static Ca_Label  *s_console_count_icons[QS_LOG_LEVEL_COUNT];
+static Ca_Label  *s_console_count_labels[QS_LOG_LEVEL_COUNT];
+static Ca_Label  *s_console_total_label;
+static Ca_TextInput *s_console_search_input;
+static Ca_Button *s_console_copy_btn;
+static Ca_Button *s_console_lock_btn;
+static Ca_Button *s_console_clear_btn;
 static uint32_t   s_prev_log_count;
 static bool        s_needs_scroll;
+static bool        s_console_autoscroll_locked;
+static char        s_console_search[128];
 static int         s_bottom_tab_active;
 static int         s_right_tab_active;
 static Ca_Div     *s_inspector_panel;
@@ -120,7 +147,12 @@ static AssetsTreeClickCtx s_assets_tree_click_ctx[ASSETS_TREE_CTX_MAX];
 static int                s_assets_tree_click_count;
 
 static void on_assets_row_click(Ca_Button *btn, void *user_data);
+static void on_console_lock_click(Ca_Button *btn, void *user_data);
+static void on_console_clear_click(Ca_Button *btn, void *user_data);
+static void on_console_copy_click(Ca_Button *btn, void *user_data);
+static void on_console_ctx_menu(int item_index, void *user_data);
 static void on_assets_ctx_menu(int item_index, void *user_data);
+static const char *s_console_ctx_items[] = { "Copy Message", "Copy All", "-", "Clear" };
 static const char *s_assets_ctx_items[] = { "Import", "Rename", "Delete", "Reveal" };
 static void assets_entry_abs_path(int idx, char *out, size_t out_size);
 static void on_assets_tree_toggle(Ca_TreeNode *tn, void *user_data);
@@ -883,6 +915,8 @@ static void on_bottom_tab_change(Ca_TabBar *tabs, void *user_data)
 
     if (s_bottom_tab_active == 1)
         s_assets_needs_scan = true;
+    else if (!s_console_autoscroll_locked)
+        s_needs_scroll = true;
 }
 
 static void assets_init(Editor *editor)
@@ -964,6 +998,211 @@ static uint32_t log_level_color(Qs_LogLevel level)
     case QS_LOG_ERROR: return CA_THEME_DANGER;
     case QS_LOG_FATAL: return CA_THEME_FATAL;
     default:           return CA_THEME_TEXT_DIM;
+    }
+}
+
+static const char *log_level_icon(Qs_LogLevel level)
+{
+    switch (level) {
+    case QS_LOG_DEBUG: return ICON_LOG_DEBUG;
+    case QS_LOG_TRACE: return ICON_LOG_TRACE;
+    case QS_LOG_INFO:  return ICON_LOG_INFO;
+    case QS_LOG_WARN:  return ICON_LOG_WARN;
+    case QS_LOG_ERROR: return ICON_LOG_ERROR;
+    case QS_LOG_FATAL: return ICON_LOG_FATAL;
+    default:           return ICON_LOG_INFO;
+    }
+}
+
+static void console_format_log_entry(const Qs_LogEntry *entry,
+                                     char *out,
+                                     size_t out_size)
+{
+    if (!out || out_size == 0) return;
+    if (!entry) {
+        out[0] = '\0';
+        return;
+    }
+
+    int hours = (int)(entry->timestamp / 3600.0);
+    int minutes = (int)(entry->timestamp / 60.0) % 60;
+    int seconds = (int)entry->timestamp % 60;
+    int millis = (int)((entry->timestamp - (int)entry->timestamp) * 1000.0);
+
+    snprintf(out, out_size,
+             "[%02d:%02d:%02d.%03d] [%s] %s",
+             hours, minutes, seconds, millis,
+             qs_log_level_str(entry->level),
+             entry->message ? entry->message : "");
+}
+
+static bool console_entry_matches_search(const Qs_LogEntry *entry)
+{
+    if (!entry) return false;
+    if (!s_console_search[0]) return true;
+    if (entry->message && contains_ci(entry->message, s_console_search)) return true;
+    if (contains_ci(qs_log_level_str(entry->level), s_console_search)) return true;
+
+    char line_buf[CONSOLE_LINE_MAX];
+    console_format_log_entry(entry, line_buf, sizeof(line_buf));
+    return contains_ci(line_buf, s_console_search);
+}
+
+static void console_sync_toolbar(const Qs_LogEntry *entries, uint32_t count)
+{
+    uint32_t level_counts[QS_LOG_LEVEL_COUNT] = {0};
+    uint32_t matched_count = 0;
+    for (uint32_t entry_index = 0; entry_index < count; entry_index++) {
+        if (!entries || !console_entry_matches_search(&entries[entry_index])) continue;
+        matched_count++;
+        Qs_LogLevel level = entries[entry_index].level;
+        if (level >= 0 && level < QS_LOG_LEVEL_COUNT)
+            level_counts[level]++;
+    }
+
+    for (uint32_t level_index = 0; level_index < QS_LOG_LEVEL_COUNT; level_index++) {
+        if (!s_console_count_labels[level_index]) continue;
+        char count_text[32];
+        Qs_LogLevel level = (Qs_LogLevel)level_index;
+        snprintf(count_text, sizeof(count_text), "%u", level_counts[level_index]);
+        if (s_console_count_icons[level_index])
+            ca_set_color(s_console_count_icons[level_index], log_level_color(level));
+        ca_set_text(s_console_count_labels[level_index], count_text);
+        ca_set_color(s_console_count_labels[level_index], log_level_color(level));
+    }
+
+    if (s_console_total_label) {
+        char total_text[32];
+        snprintf(total_text, sizeof(total_text), "%u / %u", matched_count, count);
+        ca_set_text(s_console_total_label, total_text);
+    }
+
+    if (s_console_clear_btn)
+        ca_set_disabled(s_console_clear_btn, count == 0);
+    if (s_console_copy_btn)
+        ca_set_disabled(s_console_copy_btn, matched_count == 0);
+
+    if (s_console_lock_btn) {
+        ca_set_text(s_console_lock_btn,
+                    s_console_autoscroll_locked ? ICON_LOCK : ICON_UNLOCK);
+        ca_set_style(s_console_lock_btn,
+                     s_console_autoscroll_locked
+                         ? "console-toolbar-btn active"
+                         : "console-toolbar-btn");
+    }
+}
+
+static void console_copy_entry(uint32_t entry_index)
+{
+    uint32_t count = 0;
+    const Qs_LogEntry *entries = qs_log_entries(&count);
+    if (!entries || entry_index >= count) return;
+
+    char line_buf[CONSOLE_LINE_MAX];
+    console_format_log_entry(&entries[entry_index], line_buf, sizeof(line_buf));
+    ca_clipboard_set_text(s_console_window, line_buf);
+}
+
+static void console_copy_all(void)
+{
+    uint32_t count = 0;
+    const Qs_LogEntry *entries = qs_log_entries(&count);
+    if (!entries || count == 0) {
+        ca_clipboard_set_text(s_console_window, "");
+        return;
+    }
+
+    size_t total_size = 1;
+    for (uint32_t entry_index = 0; entry_index < count; entry_index++) {
+        if (!console_entry_matches_search(&entries[entry_index])) continue;
+        const char *message = entries[entry_index].message ? entries[entry_index].message : "";
+        size_t needed = strlen(message) + 64;
+        if (total_size > SIZE_MAX - needed) return;
+        total_size += needed;
+    }
+
+    char *copy_text = (char *)qs_malloc(total_size, QS_MEM_EDITOR);
+    if (!copy_text) return;
+
+    size_t cursor = 0;
+    copy_text[0] = '\0';
+    bool wrote_line = false;
+    for (uint32_t entry_index = 0; entry_index < count; entry_index++) {
+        if (!console_entry_matches_search(&entries[entry_index])) continue;
+        char line_buf[CONSOLE_LINE_MAX];
+        console_format_log_entry(&entries[entry_index], line_buf, sizeof(line_buf));
+        size_t line_len = strlen(line_buf);
+        size_t separator_len = wrote_line ? 1u : 0u;
+        if (cursor + separator_len + line_len + 1 > total_size) break;
+        if (separator_len)
+            copy_text[cursor++] = '\n';
+        memcpy(copy_text + cursor, line_buf, line_len);
+        cursor += line_len;
+        copy_text[cursor] = '\0';
+        wrote_line = true;
+    }
+
+    ca_clipboard_set_text(s_console_window, copy_text);
+    qs_free(copy_text);
+}
+
+static void console_clear(void)
+{
+    qs_log_clear();
+    s_prev_log_count = UINT32_MAX;
+    s_needs_scroll = false;
+
+    for (uint32_t line_index = 0; line_index < CONSOLE_MAX_LINES; line_index++) {
+        s_console_line_ctx[line_index].has_entry = false;
+        s_console_line_ctx[line_index].entry_index = 0;
+        if (s_console_lines[line_index])
+            ca_set_hidden(s_console_lines[line_index], true);
+    }
+    console_sync_toolbar(NULL, 0);
+}
+
+static void on_console_lock_click(Ca_Button *btn, void *user_data)
+{
+    (void)btn;
+    (void)user_data;
+    s_console_autoscroll_locked = !s_console_autoscroll_locked;
+    if (!s_console_autoscroll_locked)
+        s_needs_scroll = true;
+    uint32_t count = 0;
+    const Qs_LogEntry *entries = qs_log_entries(&count);
+    console_sync_toolbar(entries, count);
+}
+
+static void on_console_clear_click(Ca_Button *btn, void *user_data)
+{
+    (void)btn;
+    (void)user_data;
+    console_clear();
+}
+
+static void on_console_copy_click(Ca_Button *btn, void *user_data)
+{
+    (void)btn;
+    (void)user_data;
+    console_copy_all();
+}
+
+static void on_console_ctx_menu(int item_index, void *user_data)
+{
+    ConsoleLineCtx *ctx = (ConsoleLineCtx *)user_data;
+    switch (item_index) {
+    case 0:
+        if (ctx && ctx->has_entry)
+            console_copy_entry(ctx->entry_index);
+        break;
+    case 1:
+        console_copy_all();
+        break;
+    case 3:
+        console_clear();
+        break;
+    default:
+        break;
     }
 }
 
@@ -1119,19 +1358,120 @@ void ed_layout(Ca_Window *window, void *editor)
                 .tabs_left_align = true,
             });
 
-            /* Console content — scrollable log lines */
+            /* Console content */
             s_console_panel = ca_div_begin(&(Ca_DivDesc){
                 .direction = CA_VERTICAL,
-                .style     = "console-scroll",
-                .id        = "console",
+                .style     = "console-root",
                 .hidden    = (s_bottom_tab_active != 0),
             });
-            for (uint32_t i = 0; i < CONSOLE_MAX_LINES; i++) {
-                s_console_lines[i] = ca_text(&(Ca_TextDesc){
-                    .text   = "",
-                    .style  = "console-line",
-                    .hidden = true,
+            {
+                ca_div_begin(&(Ca_DivDesc){
+                    .direction = CA_HORIZONTAL,
+                    .style     = "console-toolbar",
                 });
+                {
+                    s_console_clear_btn = ca_btn_begin(&(Ca_BtnDesc){
+                        .text       = ICON_TRASH,
+                        .style      = "console-toolbar-btn console-clear-btn",
+                        .on_click   = on_console_clear_click,
+                        .click_data = NULL,
+                        .disabled   = true,
+                    });
+                    ca_btn_end();
+                    ca_tooltip(&(Ca_TooltipDesc){ .text = "Clear console" });
+
+                    s_console_copy_btn = ca_btn_begin(&(Ca_BtnDesc){
+                        .text       = ICON_COPY,
+                        .style      = "console-toolbar-btn",
+                        .on_click   = on_console_copy_click,
+                        .click_data = NULL,
+                        .disabled   = true,
+                    });
+                    ca_btn_end();
+                    ca_tooltip(&(Ca_TooltipDesc){ .text = "Copy shown logs" });
+
+                    ca_div_begin(&(Ca_DivDesc){
+                        .direction = CA_HORIZONTAL,
+                        .style     = "console-search-box",
+                    });
+                    {
+                        ca_text(&(Ca_TextDesc){
+                            .text  = ICON_SEARCH,
+                            .style = "console-search-icon",
+                        });
+                        s_console_search_input = ca_input(&(Ca_InputDesc){
+                            .text        = s_console_search,
+                            .placeholder = "Search logs...",
+                            .style       = "console-search-input",
+                        });
+                    }
+                    ca_div_end();
+
+                    static const char *level_tooltips[QS_LOG_LEVEL_COUNT] = {
+                        "Debug messages", "Trace messages", "Info messages",
+                        "Warning messages", "Error messages", "Fatal messages",
+                    };
+                    ca_div_begin(&(Ca_DivDesc){ .direction = CA_HORIZONTAL, .style = "console-counts-bar" });
+                    for (uint32_t level_index = 0; level_index < QS_LOG_LEVEL_COUNT; level_index++) {
+                        Qs_LogLevel level = (Qs_LogLevel)level_index;
+                        ca_div_begin(&(Ca_DivDesc){
+                            .direction = CA_HORIZONTAL,
+                            .style     = "console-count-group",
+                        });
+                        s_console_count_icons[level_index] = ca_text(&(Ca_TextDesc){
+                            .text  = log_level_icon(level),
+                            .style = "console-count-icon",
+                        });
+                        ca_set_color(s_console_count_icons[level_index], log_level_color(level));
+                        s_console_count_labels[level_index] = ca_text(&(Ca_TextDesc){
+                            .text  = "0",
+                            .style = "console-count-value",
+                        });
+                        ca_set_color(s_console_count_labels[level_index], log_level_color(level));
+                        ca_div_end();
+                        ca_tooltip(&(Ca_TooltipDesc){ .text = level_tooltips[level_index] });
+                    }
+                    ca_div_end();
+
+                    ca_spacer(&(Ca_SpacerDesc){ .style = "console-toolbar-spacer" });
+
+                    s_console_total_label = ca_text(&(Ca_TextDesc){
+                        .text  = "0 / 0",
+                        .style = "console-total",
+                    });
+
+                    s_console_lock_btn = ca_btn_begin(&(Ca_BtnDesc){
+                        .text       = ICON_UNLOCK,
+                        .style      = "console-toolbar-btn",
+                        .on_click   = on_console_lock_click,
+                        .click_data = NULL,
+                    });
+                    ca_btn_end();
+                    ca_tooltip(&(Ca_TooltipDesc){ .text = "Toggle auto-scroll" });
+                }
+                ca_div_end();
+
+                ca_div_begin(&(Ca_DivDesc){
+                    .direction = CA_VERTICAL,
+                    .style     = "console-scroll",
+                    .id        = "console",
+                });
+                for (uint32_t i = 0; i < CONSOLE_MAX_LINES; i++) {
+                    s_console_line_ctx[i].has_entry = false;
+                    s_console_line_ctx[i].entry_index = 0;
+                    s_console_lines[i] = ca_text(&(Ca_TextDesc){
+                        .text   = "",
+                        .style  = "console-line",
+                        .hidden = true,
+                    });
+                    ca_context_menu(&(Ca_CtxMenuDesc){
+                        .items       = s_console_ctx_items,
+                        .item_count  = 4,
+                        .on_select   = on_console_ctx_menu,
+                        .select_data = &s_console_line_ctx[i],
+                    });
+                }
+                ca_div_end();
             }
             ca_div_end();
 
@@ -1272,38 +1612,53 @@ void ed_console_update(void *editor)
     uint32_t count = 0;
     const Qs_LogEntry *entries = qs_log_entries(&count);
 
+    bool search_changed = false;
+    if (s_console_search_input) {
+        const char *search_text = ca_get_text(s_console_search_input);
+        if (!search_text) search_text = "";
+        if (strncmp(s_console_search, search_text, sizeof(s_console_search) - 1) != 0) {
+            snprintf(s_console_search, sizeof(s_console_search), "%s", search_text);
+            search_changed = true;
+        }
+    }
+
     /* Scroll to bottom on the NEXT frame so content_h is up to date */
-    if (s_needs_scroll) {
+    if (s_needs_scroll && !s_console_autoscroll_locked) {
         s_needs_scroll = false;
         ca_scroll_to_bottom(s_console_window, "console");
     }
 
-    if (count == s_prev_log_count) return;
+    if (count == s_prev_log_count && !search_changed) return;
     s_prev_log_count = count;
-    s_needs_scroll   = true;   /* scroll after next layout pass */
+    console_sync_toolbar(entries, count);
+    s_needs_scroll = !s_console_autoscroll_locked;   /* scroll after next layout pass */
 
-    /* Show the most recent entries that fit in the label pool */
-    uint32_t start   = count > CONSOLE_MAX_LINES ? count - CONSOLE_MAX_LINES : 0;
-    uint32_t visible = count - start;
+    uint32_t visible_indices[CONSOLE_MAX_LINES];
+    uint32_t visible = 0;
+    if (entries) {
+        for (uint32_t reverse_index = count; reverse_index > 0; reverse_index--) {
+            uint32_t entry_index = reverse_index - 1;
+            if (!console_entry_matches_search(&entries[entry_index])) continue;
+            visible_indices[visible++] = entry_index;
+            if (visible == CONSOLE_MAX_LINES) break;
+        }
+    }
 
-    char line_buf[512];
+    char line_buf[CONSOLE_LINE_MAX];
     for (uint32_t i = 0; i < CONSOLE_MAX_LINES; i++) {
         if (i < visible) {
-            const Qs_LogEntry *e = &entries[start + i];
-            int hrs = (int)(e->timestamp / 3600.0);
-            int min = (int)(e->timestamp / 60.0) % 60;
-            int sec = (int)e->timestamp % 60;
-            int ms  = (int)((e->timestamp - (int)e->timestamp) * 1000.0);
+            uint32_t entry_index = visible_indices[visible - 1 - i];
+            const Qs_LogEntry *e = &entries[entry_index];
+            console_format_log_entry(e, line_buf, sizeof(line_buf));
 
-            snprintf(line_buf, sizeof(line_buf),
-                     "[%02d:%02d:%02d.%03d] [%s] %s",
-                     hrs, min, sec, ms,
-                     qs_log_level_str(e->level), e->message);
-
+            s_console_line_ctx[i].entry_index = entry_index;
+            s_console_line_ctx[i].has_entry = true;
             ca_set_text(s_console_lines[i], line_buf);
             ca_set_color(s_console_lines[i], log_level_color(e->level));
             ca_set_hidden(s_console_lines[i], false);
         } else {
+            s_console_line_ctx[i].entry_index = 0;
+            s_console_line_ctx[i].has_entry = false;
             ca_set_hidden(s_console_lines[i], true);
         }
     }

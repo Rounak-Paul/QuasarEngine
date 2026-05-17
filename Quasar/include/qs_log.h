@@ -33,6 +33,10 @@ QS_API const char *qs_log_level_str(Qs_LogLevel level);
 /// The returned pointer is valid until the next call to qs_log() or shutdown.
 QS_API const Qs_LogEntry *qs_log_entries(uint32_t *out_count);
 
+/// Clears the in-memory log buffer after flushing pending entries to disk.
+/// Registered log listeners are notified after the buffer is cleared.
+QS_API void qs_log_clear(void);
+
 /// Sets the minimum level that gets recorded. Messages below this are discarded.
 QS_API void qs_log_set_level(Qs_LogLevel min_level);
 

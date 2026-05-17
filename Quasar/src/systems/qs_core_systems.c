@@ -256,6 +256,33 @@ const Qs_LogEntry *qs_log_entries(uint32_t *out_count)
     return arr;
 }
 
+void qs_log_clear(void)
+{
+    if (!g_log) return;
+
+    Qs_LogListenerFn listener = NULL;
+    void *listener_data = NULL;
+
+    if (g_log->mutex) ca_mutex_lock(g_log->mutex);
+
+    flush_to_file(g_log);
+
+    for (uint32_t index = 0; index < g_log->count; index++) {
+        qs_free(g_log->storage[index].text);
+        g_log->storage[index].text = NULL;
+        g_log->entries[index] = (Qs_LogEntry){0};
+    }
+    g_log->count = 0;
+    g_log->unflushed = 0;
+    listener = g_log->listener;
+    listener_data = g_log->listener_data;
+
+    if (g_log->mutex) ca_mutex_unlock(g_log->mutex);
+
+    if (listener)
+        listener(listener_data);
+}
+
 void qs_log_set_level(Qs_LogLevel min_level)
 {
     if (!g_log) return;
