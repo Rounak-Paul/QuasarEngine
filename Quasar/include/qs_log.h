@@ -23,6 +23,12 @@ typedef struct Qs_LogEntry {
     const char *message;        ///< Null-terminated log text.
 } Qs_LogEntry;
 
+/// Cached log counters by severity.
+typedef struct Qs_LogCounts {
+    uint32_t levels[QS_LOG_LEVEL_COUNT];
+    uint32_t total;
+} Qs_LogCounts;
+
 /// Emits a formatted log message at the given severity.
 QS_API void qs_log(Qs_LogLevel level, const char *fmt, ...);
 
@@ -32,6 +38,9 @@ QS_API const char *qs_log_level_str(Qs_LogLevel level);
 /// Returns all buffered log entries and their count.
 /// The returned pointer is valid until the next call to qs_log() or shutdown.
 QS_API const Qs_LogEntry *qs_log_entries(uint32_t *out_count);
+
+/// Returns the current buffered log counts by severity in O(1) time.
+QS_API void qs_log_counts(Qs_LogCounts *out_counts);
 
 /// Clears the in-memory log buffer after flushing pending entries to disk.
 /// Registered log listeners are notified after the buffer is cleared.

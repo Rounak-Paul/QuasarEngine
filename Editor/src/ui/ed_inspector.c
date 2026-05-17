@@ -238,6 +238,7 @@ static void on_field_input(Ca_TextInput *input, void *user_data)
         break;
     default: break;
     }
+    editor_mark_dirty(s_editor);
 
     /* If editing into a prototype instance, persist the change as an
        override on the outer-scene PrototypeComp so it survives reloads
@@ -270,6 +271,8 @@ static void on_bool_input(Ca_Checkbox *cb, void *user_data)
     bool before = *dst;
     bool after  = ca_checkbox_get(cb);
     *dst = after;
+    if (before != after)
+        editor_mark_dirty(s_editor);
 
     Qs_PrototypeComp *pc = active_override_target(s_editor);
     if (pc && b->comp_name && b->field_name) {
@@ -411,11 +414,16 @@ static void on_proto_path_select(Ca_Select *sel, void *user_data)
         }
     }
 
+    char old_path[sizeof(pc->path)];
+    snprintf(old_path, sizeof(old_path), "%s", pc->path);
+
     if (idx <= 0) {
         pc->path[0] = '\0';
     } else if ((uint32_t)idx < s_proto_option_count) {
         snprintf(pc->path, sizeof(pc->path), "%s", new_path);
     }
+    if (strcmp(old_path, pc->path) != 0)
+        editor_mark_dirty(s_editor);
 
     /* Force lazy reload at next render */
     if (pc->inner) {
@@ -440,7 +448,12 @@ static void on_entity_name_input(Ca_TextInput *input, void *user_data)
        across reloads of the prototype.  This matches how Unity treats
        prefab-instance hierarchy renames as session-only. */
     const char *text = ca_get_text(input);
-    qs_entity_set_name(scene, entity, text ? text : "");
+    const char *old_name = qs_entity_name(scene, entity);
+    const char *new_name = text ? text : "";
+    if (!old_name || strcmp(old_name, new_name) != 0) {
+        qs_entity_set_name(scene, entity, new_name);
+        editor_mark_dirty(s_editor);
+    }
 }
 
 static void on_tag_input(Ca_TextInput *input, void *user_data)
@@ -457,7 +470,11 @@ static void on_tag_input(Ca_TextInput *input, void *user_data)
     if (!tag) return;
 
     const char *text = ca_get_text(input);
-    snprintf(tag->tag, sizeof(tag->tag), "%s", text ? text : "");
+    const char *new_tag = text ? text : "";
+    if (strcmp(tag->tag, new_tag) != 0) {
+        snprintf(tag->tag, sizeof(tag->tag), "%s", new_tag);
+        editor_mark_dirty(s_editor);
+    }
 }
 
 /* ================================================================
@@ -787,6 +804,7 @@ static void on_remove_component(Ca_Button *btn, void *user_data)
     Qs_ComponentType *ct = (Qs_ComponentType *)user_data;
     if (!qs_entity_has(scene, entity, ct)) return;
     qs_entity_remove(scene, entity, ct);
+    editor_mark_dirty(s_editor);
     /* Force rebuild of inspector content next frame */
     s_displayed_entity = QS_ENTITY_INVALID;
 }
@@ -977,6 +995,9 @@ static void on_material_select(Ca_Select *sel, void *user_data)
     Qs_MeshComp *mc = (Qs_MeshComp *)qs_entity_get(scene, entity, qs_mesh_comp_type());
     if (!mc) return;
 
+    char old_path[sizeof(mc->material_path)];
+    snprintf(old_path, sizeof(old_path), "%s", mc->material_path);
+
     /* Release the old material's ref before assigning a new one */
     if (mc->material_path[0]) {
         if (mc->material_path[0] != '@') {
@@ -1002,6 +1023,8 @@ static void on_material_select(Ca_Select *sel, void *user_data)
         qs_project_resolve(proj, rel, abs, sizeof(abs));
         mc->material = qs_asset_cache_material_async(eng, qs_engine_job_system(eng), abs);
     }
+    if (strcmp(old_path, mc->material_path) != 0)
+        editor_mark_dirty(s_editor);
     /* Force material editor rebuild */
     s_displayed_entity = QS_ENTITY_INVALID;
 }
@@ -1042,6 +1065,9 @@ static void on_mesh_select(Ca_Select *sel, void *user_data)
     Qs_Engine  *eng  = editor_engine(s_editor);
     if (!proj || !eng) return;
 
+    char old_path[sizeof(mc->mesh_path)];
+    snprintf(old_path, sizeof(old_path), "%s", mc->mesh_path);
+
     /* Release old mesh ref before assigning a new one */
     if (mc->mesh_path[0]) {
         /* Only release from cache if it was a file-based asset */
@@ -1068,6 +1094,8 @@ static void on_mesh_select(Ca_Select *sel, void *user_data)
             mc->mesh = qs_asset_cache_mesh_async(eng, qs_engine_job_system(eng), abs);
         }
     }
+    if (strcmp(old_path, mc->mesh_path) != 0)
+        editor_mark_dirty(s_editor);
 }
 
 /* Build a scalar float input bound to a material PBR param */
@@ -1433,6 +1461,7 @@ static void on_add_component_select(Ca_Select *sel, void *user_data)
     if (!ct) return;
     if (qs_entity_has(scene, entity, ct)) return;
     qs_entity_add(scene, entity, ct);
+    editor_mark_dirty(s_editor);
 
     /* Force rebuild of inspector content next frame */
     s_displayed_entity = QS_ENTITY_INVALID;

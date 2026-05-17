@@ -171,8 +171,12 @@ static void rename_begin(Qs_Entity entity, Qs_Scene *scene)
 static void rename_commit(Qs_Scene *scene)
 {
     if (s_renaming == QS_ENTITY_INVALID) return;
-    if (qs_entity_valid(scene, s_renaming))
+    if (qs_entity_valid(scene, s_renaming)) {
+        const char *old_name = qs_entity_name(scene, s_renaming);
+        if (!old_name || strcmp(old_name, s_rename_buf) != 0)
+            editor_mark_dirty(s_editor);
         qs_entity_set_name(scene, s_renaming, s_rename_buf);
+    }
     s_renaming     = QS_ENTITY_INVALID;
     s_rename_input = NULL;
 }
@@ -195,8 +199,12 @@ static void on_rename_change(Ca_TextInput *input, void *user_data)
     /* Live-update the entity name so inspector and everywhere else stays in
        sync as the user types — same as the inspector's on_entity_name_input. */
     Qs_Scene *scene = qs_scene_active();
-    if (scene && s_renaming != QS_ENTITY_INVALID && qs_entity_valid(scene, s_renaming))
+    if (scene && s_renaming != QS_ENTITY_INVALID && qs_entity_valid(scene, s_renaming)) {
+        const char *old_name = qs_entity_name(scene, s_renaming);
+        if (!old_name || strcmp(old_name, s_rename_buf) != 0)
+            editor_mark_dirty(s_editor);
         qs_entity_set_name(scene, s_renaming, s_rename_buf);
+    }
 }
 
 /* ================================================================
@@ -241,6 +249,8 @@ static void on_root_ctx(int item_index, void *user_data)
     }
     if (e != QS_ENTITY_INVALID)
         editor_set_selected_entity(ed, e);
+    if (e != QS_ENTITY_INVALID)
+        editor_mark_dirty(ed);
 }
 
 static void on_entity_ctx(int item_index, void *user_data)
@@ -254,7 +264,10 @@ static void on_entity_ctx(int item_index, void *user_data)
 
     case ENT_CTX_CREATE_CHILD: {
         Qs_Entity e = create_entity_with_parent("Entity", ctx->entity);
-        if (e != QS_ENTITY_INVALID) editor_set_selected_entity(ctx->editor, e);
+        if (e != QS_ENTITY_INVALID) {
+            editor_set_selected_entity(ctx->editor, e);
+            editor_mark_dirty(ctx->editor);
+        }
         break;
     }
 
@@ -271,13 +284,17 @@ static void on_entity_ctx(int item_index, void *user_data)
         if (wrapper != QS_ENTITY_INVALID) {
             qs_entity_set_parent(scene, ctx->entity, wrapper);
             editor_set_selected_entity(ctx->editor, wrapper);
+            editor_mark_dirty(ctx->editor);
         }
         break;
     }
 
     case ENT_CTX_DUPLICATE: {
         Qs_Entity dup = duplicate_entity(scene, ctx->entity);
-        if (dup != QS_ENTITY_INVALID) editor_set_selected_entity(ctx->editor, dup);
+        if (dup != QS_ENTITY_INVALID) {
+            editor_set_selected_entity(ctx->editor, dup);
+            editor_mark_dirty(ctx->editor);
+        }
         break;
     }
 
@@ -295,6 +312,7 @@ static void on_entity_ctx(int item_index, void *user_data)
         if (editor_selected_entity(ctx->editor) == ctx->entity)
             editor_set_selected_entity(ctx->editor, QS_ENTITY_INVALID);
         qs_entity_destroy(scene, ctx->entity);
+        editor_mark_dirty(ctx->editor);
         break;
 
     default: break;
@@ -321,6 +339,7 @@ static void on_new_entity_click(Ca_Button *btn, void *data)
     if (e != QS_ENTITY_INVALID) {
         editor_set_selected_entity(ed, e);
         s_expand_scene_root = true;
+        editor_mark_dirty(ed);
     }
 }
 

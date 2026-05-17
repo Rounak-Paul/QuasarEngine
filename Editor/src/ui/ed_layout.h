@@ -10,6 +10,9 @@ void ed_layout(Ca_Window *window, void *editor);
 /// Refreshes the console panel with latest log entries.
 void ed_console_update(void *editor);
 
+/// Refreshes the bottom status bar with live editor metrics.
+void ed_status_bar_update(void *editor);
+
 /// Bottom status bar.
 void ed_status_bar(Ca_Window *window, void *editor);
 

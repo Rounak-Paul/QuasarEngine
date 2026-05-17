@@ -89,12 +89,24 @@ EditorMode editor_mode(const Editor *editor);
 /// edit mode.
 const char *editor_current_proto_path(const Editor *editor);
 
+/// Returns true when the currently open prototype has unsaved edits.
+bool editor_proto_dirty(const Editor *editor);
+
+/// Marks the open prototype as dirty. No-op outside prototype edit mode.
+void editor_mark_dirty(Editor *editor);
+
 /// Opens a prototype for isolated editing.  Saves the current scene context
 /// and creates a temporary scene for the prototype.
 bool editor_open_prototype(Editor *editor, const char *proto_path);
 
+/// Saves the currently open prototype without leaving prototype edit mode.
+bool editor_save_prototype_now(Editor *editor);
+
 /// Closes the prototype editor and restores the previous scene.
 void editor_close_prototype(Editor *editor);
+
+/// Closes the prototype editor, optionally saving before restoring the scene.
+void editor_close_prototype_ex(Editor *editor, bool save);
 
 /// Destroys the editor and all owned resources.
 void editor_destroy(Editor *editor);

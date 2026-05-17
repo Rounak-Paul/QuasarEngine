@@ -40,6 +40,7 @@ typedef struct {
     Qs_LogEntry   *entries;
     Qs_LogStorage *storage;
     uint32_t       count;
+    uint32_t       level_counts[QS_LOG_LEVEL_COUNT];
     uint32_t       capacity;
     uint32_t       unflushed;
     Qs_LogLevel    min_level;
@@ -160,6 +161,9 @@ Qs_SystemDesc qs_log_system_desc(void)
 
 void qs_log(Qs_LogLevel level, const char *fmt, ...)
 {
+    if ((uint32_t)level >= QS_LOG_LEVEL_COUNT)
+        level = QS_LOG_INFO;
+
     if (!g_log) {
         /* Fallback before log system is up */
         va_list args;
@@ -221,6 +225,7 @@ void qs_log(Qs_LogLevel level, const char *fmt, ...)
         .timestamp = elapsed,
         .message   = text,
     };
+    g_log->level_counts[level]++;
 
     /* Auto-flush to file at threshold */
     g_log->unflushed++;
@@ -256,6 +261,19 @@ const Qs_LogEntry *qs_log_entries(uint32_t *out_count)
     return arr;
 }
 
+void qs_log_counts(Qs_LogCounts *out_counts)
+{
+    if (!out_counts) return;
+    memset(out_counts, 0, sizeof(*out_counts));
+    if (!g_log) return;
+
+    if (g_log->mutex) ca_mutex_lock(g_log->mutex);
+    out_counts->total = g_log->count;
+    for (uint32_t level_index = 0; level_index < QS_LOG_LEVEL_COUNT; level_index++)
+        out_counts->levels[level_index] = g_log->level_counts[level_index];
+    if (g_log->mutex) ca_mutex_unlock(g_log->mutex);
+}
+
 void qs_log_clear(void)
 {
     if (!g_log) return;
@@ -273,6 +291,7 @@ void qs_log_clear(void)
         g_log->entries[index] = (Qs_LogEntry){0};
     }
     g_log->count = 0;
+    memset(g_log->level_counts, 0, sizeof(g_log->level_counts));
     g_log->unflushed = 0;
     listener = g_log->listener;
     listener_data = g_log->listener_data;

@@ -38,6 +38,9 @@
 #define ICON_LOG_WARN  "\xEF\x81\xB1"   /* fa-exclamation-triangle U+F071 */
 #define ICON_LOG_ERROR "\xEF\x81\x97"   /* fa-times-circle         U+F057 */
 #define ICON_LOG_FATAL "\xEF\x81\xAA"   /* fa-exclamation-circle   U+F06A */
+#define ICON_FPS       "\xEF\x83\xA4"   /* fa-tachometer           U+F0E4 */
+#define ICON_PROJECT   "\xEF\x81\xBC"   /* fa-folder-open          U+F07C */
+#define ICON_RENDER    "\xEF\x84\x88"   /* fa-desktop              U+F108 */
 #define ICON_LOCK      "\xEF\x80\xA3"   /* fa-lock                 U+F023 */
 #define ICON_UNLOCK    "\xEF\x82\x9C"   /* fa-unlock               U+F09C */
 #define ICON_COPY      "\xEF\x83\x85"   /* fa-copy                 U+F0C5 */
@@ -86,6 +89,20 @@ static int         s_bottom_tab_active;
 static int         s_right_tab_active;
 static Ca_Div     *s_inspector_panel;
 static Ca_Div     *s_system_panel_div;
+
+static Ca_Label   *s_status_fps_icon;
+static Ca_Label   *s_status_project_name;
+static Ca_Label   *s_status_scene_count;
+static Ca_Label   *s_status_render_count;
+static Ca_Label   *s_status_log_icon;
+static Ca_Label   *s_status_log_count;
+static Ca_Tooltip *s_status_fps_tip;
+static Ca_Tooltip *s_status_project_tip;
+static Ca_Tooltip *s_status_scene_tip;
+static Ca_Tooltip *s_status_render_tip;
+static Ca_Tooltip *s_status_log_tip;
+static float       s_status_fps;
+static bool        s_status_has_fps;
 
 typedef struct AssetEntry {
     char rel_path[ASSETS_MAX_PATH];
@@ -1014,6 +1031,29 @@ static const char *log_level_icon(Qs_LogLevel level)
     }
 }
 
+static const char *status_log_style(Qs_LogLevel level)
+{
+    switch (level) {
+    case QS_LOG_DEBUG: return "status-icon status-log-debug";
+    case QS_LOG_TRACE: return "status-icon status-log-trace";
+    case QS_LOG_INFO:  return "status-icon status-log-info";
+    case QS_LOG_WARN:  return "status-icon status-log-warn";
+    case QS_LOG_ERROR: return "status-icon status-log-error";
+    case QS_LOG_FATAL: return "status-icon status-log-fatal";
+    default:           return "status-icon status-log-empty";
+    }
+}
+
+static Qs_LogLevel status_most_severe_log_level(const Qs_LogCounts *counts)
+{
+    if (!counts || counts->total == 0) return QS_LOG_INFO;
+    for (int level_index = (int)QS_LOG_LEVEL_COUNT - 1; level_index >= 0; level_index--) {
+        if (counts->levels[level_index] > 0)
+            return (Qs_LogLevel)level_index;
+    }
+    return QS_LOG_INFO;
+}
+
 static void console_format_log_entry(const Qs_LogEntry *entry,
                                      char *out,
                                      size_t out_size)
@@ -1679,19 +1719,212 @@ void ed_console_update(void *editor)
    STATUS BAR
    ================================================================ */
 
+static void status_metric_begin(const char *style, const char *id)
+{
+    ca_div_begin(&(Ca_DivDesc){
+        .direction = CA_HORIZONTAL,
+        .style     = style,
+        .id        = id,
+    });
+}
+
+static void status_format_counts_tooltip(const Qs_LogCounts *counts,
+                                         char *out,
+                                         size_t out_size)
+{
+    if (!out || out_size == 0) return;
+    if (!counts) {
+        snprintf(out, out_size, "Logs\nInfo: 0\nWarnings: 0\nErrors: 0");
+        return;
+    }
+
+    snprintf(out, out_size,
+             "Logs\nDebug: %u\nTrace: %u\nInfo: %u\nWarnings: %u\nErrors: %u\nFatal: %u\nTotal: %u",
+             counts->levels[QS_LOG_DEBUG],
+             counts->levels[QS_LOG_TRACE],
+             counts->levels[QS_LOG_INFO],
+             counts->levels[QS_LOG_WARN],
+             counts->levels[QS_LOG_ERROR],
+             counts->levels[QS_LOG_FATAL],
+             counts->total);
+}
+
+void ed_status_bar_update(void *editor_ptr)
+{
+    Editor *editor = (Editor *)editor_ptr;
+    if (!editor) return;
+
+    Qs_Engine *engine = editor_engine(editor);
+    float dt = engine ? qs_engine_dt(engine) : 0.0f;
+    float fps = (dt > 0.000001f) ? (1.0f / dt) : 0.0f;
+    if (!s_status_has_fps) {
+        s_status_fps = fps;
+        s_status_has_fps = true;
+    } else {
+        s_status_fps += (fps - s_status_fps) * 0.15f;
+    }
+
+    if (s_status_fps_icon) {
+        const char *fps_style = s_status_fps > 60.0f ? "status-icon status-fps-good"
+                              : s_status_fps >= 30.0f ? "status-icon status-fps-warn"
+                                                       : "status-icon status-fps-bad";
+        ca_set_style(s_status_fps_icon, fps_style);
+    }
+    if (s_status_fps_tip) {
+        char fps_tip[64];
+        snprintf(fps_tip, sizeof(fps_tip), "FPS: %.1f\nFrame: %.2f ms",
+                 s_status_fps, dt * 1000.0f);
+        ca_tooltip_set_text(s_status_fps_tip, fps_tip);
+    }
+
+    Qs_Project *project = editor_project(editor);
+    const char *project_name = qs_project_name(project);
+    if (!project_name || !project_name[0]) project_name = "No Project";
+    if (s_status_project_name)
+        ca_set_text(s_status_project_name, project_name);
+    if (s_status_project_tip) {
+        char project_tip[1024];
+        const char *project_path = qs_project_path(project);
+        snprintf(project_tip, sizeof(project_tip), "%s\n%s",
+                 project_name,
+                 (project_path && project_path[0]) ? project_path : "No project path");
+        ca_tooltip_set_text(s_status_project_tip, project_tip);
+    }
+
+    Qs_Scene *scene = qs_scene_active();
+    uint32_t entity_count = qs_scene_entity_count(scene);
+    if (s_status_scene_count) {
+        char scene_count_text[32];
+        snprintf(scene_count_text, sizeof(scene_count_text), "%u", entity_count);
+        ca_set_text(s_status_scene_count, scene_count_text);
+    }
+    if (s_status_scene_tip) {
+        char scene_tip[128];
+        const char *scene_name = qs_scene_name(scene);
+        snprintf(scene_tip, sizeof(scene_tip), "%s\nEntities: %u",
+                 (scene_name && scene_name[0]) ? scene_name : "No active scene",
+                 entity_count);
+        ca_tooltip_set_text(s_status_scene_tip, scene_tip);
+    }
+
+    uint32_t renderable_count = 0;
+    Qs_Renderer *renderer = editor_scene_renderer(editor);
+    qs_renderer_renderables(renderer, &renderable_count);
+    if (s_status_render_count) {
+        char render_count_text[32];
+        snprintf(render_count_text, sizeof(render_count_text), "%u", renderable_count);
+        ca_set_text(s_status_render_count, render_count_text);
+    }
+    if (s_status_render_tip) {
+        char render_tip[96];
+        snprintf(render_tip, sizeof(render_tip), "Renderables: %u", renderable_count);
+        ca_tooltip_set_text(s_status_render_tip, render_tip);
+    }
+
+    Qs_LogCounts log_counts;
+    qs_log_counts(&log_counts);
+    Qs_LogLevel severe_level = status_most_severe_log_level(&log_counts);
+    uint32_t severe_count = log_counts.total > 0 ? log_counts.levels[severe_level] : 0;
+    if (s_status_log_icon) {
+        ca_set_text(s_status_log_icon, log_level_icon(severe_level));
+        ca_set_style(s_status_log_icon,
+                     log_counts.total > 0 ? status_log_style(severe_level)
+                                          : "status-icon status-log-empty");
+    }
+    if (s_status_log_count) {
+        char log_count_text[32];
+        snprintf(log_count_text, sizeof(log_count_text), "%u", severe_count);
+        ca_set_text(s_status_log_count, log_count_text);
+        ca_set_style(s_status_log_count,
+                     log_counts.total > 0 ? "status-value status-log-value"
+                                          : "status-value status-log-empty");
+    }
+    if (s_status_log_tip) {
+        char log_tip[256];
+        status_format_counts_tooltip(&log_counts, log_tip, sizeof(log_tip));
+        ca_tooltip_set_text(s_status_log_tip, log_tip);
+    }
+}
+
 void ed_status_bar(Ca_Window *window, void *editor)
 {
     (void)window;
-    (void)editor;
 
     ca_div_begin(&(Ca_DivDesc){
         .direction = CA_HORIZONTAL,
         .style     = "status-bar",
     });
 
-    ca_text(&(Ca_TextDesc){ .text = "Quasar Editor", .style = "status-text" });
+    ca_div_begin(&(Ca_DivDesc){
+        .direction = CA_HORIZONTAL,
+        .style     = "status-left",
+    });
+    {
+        status_metric_begin("status-item", "status-fps");
+        s_status_fps_icon = ca_text(&(Ca_TextDesc){
+            .text  = ICON_FPS,
+            .style = "status-icon status-fps-bad",
+        });
+        ca_div_end();
+        s_status_fps_tip = ca_tooltip(&(Ca_TooltipDesc){ .text = "FPS: 0.0" });
+
+        status_metric_begin("status-item", "status-project");
+        ca_text(&(Ca_TextDesc){ .text = ICON_PROJECT, .style = "status-icon status-project-icon" });
+        s_status_project_name = ca_text(&(Ca_TextDesc){
+            .text  = "No Project",
+            .style = "status-label",
+        });
+        ca_div_end();
+        s_status_project_tip = ca_tooltip(&(Ca_TooltipDesc){ .text = "No Project" });
+    }
+    ca_div_end();
+
+    ca_div_begin(&(Ca_DivDesc){
+        .direction = CA_HORIZONTAL,
+        .style     = "status-spacer",
+    });
+    ca_div_end();
+
+    ca_div_begin(&(Ca_DivDesc){
+        .direction = CA_HORIZONTAL,
+        .style     = "status-right",
+    });
+    {
+        status_metric_begin("status-item", "status-scene");
+        ca_text(&(Ca_TextDesc){ .text = ICON_SCENE, .style = "status-icon status-scene-icon" });
+        s_status_scene_count = ca_text(&(Ca_TextDesc){
+            .text  = "0",
+            .style = "status-value",
+        });
+        ca_div_end();
+        s_status_scene_tip = ca_tooltip(&(Ca_TooltipDesc){ .text = "Entities: 0" });
+
+        status_metric_begin("status-item", "status-render");
+        ca_text(&(Ca_TextDesc){ .text = ICON_RENDER, .style = "status-icon status-render-icon" });
+        s_status_render_count = ca_text(&(Ca_TextDesc){
+            .text  = "0",
+            .style = "status-value",
+        });
+        ca_div_end();
+        s_status_render_tip = ca_tooltip(&(Ca_TooltipDesc){ .text = "Renderables: 0" });
+
+        status_metric_begin("status-item", "status-log");
+        s_status_log_icon = ca_text(&(Ca_TextDesc){
+            .text  = ICON_LOG_INFO,
+            .style = "status-icon status-log-empty",
+        });
+        s_status_log_count = ca_text(&(Ca_TextDesc){
+            .text  = "0",
+            .style = "status-value status-log-empty",
+        });
+        ca_div_end();
+        s_status_log_tip = ca_tooltip(&(Ca_TooltipDesc){ .text = "Logs\nInfo: 0" });
+    }
+    ca_div_end();
 
     ca_div_end();
+
+    ed_status_bar_update(editor);
 }
 
 /* ================================================================

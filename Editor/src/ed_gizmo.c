@@ -764,8 +764,11 @@ void ed_gizmo_update(void *editor, float dt)
             if (s_drag_axis >= 0 && sel_tr &&
                 s_drag_entity != QS_ENTITY_INVALID) {
                 Qs_Scene *scene = qs_scene_active();
-                ed_undo_push_transform(scene, s_drag_entity,
-                                       &s_drag_start_xform, sel_tr);
+                if (memcmp(&s_drag_start_xform, sel_tr, sizeof(Qs_Transform)) != 0) {
+                    ed_undo_push_transform(scene, s_drag_entity,
+                                           &s_drag_start_xform, sel_tr);
+                    editor_mark_dirty(ed);
+                }
             }
             s_drag_axis = -1;
         }

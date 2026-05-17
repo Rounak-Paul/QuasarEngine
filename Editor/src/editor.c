@@ -33,6 +33,8 @@ static void kb_save_proj (void *u);
 static void kb_undo      (void *u);
 static void kb_redo      (void *u);
 
+static void editor_update_breadcrumb(Editor *editor);
+
 struct Editor {
     Qs_Engine     *engine;
     Qs_Project    *project;
@@ -44,10 +46,14 @@ struct Editor {
     /* ---- Prototype editor mode ---- */
     EditorMode    mode;
     char          proto_path[1024];   ///< Path to the .qproto being edited (top of stack).
+    bool          proto_dirty;
     /* When entering prototype mode, the current active scene + camera are
        pushed.  Closing the prototype pops and restores. */
     Qs_Scene     *proto_stack_scene[EDITOR_PROTO_STACK_DEPTH];
     EditorCamera  proto_stack_cam[EDITOR_PROTO_STACK_DEPTH];
+    char          proto_stack_path[EDITOR_PROTO_STACK_DEPTH][1024];
+    bool          proto_stack_dirty[EDITOR_PROTO_STACK_DEPTH];
+    Qs_Entity     proto_stack_preview_light[EDITOR_PROTO_STACK_DEPTH];
     uint32_t      proto_stack_depth;
 
     /* Editor-only preview light injected into the prototype scene so the
@@ -72,14 +78,69 @@ struct Editor {
 
 /* ---- Breadcrumb bar for prototype editor mode ---- */
 static Ca_Div   *s_breadcrumb_bar;
+static Ca_Button *s_breadcrumb_save_btn;
 static Ca_Label *s_breadcrumb_scene_label;
 static Ca_Label *s_breadcrumb_proto_label;
+
+static const char *path_basename(const char *path)
+{
+    if (!path || !*path) return "";
+    const char *base = path;
+    for (const char *p = path; *p; p++) {
+        if (*p == '/' || *p == '\\') base = p + 1;
+    }
+    return base;
+}
+
+static void editor_update_breadcrumb(Editor *editor)
+{
+    if (!s_breadcrumb_bar) return;
+    if (!editor || editor->mode != ED_MODE_PROTOTYPE || editor->proto_stack_depth == 0) {
+        ca_set_hidden(s_breadcrumb_bar, true);
+        return;
+    }
+
+    Qs_Scene *prev = editor->proto_stack_scene[editor->proto_stack_depth - 1];
+    Qs_Scene *proto_scene = qs_scene_active();
+    const char *scene_name_str = prev ? qs_scene_name(prev) : "Scene";
+    const char *proto_name = path_basename(editor->proto_path);
+    if (!proto_name || !*proto_name)
+        proto_name = proto_scene ? qs_scene_name(proto_scene) : "Prototype";
+
+    char proto_text[1100];
+    snprintf(proto_text, sizeof(proto_text), "%s%s", proto_name,
+             editor->proto_dirty ? " *" : "");
+
+    ca_set_text(s_breadcrumb_scene_label, scene_name_str);
+    ca_set_text(s_breadcrumb_proto_label, proto_text);
+    if (s_breadcrumb_save_btn)
+        ca_set_disabled(s_breadcrumb_save_btn, !editor->proto_dirty);
+    ca_set_hidden(s_breadcrumb_bar, false);
+}
 
 static void on_breadcrumb_back(Ca_Button *btn, void *data)
 {
     (void)btn;
     Editor *ed = (Editor *)data;
-    editor_close_prototype(ed);
+    editor_close_prototype_ex(ed, true);
+}
+
+static void on_breadcrumb_save(Ca_Button *btn, void *data)
+{
+    (void)btn;
+    editor_save_prototype_now((Editor *)data);
+}
+
+static void on_breadcrumb_save_close(Ca_Button *btn, void *data)
+{
+    (void)btn;
+    editor_close_prototype_ex((Editor *)data, true);
+}
+
+static void on_breadcrumb_discard(Ca_Button *btn, void *data)
+{
+    (void)btn;
+    editor_close_prototype_ex((Editor *)data, false);
 }
 
 static void editor_build_ui(Editor *ed)
@@ -101,29 +162,74 @@ static void editor_build_ui(Editor *ed)
         .hidden    = true,
     });
     {
-        ca_btn_begin(&(Ca_BtnDesc){
-            .text       = "\xEF\x81\x88 Back",  /* U+F048 step-backward */
-            .id         = "breadcrumb-back",
-            .style      = "breadcrumb-back",
-            .on_click   = on_breadcrumb_back,
-            .click_data = ed,
+        ca_div_begin(&(Ca_DivDesc){
+            .direction = CA_HORIZONTAL,
+            .style     = "breadcrumb-path",
+            .id        = "breadcrumb-path",
         });
-        ca_btn_end();
-        s_breadcrumb_scene_label = ca_text(&(Ca_TextDesc){
-            .text  = "",
-            .id    = "breadcrumb-scene",
-            .style = "breadcrumb-text",
+        {
+            ca_btn_begin(&(Ca_BtnDesc){
+                .text       = "Back",
+                .id         = "breadcrumb-back",
+                .style      = "breadcrumb-back",
+                .on_click   = on_breadcrumb_back,
+                .click_data = ed,
+            });
+            ca_btn_end();
+            s_breadcrumb_scene_label = ca_text(&(Ca_TextDesc){
+                .text  = "",
+                .id    = "breadcrumb-scene",
+                .style = "breadcrumb-text",
+            });
+            ca_text(&(Ca_TextDesc){
+                .text  = ">",
+                .id    = "breadcrumb-sep",
+                .style = "breadcrumb-separator",
+            });
+            s_breadcrumb_proto_label = ca_text(&(Ca_TextDesc){
+                .text  = "",
+                .id    = "breadcrumb-proto",
+                .style = "breadcrumb-active",
+            });
+        }
+        ca_div_end();
+        ca_div_begin(&(Ca_DivDesc){
+            .style = "breadcrumb-spacer",
         });
-        ca_text(&(Ca_TextDesc){
-            .text  = ">",
-            .id    = "breadcrumb-sep",
-            .style = "breadcrumb-separator",
+        ca_div_end();
+        ca_div_begin(&(Ca_DivDesc){
+            .direction = CA_HORIZONTAL,
+            .style     = "breadcrumb-actions",
+            .id        = "breadcrumb-actions",
         });
-        s_breadcrumb_proto_label = ca_text(&(Ca_TextDesc){
-            .text  = "",
-            .id    = "breadcrumb-proto",
-            .style = "breadcrumb-active",
-        });
+        {
+            s_breadcrumb_save_btn = ca_btn_begin(&(Ca_BtnDesc){
+                .text       = "Save",
+                .id         = "breadcrumb-save",
+                .style      = "breadcrumb-action",
+                .on_click   = on_breadcrumb_save,
+                .click_data = ed,
+                .disabled   = true,
+            });
+            ca_btn_end();
+            ca_btn_begin(&(Ca_BtnDesc){
+                .text       = "Save & Close",
+                .id         = "breadcrumb-save-close",
+                .style      = "breadcrumb-action breadcrumb-action-primary",
+                .on_click   = on_breadcrumb_save_close,
+                .click_data = ed,
+            });
+            ca_btn_end();
+            ca_btn_begin(&(Ca_BtnDesc){
+                .text       = "Discard",
+                .id         = "breadcrumb-discard",
+                .style      = "breadcrumb-action breadcrumb-action-danger",
+                .on_click   = on_breadcrumb_discard,
+                .click_data = ed,
+            });
+            ca_btn_end();
+        }
+        ca_div_end();
     }
     ca_div_end();
 
@@ -267,6 +373,7 @@ static void on_frame(Qs_Engine *engine, void *userdata)
     ed_console_update(ed);
     ed_inspector_update(ed);
     ed_system_panel_update(ed->engine);
+    ed_status_bar_update(ed);
     ed_file_browser_update();
 }
 
@@ -508,15 +615,15 @@ const char *editor_current_scene_path(const Editor *ed)
 bool editor_save_scene(Editor *ed)
 {
     if (!ed) return false;
+    if (ed->mode == ED_MODE_PROTOTYPE)
+        return editor_save_prototype_now(ed);
+
     Qs_Scene *scene = qs_scene_active();
     if (!scene) {
         QS_LOG_WARN("Save Scene: no active scene");
         return false;
     }
-    /* In prototype mode, the active scene is the loaded .qproto. */
-    const char *path = (ed->mode == ED_MODE_PROTOTYPE && ed->proto_path[0])
-                           ? ed->proto_path
-                           : ed->current_scene_path;
+    const char *path = ed->current_scene_path;
     if (!path || !*path) {
         QS_LOG_WARN("Save Scene: no source path known for active scene");
         return false;
@@ -548,14 +655,16 @@ bool editor_save_project(Editor *ed)
 
 bool editor_undo(Editor *ed)
 {
-    (void)ed;
-    return ed_undo();
+    bool ok = ed_undo();
+    if (ok) editor_mark_dirty(ed);
+    return ok;
 }
 
 bool editor_redo(Editor *ed)
 {
-    (void)ed;
-    return ed_redo();
+    bool ok = ed_redo();
+    if (ok) editor_mark_dirty(ed);
+    return ok;
 }
 
 void editor_focus_all(Editor *ed)
@@ -669,6 +778,89 @@ const char *editor_current_proto_path(const Editor *editor)
     return rel[0] ? rel : editor->proto_path;
 }
 
+bool editor_proto_dirty(const Editor *editor)
+{
+    return editor && editor->mode == ED_MODE_PROTOTYPE && editor->proto_dirty;
+}
+
+void editor_mark_dirty(Editor *editor)
+{
+    if (!editor || editor->mode != ED_MODE_PROTOTYPE) return;
+    if (editor->proto_dirty) return;
+    editor->proto_dirty = true;
+    editor_update_breadcrumb(editor);
+}
+
+static void editor_clear_proto_preview_light(Editor *editor, Qs_Scene *proto_scene)
+{
+    if (!editor || !proto_scene) return;
+    if (editor->proto_preview_light == QS_ENTITY_INVALID) return;
+    if (qs_entity_valid(proto_scene, editor->proto_preview_light))
+        qs_entity_destroy(proto_scene, editor->proto_preview_light);
+    editor->proto_preview_light = QS_ENTITY_INVALID;
+}
+
+static void editor_ensure_proto_preview_light(Editor *editor, Qs_Scene *proto_scene)
+{
+    if (!editor || !proto_scene) return;
+    if (editor->proto_preview_light != QS_ENTITY_INVALID &&
+        qs_entity_valid(proto_scene, editor->proto_preview_light))
+        return;
+    editor->proto_preview_light = QS_ENTITY_INVALID;
+    if (qs_scene_first(proto_scene, qs_light_comp_type()) != QS_ENTITY_INVALID)
+        return;
+
+    Qs_Entity sun = qs_entity_create(proto_scene, "(Editor Preview Light)");
+    if (sun == QS_ENTITY_INVALID) return;
+
+    Qs_LightComp *lc = qs_entity_add(proto_scene, sun, qs_light_comp_type());
+    if (lc) {
+        lc->color[0]  = 1.0f;
+        lc->color[1]  = 0.95f;
+        lc->color[2]  = 0.9f;
+        lc->intensity = 3.0f;
+        editor->proto_preview_light = sun;
+    } else {
+        qs_entity_destroy(proto_scene, sun);
+    }
+}
+
+static bool editor_save_active_prototype(Editor *editor, bool restore_preview_light)
+{
+    if (!editor || editor->mode != ED_MODE_PROTOTYPE || !editor->proto_path[0]) {
+        QS_LOG_WARN("Save Prototype: no prototype is open");
+        return false;
+    }
+
+    Qs_Scene *proto_scene = qs_scene_active();
+    if (!proto_scene) {
+        QS_LOG_WARN("Save Prototype: no active prototype scene");
+        return false;
+    }
+
+    bool had_preview_light = editor->proto_preview_light != QS_ENTITY_INVALID;
+    editor_clear_proto_preview_light(editor, proto_scene);
+    if (!qs_scene_save(proto_scene, editor->proto_path)) {
+        QS_LOG_ERROR("Save Prototype failed: %s", editor->proto_path);
+        if (had_preview_light)
+            editor_ensure_proto_preview_light(editor, proto_scene);
+        return false;
+    }
+
+    if (restore_preview_light && had_preview_light)
+        editor_ensure_proto_preview_light(editor, proto_scene);
+
+    editor->proto_dirty = false;
+    editor_update_breadcrumb(editor);
+    QS_LOG_INFO("Saved prototype: %s", editor->proto_path);
+    return true;
+}
+
+bool editor_save_prototype_now(Editor *editor)
+{
+    return editor_save_active_prototype(editor, true);
+}
+
 bool editor_open_prototype(Editor *editor, const char *proto_path)
 {
     if (!editor || !proto_path) return false;
@@ -709,6 +901,11 @@ bool editor_open_prototype(Editor *editor, const char *proto_path)
     /* Push current scene + camera onto the stack */
     editor->proto_stack_scene[editor->proto_stack_depth] = qs_scene_active();
     editor->proto_stack_cam  [editor->proto_stack_depth] = editor->cam;
+    snprintf(editor->proto_stack_path[editor->proto_stack_depth],
+             sizeof(editor->proto_stack_path[editor->proto_stack_depth]),
+             "%s", editor->proto_path);
+    editor->proto_stack_dirty[editor->proto_stack_depth] = editor->proto_dirty;
+    editor->proto_stack_preview_light[editor->proto_stack_depth] = editor->proto_preview_light;
     editor->proto_stack_depth++;
 
     /* Load the .qproto file into a fresh scene and activate it.
@@ -727,6 +924,7 @@ bool editor_open_prototype(Editor *editor, const char *proto_path)
     qs_scene_set_active(proto_scene);
 
     snprintf(editor->proto_path, sizeof(editor->proto_path), "%s", proto_path);
+    editor->proto_dirty = false;
     editor->selected_entity   = QS_ENTITY_INVALID;
     editor->proto_owner       = QS_ENTITY_INVALID;
     editor->proto_inner_scene = NULL;
@@ -736,21 +934,7 @@ bool editor_open_prototype(Editor *editor, const char *proto_path)
        it is destroyed before the prototype is saved so the .qproto file
        never gains a stray light entity. */
     editor->proto_preview_light = QS_ENTITY_INVALID;
-    if (qs_scene_first(proto_scene, qs_light_comp_type()) == QS_ENTITY_INVALID) {
-        Qs_Entity sun = qs_entity_create(proto_scene, "(Editor Preview Light)");
-        if (sun != QS_ENTITY_INVALID) {
-            Qs_LightComp *lc = qs_entity_add(proto_scene, sun, qs_light_comp_type());
-            if (lc) {
-                lc->color[0]  = 1.0f;
-                lc->color[1]  = 0.95f;
-                lc->color[2]  = 0.9f;
-                lc->intensity = 3.0f;
-                editor->proto_preview_light = sun;
-            } else {
-                qs_entity_destroy(proto_scene, sun);
-            }
-        }
-    }
+    editor_ensure_proto_preview_light(editor, proto_scene);
 
     /* Reset camera for prototype view */
     ed_camera_init(&editor->cam);
@@ -766,36 +950,26 @@ bool editor_open_prototype(Editor *editor, const char *proto_path)
         }
     }
 
-    /* Update breadcrumb bar */
-    if (s_breadcrumb_bar) {
-        Qs_Scene *prev =
-            editor->proto_stack_scene[editor->proto_stack_depth - 1];
-        const char *scene_name_str = prev ? qs_scene_name(prev) : "Scene";
-        ca_set_text(s_breadcrumb_scene_label, scene_name_str);
-        ca_set_text(s_breadcrumb_proto_label, qs_scene_name(proto_scene));
-        ca_set_hidden(s_breadcrumb_bar, false);
-    }
-
     editor->mode = ED_MODE_PROTOTYPE;
+    editor_update_breadcrumb(editor);
     QS_LOG_INFO("Editing prototype: %s", proto_path);
     return true;
 }
 
 void editor_close_prototype(Editor *editor)
 {
+    editor_close_prototype_ex(editor, true);
+}
+
+void editor_close_prototype_ex(Editor *editor, bool save)
+{
     if (!editor || editor->proto_stack_depth == 0) return;
 
-    /* Save the current prototype scene back to its source path. */
     Qs_Scene *proto_scene = qs_scene_active();
-    /* Strip the editor-only preview light first so it never lands in
-       the saved .qproto. */
-    if (proto_scene && editor->proto_preview_light != QS_ENTITY_INVALID) {
-        if (qs_entity_valid(proto_scene, editor->proto_preview_light))
-            qs_entity_destroy(proto_scene, editor->proto_preview_light);
-        editor->proto_preview_light = QS_ENTITY_INVALID;
-    }
-    if (proto_scene && editor->proto_path[0])
-        qs_scene_save(proto_scene, editor->proto_path);
+    if (save && !editor_save_active_prototype(editor, false))
+        return;
+
+    editor_clear_proto_preview_light(editor, proto_scene);
     if (proto_scene)
         qs_scene_destroy(proto_scene);
 
@@ -808,11 +982,20 @@ void editor_close_prototype(Editor *editor)
     editor->selected_entity   = QS_ENTITY_INVALID;
     editor->proto_owner       = QS_ENTITY_INVALID;
     editor->proto_inner_scene = NULL;
-    editor->proto_path[0]     = '\0';
 
     if (editor->proto_stack_depth == 0) {
-        if (s_breadcrumb_bar) ca_set_hidden(s_breadcrumb_bar, true);
         editor->mode = ED_MODE_SCENE;
+        editor->proto_path[0] = '\0';
+        editor->proto_dirty = false;
+        editor->proto_preview_light = QS_ENTITY_INVALID;
+        editor_update_breadcrumb(editor);
+    } else {
+        editor->mode = ED_MODE_PROTOTYPE;
+        snprintf(editor->proto_path, sizeof(editor->proto_path), "%s",
+                 editor->proto_stack_path[editor->proto_stack_depth]);
+        editor->proto_dirty = editor->proto_stack_dirty[editor->proto_stack_depth];
+        editor->proto_preview_light = editor->proto_stack_preview_light[editor->proto_stack_depth];
+        editor_update_breadcrumb(editor);
     }
     QS_LOG_INFO("Returned to %s", prev ? qs_scene_name(prev) : "(none)");
 }
